@@ -5,19 +5,6 @@ from datetime import UTC
 from app.database import Base
 import enum
 
-class UserRole(enum.Enum):
-    ADMIN = "Admin"
-    CANDIDATE = "Candidate"
-
-class JudgeStatus(enum.Enum):
-    PENDING = "Pending"
-    JUDGING = "Judging"
-    AC = "AC"
-    WA = "WA"
-    TLE = "TLE"
-    MLE = "MLE"
-    RE = "RE"
-    CE = "CE"
 
 class User(Base):
     """User (使用者)：記錄系統中的使用者資訊。

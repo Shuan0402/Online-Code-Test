@@ -1,6 +1,6 @@
 import pytest
 from app.models import User, Problem, TestCase, Submission
-from app.models.user import UserRole
+from app.schemas.user import UserRole
 import uuid
 
 

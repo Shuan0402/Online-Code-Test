@@ -2,3 +2,4 @@ sqlalchemy
 dotenv
 pytest
 alembic
+pydantic
