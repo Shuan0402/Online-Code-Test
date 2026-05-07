@@ -30,7 +30,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 定義關聯
-    managed_exams = relationship("Exam", foreign_keys="[Exam.creator_id]", back_populates="creator", cascade="all, delete-orphan")
+    managed_exams = relationship("Exam", foreign_keys="[Exam.creator_id]", back_populates="interviewer", cascade="all, delete-orphan")
     assigned_exams = relationship("Exam", foreign_keys="[Exam.candidate_id]", back_populates="candidate", cascade="all, delete-orphan")
-    created_problems = relationship("Problem", back_populates="creator")
+    created_problems = relationship("Problem", back_populates="questioner")
     submissions = relationship("Submission", back_populates="user", cascade="all, delete-orphan")

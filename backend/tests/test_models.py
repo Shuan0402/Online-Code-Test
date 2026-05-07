@@ -9,7 +9,7 @@ def test_create_user(db_session):
     測試建立使用者，驗證 GUID (UUID) 與 Enum 是否正確轉換。
     """
     new_user = User(
-        username="test_student",
+        username="candidate_user",
         full_name="測試考生",
         password_hash="hashed_password",
         role=UserRole.Candidate
@@ -18,7 +18,7 @@ def test_create_user(db_session):
     db_session.add(new_user)
     db_session.commit()
 
-    assert new_user.username == "test_student"
+    assert new_user.username == "candidate_user"
     assert isinstance(new_user.id, uuid.UUID)
     assert new_user.role == UserRole.Candidate
 
@@ -26,19 +26,19 @@ def test_problem_with_test_cases(db_session):
     """
     測試建立題目、難度 Enum 與透過 relationship 添加具備分數權重的測資。
     """
-    admin = User(
-        username="admin_user",
+    questioner = User(
+        username="questioner_user",
         password_hash="hash",
-        role=UserRole.Admin
+        role=UserRole.Questioner
     )
-    db_session.add(admin)
+    db_session.add(questioner)
     db_session.commit()
 
     new_problem = Problem(
         title="Two Sum",
         description="找出兩數之和",
         difficulty=DifficultyLevel.Easy,
-        creator_id=admin.id
+        creator_id=questioner.id
     )
     new_problem.test_cases.append(
         TestCase(input_data="1 2", expected_output="3", score_weight=50)
@@ -57,22 +57,22 @@ def test_exam_creation_with_dual_users(db_session):
     """
     測試 Exam 實體中「主考官」與「考生」的雙重外鍵關係。
     """
-    admin = User(
-        username="admin", 
+    interviewer = User(
+        username="interviewer", 
         password_hash="123", 
-        role=UserRole.Admin
+        role=UserRole.Interviewer
     )
     student = User(
         username="student", 
         password_hash="456", 
         role=UserRole.Candidate
     )
-    db_session.add_all([admin, student])
+    db_session.add_all([interviewer, student])
     db_session.commit()
 
     new_exam = Exam(
         title="2026 後端實作測驗",
-        creator_id=admin.id,
+        creator_id=interviewer.id,
         candidate_id=student.id,
         duration_minutes=60,
         status=ExamStatus.Published,
@@ -81,32 +81,32 @@ def test_exam_creation_with_dual_users(db_session):
     db_session.add(new_exam)
     db_session.commit()
 
-    assert new_exam.creator.username == "admin"
+    assert new_exam.interviewer.username == "interviewer"
     assert new_exam.candidate.username == "student"
-    assert len(admin.managed_exams) == 1
+    assert len(interviewer.managed_exams) == 1
     assert len(student.assigned_exams) == 1
 
 def test_exam_problem_composite_pk_and_snapshot(db_session):
     """
     測試 ExamProblem 中間表：複合主鍵與分數快照功能。
     """
-    admin = User(
-        username="admin", 
+    questioner = User(
+        username="questioner", 
         password_hash="pw", 
         role=UserRole.Admin
     )
-    db_session.add(admin)
+    db_session.add(questioner)
     db_session.commit()
 
     prob = Problem(
         title="SQL Test",
         description="...", 
         difficulty=DifficultyLevel.Medium,
-        creator_id=admin.id
+        creator_id=questioner.id
     )
     exam = Exam(
         title="Midterm", 
-        creator_id=admin.id, 
+        creator_id=questioner.id, 
         candidate_id=uuid.uuid4()
     )
     db_session.add_all([prob, exam])
@@ -133,28 +133,33 @@ def test_submission_full_relations(db_session):
     """
     測試提交紀錄是否能正確關聯 User, Problem 與 Exam。
     """
-    admin = User(
+    questioner = User(
         username="admin",
         password_hash="...", 
-        role=UserRole.Admin
+        role=UserRole.Questioner
+    )
+    interviewer = User(
+        username="interviewer",
+        password_hash="...",
+        role=UserRole.Interviewer
     )
     u = User(
         username="user",
         password_hash="...", 
         role=UserRole.Candidate
     )
-    db_session.add_all([admin, u])
+    db_session.add_all([questioner, u])
     db_session.flush()
 
     p = Problem(
         title="P1",
         description="...",
         difficulty=DifficultyLevel.Easy,
-        creator=admin
+        questioner=questioner
     )
     e = Exam(
         title="E1", 
-        creator=admin,
+        interviewer=interviewer,
         candidate=u
     )
     db_session.add_all([p, e])
@@ -200,18 +205,18 @@ def test_cascade_delete_problem_testcases(db_session):
     """
     驗證刪除題目時，對應的測試案例是否自動刪除。
     """
-    admin = User(
-        username="admin", 
+    questioner = User(
+        username="questioner", 
         password_hash="...", 
-        role=UserRole.Admin
+        role=UserRole.Questioner
     )
-    db_session.add(admin)
+    db_session.add(questioner)
     db_session.commit()
 
     prob = Problem(
         title="Delete Me", 
         description="...", 
-        creator=admin, 
+        questioner=questioner, 
         difficulty=DifficultyLevel.Easy
     )
     prob.test_cases.append(TestCase(input_data="in", expected_output="out"))

@@ -1,8 +1,8 @@
-"""init_db_with_full_schema
+"""refactor_roles_and_relationships
 
-Revision ID: 8da89e479ad9
+Revision ID: a744bbd2d8b9
 Revises: 
-Create Date: 2026-05-08 01:29:49.967392
+Create Date: 2026-05-08 02:48:20.111320
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 import app.models.utils
 
 # revision identifiers, used by Alembic.
-revision: str = '8da89e479ad9'
+revision: str = 'a744bbd2d8b9'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -26,7 +26,7 @@ def upgrade() -> None:
     sa.Column('username', sa.String(length=100), nullable=False),
     sa.Column('full_name', sa.String(length=100), nullable=True),
     sa.Column('password_hash', sa.String(length=255), nullable=False),
-    sa.Column('role', sa.Enum('Admin', 'Candidate', name='userrole'), nullable=False),
+    sa.Column('role', sa.Enum('Admin', 'Candidate', 'Interviewer', 'Questioner', name='userrole'), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )

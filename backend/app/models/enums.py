@@ -3,6 +3,8 @@ import enum
 class UserRole(enum.Enum):
     Admin = "Admin"
     Candidate = "Candidate"
+    Interviewer = "Interviewer"
+    Questioner = "Questioner"
 
 class DifficultyLevel(enum.Enum):
     Easy = "Easy"
