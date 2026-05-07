@@ -9,7 +9,7 @@ class ExamProblemBase(BaseModel):
     """
     考試中的單一題目資訊 (包含佔分比例)。
     """
-    problem_id: UUID
+    problem_id: int = Field(..., description="題目 ID")
     sequence: int = Field(..., description="題號順序")
     points: int = Field(default=100, description="本題佔分")
 

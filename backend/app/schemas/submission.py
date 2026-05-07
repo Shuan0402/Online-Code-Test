@@ -1,20 +1,8 @@
+from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
-from enum import Enum
-
-class JudgeStatus(str, Enum):
-    """
-    定義評測結果的狀態。
-    """
-    PENDING = "Pending"
-    JUDGING = "Judging"
-    AC = "AC"
-    WA = "WA"
-    TLE = "TLE"
-    MLE = "MLE"
-    RE = "RE"
-    CE = "CE"
+from app.models.enums import JudgeStatus
 
 class SubmissionBase(BaseModel):
     """
@@ -33,14 +21,18 @@ class SubmissionCreate(BaseModel):
 
 class SubmissionRead(SubmissionBase):
     """
-    定義 SubmissionRead 的欄位，回傳給前端使用。
+    回傳給前端。
     """
-    id: str
-    user_id: str
+    id: UUID
+    user_id: UUID
     problem_id: int
+    exam_id: Optional[UUID] = None
+    
     status: JudgeStatus
-    execution_time: Optional[int] = None # 毫秒
-    memory_usage: Optional[int] = None  # MB
+    code_s3_url: str
+    
+    execution_time: Optional[int] = None
+    memory_usage: Optional[int] = None
     judge_log: Optional[str] = None
     created_at: datetime
 

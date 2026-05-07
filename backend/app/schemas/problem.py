@@ -6,6 +6,8 @@ from app.models.enums import DifficultyLevel # 匯入我們定義好的 Enum
 
 # TestCase Schemas
 class TestCaseBase(BaseModel):
+    __test__ = False
+    
     input_data: str = Field(..., json_schema_extra={"example": "1 2"})
     expected_output: str = Field(..., json_schema_extra={"example": "3"})
     is_sample: bool = Field(default=False, description="是否為範例測資")
