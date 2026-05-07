@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
+from app.models.utils import GUID
 from app.models.enums import DifficultyLevel
 
 class Problem(Base):
@@ -21,7 +22,7 @@ class Problem(Base):
 
     # 欄位定義
     id = Column(Integer, primary_key=True, index=True)
-    creator_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    creator_id = Column(GUID(), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
 
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)

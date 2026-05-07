@@ -25,6 +25,7 @@ class Exam(Base):
     - medium_count: Integer，中等題數。
     - hard_count: Integer，困難題數。
     - score: Integer，此次考試得分。
+    - created_at: DateTime，考試建立時間。
     """
     __tablename__ = "exams"
 
@@ -45,6 +46,8 @@ class Exam(Base):
     easy_count = Column(Integer, default=0, nullable=False)
     medium_count = Column(Integer, default=0, nullable=False)
     hard_count = Column(Integer, default=0, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 關聯定義
     creator = relationship("User", foreign_keys=[creator_id], back_populates="managed_exams")
