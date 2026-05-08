@@ -32,9 +32,9 @@ services:
       pg:
         condition: service_healthy
     # python -c probe: slim image has no curl/wget, but always has python.
-    # Hits placeholder `/`. Round 3 will switch to `/health` once we add it.
+    # Hits /health (liveness only — does not touch DB).
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
       timeout: 5s
       retries: 3

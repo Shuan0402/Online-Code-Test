@@ -7,7 +7,7 @@ WORKDIR /app
 # invalidate the expensive pip-install layer above them.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir fastapi "uvicorn[standard]"
+ && pip install --no-cache-dir fastapi "uvicorn[standard]" "psycopg[binary]"
 
 # Source code last — this layer is the only one that rebuilds on code edits.
 COPY . .
