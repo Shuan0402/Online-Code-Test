@@ -1,5 +1,17 @@
-# TODO(jane): PLACEHOLDER for Docker / Compose learning. Replaced by B's real backend.
-# /health and /db-check exist to verify compose env injection + service-name DNS.
+# ============================================================
+# ⚠️  PLACEHOLDER — REPLACE WITH REAL BACKEND CODE
+# ============================================================
+# This file exists only so the docker stack starts cleanly.
+# /health is the only required contract — anything else is for testing.
+# Owner: @Shuan0402 — feel free to overwrite this entire file.
+#
+# Compose 對這支 main.py 的合約：
+#   - listen 0.0.0.0:8000
+#   - GET /health 回 200（compose healthcheck 在打）
+#   - 從 env 讀 DATABASE_URL
+#
+# /db-check 只是 placeholder 自驗 stack 用，**真 backend 不該保留**。
+# ============================================================
 
 import os
 
