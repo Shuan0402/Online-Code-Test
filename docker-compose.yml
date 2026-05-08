@@ -1,0 +1,44 @@
+# Step 2 / Round 2 main file — env injection, healthcheck, image-only.
+# Local dev adds `build:` via docker-compose.override.yml (auto-loaded).
+# CI / prod runs:
+#   docker compose -f docker-compose.yml up
+# to skip the override and pull the registry image instead.
+
+services:
+  pg:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    # `$$` escapes compose's own ${VAR} substitution so the shell inside the
+    # container reads $POSTGRES_USER from its own env at probe time.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    image: backend:dev
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pg:5432/${POSTGRES_DB}
+    ports:
+      - "8000:8000"
+    depends_on:
+      pg:
+        condition: service_healthy
+    # python -c probe: slim image has no curl/wget, but always has python.
+    # Hits placeholder `/`. Round 3 will switch to `/health` once we add it.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  pg_data:

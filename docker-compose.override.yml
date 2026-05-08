@@ -1,0 +1,9 @@
+# Local dev override — auto-loaded by `docker compose up`.
+# CI / prod uses `docker compose -f docker-compose.yml up` and skips this file.
+
+services:
+  backend:
+    # Build from local source instead of pulling registry.
+    # The resulting image is tagged with the `image:` name from the main file
+    # (backend:dev), so other compose commands stay consistent.
+    build: ./backend
