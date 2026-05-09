@@ -3,3 +3,5 @@ python-dotenv
 pytest
 alembic
 pydantic
+psycopg2-binary
+fastapi
