@@ -1,5 +1,5 @@
 sqlalchemy
-dotenv
+python-dotenv
 pytest
 alembic
 pydantic
