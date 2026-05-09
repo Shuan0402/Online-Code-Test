@@ -1,0 +1,104 @@
+<mxfile host="app.diagrams.net" agent="claude">
+  <diagram name="Step 1-7 A Range Architecture" id="step7-arch">
+    <mxGraphModel dx="1567" dy="1127" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#1A1A2E;" value="Online Code Test — Step 1-7 架構（Sandbox + Compute）" vertex="1">
+          <mxGeometry height="40" width="1320" x="40" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="user" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#FFE066;strokeColor=#FCC419;fontColor=#5C3D00;" value="&lt;div style=&quot;font-size:48px&quot;&gt;&lt;br&gt;&lt;/div&gt;&lt;div style=&quot;font-size:14px;font-weight:bold&quot;&gt;User&lt;/div&gt;&lt;div style=&quot;font-size:11px&quot;&gt;提交程式碼&lt;/div&gt;" vertex="1">
+          <mxGeometry height="120" width="140" x="35" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="b-group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#ADB5BD;dashed=1;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#495057;" value="B 範圍（Shuan）— Step 8 才接" vertex="1">
+          <mxGeometry height="280" width="340" x="215" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="backend" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3776AB;strokeColor=#1F4E79;fontSize=13;" value="&lt;div style=&quot;text-align:center&quot;&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg&quot; width=&quot;32&quot; height=&quot;32&quot;/&gt;&lt;/div&gt;&lt;div style=&quot;font-weight:bold;color:#fff&quot;&gt;Backend API&lt;/div&gt;&lt;div style=&quot;font-size:10px;color:#B0E0E6&quot;&gt;FastAPI placeholder&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="140" x="235" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="queue" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DC382D;strokeColor=#A41E13;fontSize=13;dashed=1;" value="&lt;div style=&quot;text-align:center&quot;&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/redis/redis-original.svg&quot; width=&quot;32&quot; height=&quot;32&quot;/&gt;&lt;/div&gt;&lt;div style=&quot;font-weight:bold;color:#fff&quot;&gt;Redis Queue&lt;/div&gt;&lt;div style=&quot;font-size:10px;color:#FFD0CC&quot;&gt;submission 訊息&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="140" x="395" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="postgres" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#336791;strokeColor=#1F4060;fontSize=13;" value="&lt;div style=&quot;text-align:center&quot;&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/postgresql/postgresql-original.svg&quot; width=&quot;32&quot; height=&quot;32&quot;/&gt;&lt;/div&gt;&lt;div style=&quot;font-weight:bold;color:#fff&quot;&gt;PostgreSQL&lt;/div&gt;&lt;div style=&quot;font-size:10px;color:#B0E0E6&quot;&gt;Step 2 已就位&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="140" x="315" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="a-group" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#43A047;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#1B5E20;strokeWidth=2;" value="&amp;nbsp;Sandbox + Compute ✅ Step 1-7 完成" vertex="1">
+          <mxGeometry height="700" width="760" x="595" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="worker-c" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#43A047;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#1B5E20;strokeWidth=2;" value="&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/docker/docker-original.svg&quot; width=&quot;28&quot; height=&quot;28&quot; style=&quot;vertical-align:middle&quot;/&gt; Judge Worker container（Python process、長駐）" vertex="1">
+          <mxGeometry height="240" width="720" x="615" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="worker-py" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3776AB;strokeColor=#1F4E79;fontColor=#FFFFFF;" value="&lt;div&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg&quot; width=&quot;20&quot; height=&quot;20&quot; style=&quot;vertical-align:middle&quot;/&gt; &lt;b&gt;worker.py main loop&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;border-top:1px solid #FFFFFF;margin:4px 0&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size:11px;text-align:left&quot;&gt;• 從 queue dequeue submission&lt;br&gt;• 呼叫 spawner.run()&lt;br&gt;• decide_verdict() 判 6 種&lt;br&gt;&amp;nbsp;&amp;nbsp;&amp;nbsp;AC / WA / TLE / RE / CE / MLE&lt;br&gt;• POST callback 回 backend&lt;br&gt;• 收 SpawnerError 跟 user 錯誤分流&lt;/div&gt;" vertex="1">
+          <mxGeometry height="170" width="290" x="635" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="spawner" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFC107;strokeColor=#FF8F00;fontColor=#3E2723;fontStyle=1;" value="&lt;div&gt;⚙️ &lt;b&gt;DockerSpawner instance&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;font-size:10px&quot;&gt;（Python object，不是 container）&lt;/div&gt;&lt;div style=&quot;border-top:1px solid #5C3D00;margin:4px 0&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size:11px;text-align:left&quot;&gt;• _build_run_cmd 統一安全旗標入口&lt;br&gt;• 啟動 sweep 殺前任 orphan container&lt;br&gt;• docker inspect → OOMKilled flag&lt;br&gt;• subprocess bytes mode（防 UTF-8 炸）&lt;br&gt;• stdout/stderr 64KB cap + truncated 旗標&lt;br&gt;• image not found → SpawnerError&lt;/div&gt;" vertex="1">
+          <mxGeometry height="170" width="310" x="1005" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="sandbox" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFEBEE;strokeColor=#C62828;fontColor=#1B1B1B;strokeWidth=2;" value="&lt;div style=&quot;text-align:center&quot;&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/docker/docker-original.svg&quot; width=&quot;32&quot; height=&quot;32&quot; style=&quot;vertical-align:middle&quot;/&gt; &lt;b style=&quot;font-size:14px&quot;&gt;Sandbox container（ephemeral、跑完即清）&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;border-top:1px solid #C62828;margin:6px 0&quot;&gt;&lt;/div&gt;&lt;div style=&quot;text-align:center;font-size:11px&quot;&gt;Image：&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg&quot; width=&quot;16&quot; height=&quot;16&quot; style=&quot;vertical-align:middle&quot;/&gt; sandbox:python (92 MB, distroless)　|　&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg&quot; width=&quot;16&quot; height=&quot;16&quot; style=&quot;vertical-align:middle&quot;/&gt; sandbox:cpp (453 MB, debian-slim)&lt;/div&gt;&lt;div style=&quot;text-align:center;font-size:11px&quot;&gt;UID：nonroot 65532　|　Digest pinned　|　PID 1 是 user code 本身&lt;/div&gt;&lt;div style=&quot;border-top:1px solid #C62828;margin:6px 0&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size:11px;font-family:Courier New;text-align:left&quot;&gt;Runtime 安全旗標（Step 7）：&lt;br&gt;&lt;br&gt;🚫 --network=none　　　　　　　　　　　　　　　無網路（連外、DNS 全失敗）&lt;br&gt;🔒 --read-only + --tmpfs /tmp:size=10m　　　 FS 鎖死、只給 10MB tmpfs&lt;br&gt;⚔️ --cap-drop=ALL　　　　　　　　　　　　　　 砍光 Linux capabilities&lt;br&gt;🛡️ --security-opt=no-new-privileges　　　　 防 setuid 提權&lt;br&gt;🍴 --pids-limit=64　　　　　　　　　　　　　　 防 fork bomb&lt;br&gt;💾 --memory=256m + --memory-swap=256m　　　　 RAM 上限 → OOM kill → MLE&lt;br&gt;⏱️ --cpus=0.5　　　　　　　　　　　　　　　　 CPU 上限&lt;br&gt;📋 --ulimit nproc=64 / nofile=128　　　　　　 補強 cgroup&lt;br&gt;👥 --user=65532:65532　　　　　　　　　　　　 縱深防禦的 nonroot&lt;br&gt;🏷️ --label app=judge-sandbox　　　　　　　　　給 startup sweep 認得&lt;/div&gt;" vertex="1">
+          <mxGeometry height="320" width="700" x="635" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="e-user-be" edge="1" parent="1" source="user" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=12;fontStyle=1;strokeWidth=2;strokeColor=#FCC419;fontColor=#5C3D00;" target="backend" value="1. submit code">
+          <mxGeometry relative="1" x="-0.5385" y="25" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-be-q" edge="1" parent="1" source="backend" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=12;fontStyle=1;strokeWidth=2;strokeColor=#3776AB;fontColor=#1F4E79;entryDx=0;entryDy=0;" target="queue" value="2. push">
+          <mxGeometry relative="1" y="20" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-q-w" edge="1" parent="1" source="queue" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.3;fontSize=12;fontStyle=1;strokeWidth=2;strokeColor=#DC382D;fontColor=#A41E13;" target="worker-py" value="3. dequeue">
+          <mxGeometry relative="1" x="-0.1582" y="11" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-w-s" edge="1" parent="1" source="worker-py" style="endArrow=classic;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;fontSize=11;startArrow=classic;startFill=1;strokeWidth=2;strokeColor=#666666;" target="spawner" value="spawner.run()">
+          <mxGeometry relative="1" y="-15" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-s-sb" edge="1" parent="1" source="spawner" style="endArrow=classic;html=1;exitX=0.3;exitY=1;entryX=0.7;entryY=0;fontSize=12;fontStyle=1;strokeWidth=2;strokeColor=#FF8F00;fontColor=#3E2723;" target="sandbox" value="4. docker run + flags">
+          <mxGeometry relative="1" x="0.6674" y="49" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-sb-s" edge="1" parent="1" source="sandbox" style="endArrow=classic;html=1;dashed=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;fontSize=12;fontStyle=1;strokeWidth=2;strokeColor=#C62828;fontColor=#B71C1C;" target="spawner" value="5. stdout / OOMKilled">
+          <mxGeometry relative="1" x="-0.588" y="19" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-callback" edge="1" parent="1" source="worker-py" style="endArrow=classic;html=1;dashed=1;exitX=0;exitY=0.7;entryX=1.02;entryY=0.859;fontSize=12;fontStyle=1;strokeWidth=2;strokeColor=#3776AB;fontColor=#1F4E79;entryDx=0;entryDy=0;entryPerimeter=0;" target="backend" value="6. POST verdict callback">
+          <mxGeometry relative="1" x="0.0046" y="10" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-result" edge="1" parent="1" source="backend" style="endArrow=classic;html=1;dashed=1;exitX=0;exitY=0.7;entryX=1;entryY=0.7;fontSize=12;fontStyle=1;strokeWidth=2;strokeColor=#FCC419;fontColor=#5C3D00;" target="user" value="7. 顯示結果">
+          <mxGeometry relative="1" x="-0.3006" y="22" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend-title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#1A1A2E;" value="圖例" vertex="1">
+          <mxGeometry height="30" width="60" x="35" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-done" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#43A047;fontSize=11;fontColor=#1B5E20;fontStyle=1;" value="✅ Step 1-7 完成" vertex="1">
+          <mxGeometry height="30" width="140" x="35" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-pending" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#ADB5BD;dashed=1;fontSize=11;fontColor=#495057;" value="⏳ Step 8+ 待做" vertex="1">
+          <mxGeometry height="30" width="140" x="35" y="530" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-arrow-solid" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#1A1A2E;" value="實線箭頭：data flow" vertex="1">
+          <mxGeometry height="20" width="180" x="35" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-arrow-dashed" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#1A1A2E;" value="虛線箭頭：response / 回程" vertex="1">
+          <mxGeometry height="20" width="200" x="35" y="600" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-logos" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF8E1;strokeColor=#FFA000;fontColor=#3E2723;dashed=1;" value="&lt;div&gt;&lt;b&gt;Logo 來源&lt;/b&gt;&lt;/div&gt;&lt;div style=&quot;font-size:10px;text-align:left&quot;&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/docker/docker-original.svg&quot; width=&quot;16&quot; height=&quot;16&quot; style=&quot;vertical-align:middle&quot;/&gt; Docker&lt;br&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg&quot; width=&quot;16&quot; height=&quot;16&quot; style=&quot;vertical-align:middle&quot;/&gt; Python&lt;br&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/postgresql/postgresql-original.svg&quot; width=&quot;16&quot; height=&quot;16&quot; style=&quot;vertical-align:middle&quot;/&gt; PostgreSQL&lt;br&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/redis/redis-original.svg&quot; width=&quot;16&quot; height=&quot;16&quot; style=&quot;vertical-align:middle&quot;/&gt; Redis&lt;br&gt;&lt;img src=&quot;https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg&quot; width=&quot;16&quot; height=&quot;16&quot; style=&quot;vertical-align:middle&quot;/&gt; C++&lt;br&gt;&lt;br&gt;via devicon CDN&lt;br&gt;(open-source logo lib)&lt;/div&gt;" vertex="1">
+          <mxGeometry height="160" width="200" x="35" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="dcXTrXiasBNGp7U4Kg60-2" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3D;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=0;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.user;" value="" vertex="1">
+          <mxGeometry height="44" width="44" x="83" y="286" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
