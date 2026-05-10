@@ -14,16 +14,19 @@
 # ============================================================
 
 import os
-
 import psycopg
 from fastapi import FastAPI
+
 from .database import engine, Base
 from .models import user, problem, submission, exam, exam_problem, testcase
+
+from app.api.api_v1.api import api_router
 
 app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
 
+app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 def root():

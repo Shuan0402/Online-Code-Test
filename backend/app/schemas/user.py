@@ -4,6 +4,7 @@ from typing import Optional
 from uuid import UUID
 from app.models.enums import UserRole
 
+
 class UserBase(BaseModel):
     """
     使用者基本資訊。
