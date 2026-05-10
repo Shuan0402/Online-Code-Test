@@ -4,8 +4,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import sqlalchemy.types as types
+from sqlalchemy import UUID
 from app.database import Base
-from app.models.utils import GUID
 from app.models.enums import ExamStatus
 
 
@@ -30,11 +30,11 @@ class Exam(Base):
     __tablename__ = "exams"
 
     # 欄位定義
-    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(255), nullable=False)
     
-    creator_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    candidate_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    candidate_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     
     duration_minutes = Column(Integer, default=60, nullable=False)
     start_time = Column(DateTime(timezone=True), nullable=True)

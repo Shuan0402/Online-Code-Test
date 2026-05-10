@@ -1,7 +1,8 @@
 from sqlalchemy import Column, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
-from app.models.user import GUID 
+from sqlalchemy import UUID
+import uuid
 
 
 class ExamProblem(Base):
@@ -17,7 +18,7 @@ class ExamProblem(Base):
     __tablename__ = "exam_problems"
 
     # 欄位定義
-    exam_id = Column(GUID(), ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
+    exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id", ondelete="CASCADE"), primary_key=True)
     problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), primary_key=True)
     
     sequence = Column(Integer, nullable=False, default=1)

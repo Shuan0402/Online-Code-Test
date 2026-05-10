@@ -2,8 +2,8 @@ import uuid
 from sqlalchemy import Column, String, DateTime, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy import UUID
 from app.database import Base
-from app.models.utils import GUID
 from app.models.enums import UserRole
 
 
@@ -20,7 +20,7 @@ class User(Base):
     __tablename__ = "users"
 
     # 定義欄位
-    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(100), unique=True, index=True, nullable=False)
     full_name = Column(String(100), nullable=True) # 建議增加，方便主管識別
     password_hash = Column(String(255), nullable=False)

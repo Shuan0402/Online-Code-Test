@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 def test_create_user(db_session):
     """
-    測試建立使用者，驗證 GUID (UUID) 與 Enum 是否正確轉換。
+    測試建立使用者，驗證 UUID 與 Enum 是否正確轉換。
     """
     new_user = User(
         username="candidate_user",
@@ -95,7 +95,12 @@ def test_exam_problem_composite_pk_and_snapshot(db_session):
         password_hash="pw", 
         role=UserRole.Admin
     )
-    db_session.add(questioner)
+    candidate = User(
+        username="student_01", 
+        password_hash="pw",
+        role=UserRole.Candidate
+    )
+    db_session.add_all([questioner, candidate])
     db_session.commit()
 
     prob = Problem(
@@ -107,7 +112,7 @@ def test_exam_problem_composite_pk_and_snapshot(db_session):
     exam = Exam(
         title="Midterm", 
         creator_id=questioner.id, 
-        candidate_id=uuid.uuid4()
+        candidate_id=candidate.id
     )
     db_session.add_all([prob, exam])
     db_session.commit()
@@ -123,7 +128,9 @@ def test_exam_problem_composite_pk_and_snapshot(db_session):
 
     retrieved_ep = db_session.query(ExamProblem).filter_by(
         exam_id=exam.id, 
-        problem_id=prob.id
+        problem_id=prob.id,
+        sequence=1,
+        points=50
     ).first()
     
     assert retrieved_ep.points == 50
@@ -234,10 +241,23 @@ def test_exam_defaults(db_session):
     """
     驗證 Exam 建立時的預設值（狀態、得分、題數）。
     """
+    Interviewer = User(
+        username="interviewer_default",
+        password_hash="...",
+        role=UserRole.Interviewer
+    )
+    Candidate = User(
+        username="candidate_default",
+        password_hash="...",
+        role=UserRole.Candidate
+    )
+    db_session.add_all([Interviewer, Candidate])
+    db_session.commit()
+
     exam = Exam(
         title="Default Test", 
-        creator_id=uuid.uuid4(), 
-        candidate_id=uuid.uuid4()
+        creator_id=Interviewer.id, 
+        candidate_id=Candidate.id
     )
     db_session.add(exam)
     db_session.commit()
@@ -256,13 +276,22 @@ def test_user_submissions_relationship(db_session):
         username="nav_user",
         password_hash="..."
     )
+    questioner = User(
+        username="nav_questioner",
+        password_hash="...",
+        role=UserRole.Questioner
+    )
+    
+    db_session.add_all([u, questioner])
+    db_session.commit()
+
     p = Problem(
         title="P", 
         description="...", 
-        creator_id=uuid.uuid4(), 
+        creator_id=questioner.id, 
         difficulty=DifficultyLevel.Easy
     )
-    db_session.add_all([u, p])
+    db_session.add(p)
     db_session.commit()
 
     sub1 = Submission(
