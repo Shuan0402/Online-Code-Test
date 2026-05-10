@@ -17,8 +17,12 @@ import os
 
 import psycopg
 from fastapi import FastAPI
+from .database import engine, Base
+from .models import user, problem, submission, exam, exam_problem, testcase
 
 app = FastAPI()
+
+Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")

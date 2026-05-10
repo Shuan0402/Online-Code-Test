@@ -2,8 +2,8 @@ import uuid
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy import UUID
 from app.database import Base
-from app.models.exam import GUID
 from app.models.enums import JudgeStatus
 
 
@@ -26,11 +26,11 @@ class Submission(Base):
     __tablename__ = "submissions"
 
     # 定義欄位
-    id = Column(GUID(), primary_key=True, default=uuid.uuid4)
-    user_id = Column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), nullable=False)
     
-    exam_id = Column(GUID(), ForeignKey("exams.id", ondelete="SET NULL"), nullable=True)
+    exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id", ondelete="SET NULL"), nullable=True)
 
     language = Column(String(50), nullable=False)
     code_s3_url = Column(String(500), nullable=False)
