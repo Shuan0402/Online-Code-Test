@@ -14,6 +14,7 @@ class Submission(Base):
     - user_id (FK): UUID，誰提交的。
     - problem_id (FK): Integer，考哪一題。
     - exam_id (FK, Nullable): 指向 Exam.id。
+    - submission_type: Enum (RUN_ONLY, OFFICIAL)，測試運行與繳交。
     - score: Integer，此次提交總分。
     - language: String，使用的語言 (Python, C++)。
     - code_s3_url: String，程式碼備份在 S3 的路徑。
@@ -31,6 +32,8 @@ class Submission(Base):
     problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), nullable=False)
     
     exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id", ondelete="SET NULL"), nullable=True)
+    submission_type = Column(Enum("RUN_ONLY", "OFFICIAL", name="submission_type"), default="OFFICIAL", nullable=False)
+
 
     language = Column(String(50), nullable=False)
     code_s3_url = Column(String(500), nullable=False)
