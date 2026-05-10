@@ -17,7 +17,8 @@ import os
 import psycopg
 from fastapi import FastAPI
 
-from .database import engine, Base
+from app.db.session import engine
+from app.db.base import Base
 from .models import user, problem, submission, exam, exam_problem, testcase
 
 from app.api.api_v1.api import api_router

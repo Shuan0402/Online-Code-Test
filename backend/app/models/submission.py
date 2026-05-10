@@ -3,7 +3,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy import UUID
-from app.database import Base
+from app.db.base import Base
 from app.models.enums import JudgeStatus
 
 

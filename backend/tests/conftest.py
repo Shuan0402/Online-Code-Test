@@ -1,15 +1,18 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app
-from app.database import Base, engine as prod_engine, DATABASE_URL # 直接從這裡拿 URL
-from app.database import get_db
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+from app.main import app
+from app.db.base import Base
+from app.db.session import engine as prod_engine, SQLALCHEMY_DATABASE_URL
+from app.api.deps import get_db
+from app.models import user, problem, submission, exam, exam_problem, testcase
 
 
 @pytest.fixture(scope="function")
 def db_session():
-    engine = create_engine(DATABASE_URL)
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
     TestingSessionLocal = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
     

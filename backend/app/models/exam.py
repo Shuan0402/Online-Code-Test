@@ -5,7 +5,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import sqlalchemy.types as types
 from sqlalchemy import UUID
-from app.database import Base
+from app.db.base import Base
 from app.models.enums import ExamStatus
 
 
