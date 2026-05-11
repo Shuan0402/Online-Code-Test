@@ -27,3 +27,7 @@ class JudgeStatus(enum.Enum):
     MLE = "MLE"
     RE = "RE"
     CE = "CE"
+
+class SubmissionType(enum.Enum):
+    RUN_ONLY = "RUN_ONLY"
+    OFFICIAL = "OFFICIAL"

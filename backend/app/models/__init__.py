@@ -1,4 +1,4 @@
-from app.database import Base
+from app.db.base import Base
 from .user import User
 from .problem import Problem
 from .testcase import TestCase

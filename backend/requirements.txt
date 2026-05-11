@@ -5,3 +5,4 @@ alembic
 pydantic
 psycopg2-binary
 fastapi
+httpx
