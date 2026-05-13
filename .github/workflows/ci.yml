@@ -20,7 +20,7 @@ jobs:
     steps:
       # 從 GitHub 拉取程式碼到 CI 伺服器
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 建置 Backend Image
       - name: Build backend image
