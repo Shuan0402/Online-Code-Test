@@ -5,8 +5,12 @@ from .user import (
     UserRead, 
     UserUpdate, 
     UserLogin, 
+)
+
+# Auth & Token Schemas
+from .token import (
     Token, 
-    TokenData
+    TokenPayload
 )
 
 # Problem & TestCase Schemas
