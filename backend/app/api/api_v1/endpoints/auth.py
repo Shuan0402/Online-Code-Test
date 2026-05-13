@@ -6,6 +6,7 @@ from app.api import deps
 from app.core.security import SecurityManager
 from app.models.user import User
 from app.schemas.token import Token
+from app.core.redis_client import redis_client
 
 router = APIRouter()
 
@@ -26,3 +27,15 @@ def login(
     access_token = SecurityManager.create_access_token(subject=str(user.id))
     
     return Token(access_token=access_token, token_type="bearer")
+
+@router.post("/logout")
+def logout(
+    current_user: User = Depends(deps.get_current_user),
+    token: str = Depends(deps.oauth2_scheme)
+):
+    """
+    登出 API。將 Token 放入 Redis 黑名單。
+    """
+    redis_client.setex(f"blacklist:{token}", 86400, "true")
+    
+    return {"detail": "已成功登出"}
