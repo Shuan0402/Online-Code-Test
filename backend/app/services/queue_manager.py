@@ -1,23 +1,14 @@
-import redis
+# app/services/queue_manager.py
 import json
-import os
-
+from app.core.redis_client import redis_client
 class TaskQueue:
     def __init__(self):
-        # 讀取 REDIS_HOST 環境變數，若沒設定則預設為 "redis" (Docker 服務名稱)
-        redis_host = os.getenv("REDIS_HOST", "redis")
-
-        self.client = redis.Redis(
-            host=redis_host,
-            port=6379,
-            db=0,
-            decode_responses=True
-        )
+        self.client = redis_client
         self.queue_name = "oj_judge_queue"
 
     def push_task(self, payload: dict):
         """
-        將任務壓入 Redis List 的右側 (LPUSH/RPUSH)
+        將任務壓入 Redis List 的右側
         """
         try:
             self.client.rpush(self.queue_name, json.dumps(payload))
