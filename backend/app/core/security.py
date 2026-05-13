@@ -1,25 +1,27 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Union
 from jose import jwt
-from passlib.context import CryptContext
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from app.core.config import settings
 
-# 初始化雜湊上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ph = PasswordHasher()
 
 class SecurityManager:
-    """封裝安全相關邏輯的工具類別"""
-    
     @staticmethod
     def hash_password(password: str) -> str:
-        return pwd_context.hash(password)
+        return ph.hash(password)
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        return pwd_context.verify(plain_password, hashed_password)
-
+        try:
+            return ph.verify(hashed_password, plain_password)
+        except VerifyMismatchError:
+            return False
+        
     @staticmethod
     def create_access_token(subject: Union[str, Any], expires_delta: timedelta = None) -> str:
+        """產生 JWT Token"""
         if expires_delta:
             expire = datetime.now(timezone.utc) + expires_delta
         else:
@@ -28,4 +30,10 @@ class SecurityManager:
             )
         
         to_encode = {"exp": expire, "sub": str(subject)}
-        return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
+        
+        encoded_jwt = jwt.encode(
+            to_encode, 
+            settings.JWT_SECRET, 
+            algorithm=settings.ALGORITHM
+        )
+        return encoded_jwt

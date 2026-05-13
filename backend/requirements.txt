@@ -7,3 +7,8 @@ psycopg2-binary
 fastapi
 httpx
 redis
+pydantic-settings
+python-jose[cryptography]
+python-multipart
+argon2-cffi
+argon2-cffi
