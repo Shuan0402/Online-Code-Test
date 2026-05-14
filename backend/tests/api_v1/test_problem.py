@@ -11,9 +11,6 @@ from app.models.enums import DifficultyLevel, UserRole
 from app.models.user import User
 from app.models.testcase import TestCase
 
-def apply_login(user):
-    app.dependency_overrides[deps.get_current_user] = lambda: user
-    app.dependency_overrides[deps.get_staff_user] = lambda: user
 
 # --- GET /problems (列表展示) ---
 def test_read_problems_empty(client: TestClient):
@@ -140,3 +137,67 @@ def test_read_problem_not_found(client: TestClient, db_session: Session):
     app.dependency_overrides.clear()
 
     assert response.status_code == 404
+
+# --- POST /problems (建立題目) ---
+def test_create_problem_success_as_admin(client: TestClient, admin_user: User, override_auth):
+    payload = {
+        "title": "New Problem",
+        "description": "Desc",
+        "difficulty": "Medium",
+        "time_limit": 1000,
+        "memory_limit": 256,
+        "test_cases": [
+            {"input_data": "1", "expected_output": "2", "is_sample": True}
+        ]
+    }
+
+    override_auth(admin_user)
+    response = client.post("/api/v1/problems/", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["title"] == "New Problem"
+
+def test_create_problem_success_as_questioner(client: TestClient, questioner_user: User, override_auth):
+    """
+    測試 Questioner (出題者) 成功建立題目
+    """
+    payload = {
+        "title": "Questioner's Challenge",
+        "description": "Prove your logic",
+        "difficulty": "Medium",
+        "time_limit": 2000,
+        "memory_limit": 512,
+        "test_cases": [
+            {"input_data": "start", "expected_output": "end", "is_sample": True}
+        ]
+    }
+
+    override_auth(questioner_user)
+    response = client.post("/api/v1/problems/", json=payload)
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["title"] == "Questioner's Challenge"
+    assert data["creator_id"] == str(questioner_user.id)
+
+def test_create_problem_forbidden_as_interviewer(client: TestClient, interviewer_user: User, override_auth):
+    """
+    測試 Interviewer (面試官) 雖然是 staff，但不具備出題權限
+    """
+    payload = {"title": "Interviewer Hack", "description": "...", "test_cases": []}
+    
+    override_auth(interviewer_user)
+    response = client.post("/api/v1/problems/", json=payload)
+
+    assert response.status_code == 403
+
+def test_create_problem_forbidden_as_candidate(client: TestClient, candidate_user: User, override_auth):
+    """
+    測試 Candidate (考生) 不能出題
+    """
+    payload = {"title": "Student's Trap", "description": "...", "test_cases": []}
+    
+    override_auth(candidate_user)
+    response = client.post("/api/v1/problems/", json=payload)
+
+    assert response.status_code == 403
