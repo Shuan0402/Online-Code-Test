@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, Enum, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy import UUID
@@ -32,6 +32,7 @@ class Problem(Base):
     memory_limit = Column(Integer, default=256)  # MB
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_deleted = Column(Boolean, default=False, nullable=False)
 
     # 關聯定義
     test_cases = relationship("TestCase", back_populates="problem", cascade="all, delete-orphan")

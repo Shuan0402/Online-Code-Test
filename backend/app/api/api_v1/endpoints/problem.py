@@ -23,7 +23,7 @@ def read_problems(
     """
     獲取題目清單。
     """
-    problems = db.query(Problem.id, Problem.title, Problem.difficulty).offset(skip).limit(limit).all()
+    problems = db.query(Problem.id, Problem.title, Problem.difficulty).filter(Problem.is_deleted == False).offset(skip).limit(limit).all()
     return problems
 
 
@@ -37,7 +37,7 @@ def read_problem(
     獲取特定題目詳細資訊。
     需登入後方可查看內容與限制條件。
     """
-    problem = db.query(Problem).filter(Problem.id == problem_id).first()
+    problem = db.query(Problem).filter(Problem.id == problem_id, Problem.is_deleted == False).first()
     if not problem:
         raise HTTPException(status_code=404, detail="找不到該題目")
     
@@ -82,7 +82,7 @@ def update_problem(
     """
     修改題目資訊與測資。
     """
-    db_problem = db.query(Problem).filter(Problem.id == problem_id).first()
+    db_problem = db.query(Problem).filter(Problem.id == problem_id, Problem.is_deleted == False).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="題目不存在")
 
@@ -125,12 +125,13 @@ def delete_problem(
 ):
     """
     刪除題目。
-    因 Model 已設定 cascade="all, delete-orphan"，對應的測資會一併刪除。
     """
-    db_problem = db.query(Problem).filter(Problem.id == problem_id).first()
+    db_problem = db.query(Problem).filter(Problem.id == problem_id, Problem.is_deleted == False).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="題目不存在")
     
-    db.delete(db_problem)
+    db_problem.is_deleted = True
+
+    db.add(db_problem)
     db.commit()
     return None
