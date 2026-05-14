@@ -41,17 +41,3 @@ class UserLogin(BaseModel):
     """
     username: str
     password: str
-
-class Token(BaseModel):
-    """
-    登入成功後回傳的 JWT Token。
-    """
-    access_token: str
-    token_type: str = "bearer"
-
-class TokenData(BaseModel):
-    """
-    解析 Token 後暫存在 Request 中的資訊。
-    """
-    username: Optional[str] = None
-    role: Optional[UserRole] = None

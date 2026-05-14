@@ -5,6 +5,7 @@ from typing import List
 from app.api import deps
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead
+from app.core.security import SecurityManager
 
 router = APIRouter()
 
@@ -17,7 +18,7 @@ def create_user(obj_in: UserCreate, db: Session = Depends(deps.get_db)):
     new_user = User(
         username=obj_in.username,
         full_name=obj_in.full_name,
-        password_hash=f"hashed_{obj_in.password}", # 暫時先這樣，之後換成真 Hash
+        password_hash=SecurityManager.hash_password(obj_in.password),
         role=obj_in.role
     )
     db.add(new_user)
