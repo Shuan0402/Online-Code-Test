@@ -9,11 +9,10 @@ from app.models.problem import Problem
 from app.models.testcase import TestCase
 from app.models.enums import UserRole
 from app.schemas.problem import ProblemCreate, ProblemUpdate, ProblemRead, ProblemShortRead
+from app.api.deps import get_questioner_user
+
 
 router = APIRouter()
-
-# 只有 Admin 或 Questioner 可以新增、修改、刪除題目
-get_staff_user = deps.RoleChecker(["Admin", "Questioner"])
 
 @router.get("/", response_model=List[ProblemShortRead])
 def read_problems(
@@ -55,30 +54,18 @@ def create_problem(
     *,
     db: Session = Depends(deps.get_db),
     problem_in: ProblemCreate,
-    current_user: User = Depends(get_staff_user)
+    current_user: User = Depends(get_questioner_user)
 ):
     """
     新增題目（含測試案例）。
     僅限 Admin 或 Questioner 執行。
     """
     db_problem = Problem(
-        title=problem_in.title,
-        description=problem_in.description,
-        difficulty=problem_in.difficulty,
-        time_limit=problem_in.time_limit,
-        memory_limit=problem_in.memory_limit,
-        creator_id=current_user.id
+        **problem_in.model_dump(exclude={"test_cases"}),
+        creator_id=current_user.id,
+        test_cases=[TestCase(**tc.model_dump()) for tc in problem_in.test_cases]
     )
     db.add(db_problem)
-    db.flush()
-
-    for tc in problem_in.test_cases:
-        db_test_case = TestCase(
-            **tc.model_dump(),
-            problem_id=db_problem.id
-        )
-        db.add(db_test_case)
-    
     db.commit()
     db.refresh(db_problem)
     return db_problem
@@ -90,7 +77,7 @@ def update_problem(
     db: Session = Depends(deps.get_db),
     problem_id: int,
     problem_in: ProblemUpdate,
-    current_user: User = Depends(get_staff_user)
+    current_user: User = Depends(get_questioner_user)
 ):
     """
     修改題目資訊。
@@ -114,7 +101,7 @@ def delete_problem(
     *,
     db: Session = Depends(deps.get_db),
     problem_id: int,
-    current_user: User = Depends(get_staff_user)
+    current_user: User = Depends(get_questioner_user)
 ):
     """
     刪除題目。

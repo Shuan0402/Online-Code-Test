@@ -79,3 +79,4 @@ class RoleChecker:
 # 預定義常用的權限入口
 get_admin_user = RoleChecker(["Admin"])
 get_staff_user = RoleChecker(["Admin", "Questioner", "Interviewer"])
+get_questioner_user = RoleChecker(["Admin", "Questioner"])
