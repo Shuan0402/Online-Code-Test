@@ -1,13 +1,16 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
+import uuid
 
 from app.main import app
 from app.db.base import Base
 from app.db.session import engine as prod_engine, SQLALCHEMY_DATABASE_URL
 from app.api.deps import get_db
 from app.models import user, problem, submission, exam, exam_problem, testcase
+from app.models.user import User
+from app.models.enums import UserRole
 
 
 @pytest.fixture(scope="function")
@@ -35,3 +38,63 @@ def client(db_session):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+@pytest.fixture
+def admin_user(db_session: Session):
+    """建立並回傳一個 Admin 使用者"""
+    user = User(
+        id=uuid.uuid4(),
+        username="admin_boss",
+        password_hash="hashed_password",
+        role=UserRole.Admin,
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+@pytest.fixture
+def questioner_user(db_session: Session):
+    """建立並回傳一個出題者使用者"""
+    user = User(
+        id=uuid.uuid4(),
+        username="problem_setter",
+        password_hash="hashed_password",
+        role=UserRole.Questioner,
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+@pytest.fixture
+def interviewer_user(db_session: Session):
+    """建立並回傳一個面試官使用者"""
+    user = User(
+        id=uuid.uuid4(),
+        username="hr_interviewer",
+        password_hash="hashed_password",
+        role=UserRole.Interviewer,
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+@pytest.fixture
+def candidate_user(db_session: Session):
+    """建立並回傳一個考生使用者"""
+    user = User(
+        id=uuid.uuid4(),
+        username="student_01",
+        password_hash="hashed_password",
+        role=UserRole.Candidate,
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user

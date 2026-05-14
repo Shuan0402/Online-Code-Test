@@ -11,6 +11,10 @@ from app.models.enums import DifficultyLevel, UserRole
 from app.models.user import User
 from app.models.testcase import TestCase
 
+def apply_login(user):
+    app.dependency_overrides[deps.get_current_user] = lambda: user
+    app.dependency_overrides[deps.get_staff_user] = lambda: user
+
 # --- GET /problems (列表展示) ---
 def test_read_problems_empty(client: TestClient):
     """
@@ -20,27 +24,17 @@ def test_read_problems_empty(client: TestClient):
     assert response.status_code == 200
     assert response.json() == []
 
-def test_read_problems_schema_filtering(client: TestClient, db_session: Session):
+def test_read_problems_schema_filtering(client: TestClient, questioner_user: User, db_session: Session):
     """
     測試 Schema 濾網是否正常：不應包含 description
     """
-    test_user = User(
-        id=uuid.uuid4(),
-        username="test_creator",
-        password_hash="fake_hash",
-        role=UserRole.Admin,
-        is_active=True
-    )
-    db_session.add(test_user)
-    db_session.flush()
-
     test_problem = Problem(
         title="Test Problem",
         description="This is a secret description", # 這不應該出現在回傳結果中
         difficulty=DifficultyLevel.Easy,
         time_limit=1000,
         memory_limit=256,
-        creator_id=test_user.id
+        creator_id=questioner_user.id
     )
     db_session.add(test_problem)
     db_session.commit()
@@ -92,20 +86,10 @@ def mock_get_current_user(user: User):
     """
     return lambda: user
 
-def test_read_problem_detail_as_admin(client: TestClient, db_session: Session):
+def test_read_problem_detail_as_admin(client: TestClient, admin_user: User, db_session: Session):
     """
     測試 Admin 讀取細節：應看到所有測資（包含隱藏測資）
     """
-    admin_user = User(
-        id=uuid.uuid4(), 
-        username="admin_test", 
-        password_hash="hashed_pwd",
-        role=UserRole.Admin,
-        is_active=True
-    )
-    db_session.add(admin_user)
-    db_session.flush()
-
     p = Problem(title="Admin Problem", description="...", difficulty=DifficultyLevel.Hard, creator_id=admin_user.id)
     db_session.add(p)
     db_session.flush()
@@ -119,16 +103,14 @@ def test_read_problem_detail_as_admin(client: TestClient, db_session: Session):
     assert response.status_code == 200
     assert len(response.json()["test_cases"]) == 1
 
-def test_read_problem_detail_as_candidate_security(client: TestClient, db_session: Session):
+def test_read_problem_detail_as_candidate_security(client: TestClient, questioner_user: User, candidate_user: User, db_session: Session):
     """
     測試 Candidate 讀取細節：只能看到範例測資，隱藏測資應被過濾掉
     """
-    creator = User(id=uuid.uuid4(), username="q_user", password_hash="h", role=UserRole.Questioner)
-    candidate = User(id=uuid.uuid4(), username="student", password_hash="h", role=UserRole.Candidate)
-    db_session.add_all([creator, candidate])
+    db_session.add_all([questioner_user, candidate_user])
     db_session.flush()
 
-    p = Problem(title="Secret Test", description="...", difficulty=DifficultyLevel.Easy, creator_id=creator.id)
+    p = Problem(title="Secret Test", description="...", difficulty=DifficultyLevel.Easy, creator_id=questioner_user.id)
     db_session.add(p)
     db_session.flush()
     db_session.add(TestCase(input_data="sample", expected_output="ok", is_sample=True, problem_id=p.id))
@@ -136,7 +118,7 @@ def test_read_problem_detail_as_candidate_security(client: TestClient, db_sessio
     db_session.commit()
 
     
-    app.dependency_overrides[deps.get_current_user] = mock_get_current_user(candidate)
+    app.dependency_overrides[deps.get_current_user] = mock_get_current_user(candidate_user)
     response = client.get(f"/api/v1/problems/{p.id}")
     app.dependency_overrides.clear()
 
