@@ -11,7 +11,9 @@ from app.db.session import engine as prod_engine, SQLALCHEMY_DATABASE_URL
 from app.api.deps import get_db
 from app.models import user, problem, submission, exam, exam_problem, testcase
 from app.models.user import User
-from app.models.enums import UserRole
+from app.models.problem import Problem
+from app.models.testcase import TestCase
+from app.models.enums import UserRole, DifficultyLevel
 from app.api import deps
 
 
@@ -115,3 +117,44 @@ def override_auth():
     yield _apply_login
     
     overrides.clear()
+
+@pytest.fixture
+def create_test_problem(db_session, admin_user):
+    """
+    建立題目的工廠 Fixture。
+    支援自定義題目屬性以及批量建立測資。
+    """
+    def _create_problem(
+        user=None, 
+        title="Default Title", 
+        test_cases_data=None, 
+        **kwargs
+    ):
+        creator = user or admin_user
+
+        defaults = {
+            "description": "Default test description",
+            "difficulty": DifficultyLevel.Medium,
+            "time_limit": 1000,
+            "memory_limit": 256,
+            "creator_id": creator.id
+        }
+        defaults.update(kwargs)
+        
+        db_problem = Problem(title=title, **defaults)
+        db_session.add(db_problem)
+        db_session.flush()
+
+        created_tcs = []
+        if test_cases_data:
+            for tc_data in test_cases_data:
+                tc = TestCase(**tc_data, problem_id=db_problem.id)
+                db_session.add(tc)
+                created_tcs.append(tc)
+        
+        db_session.commit()
+        db_session.refresh(db_problem)
+        
+        return db_problem
+
+    return _create_problem
