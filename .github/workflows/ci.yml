@@ -1,0 +1,37 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Run Pytest
+    runs-on: ubuntu-latest
+    
+    env:
+      # 測試用的預設值
+      POSTGRES_USER: octest
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: octest
+      
+    steps:
+      # 從 GitHub 拉取程式碼到 CI 伺服器
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # 建置 Backend Image
+      - name: Build backend image
+        run: docker build -t backend:dev ./backend
+
+      # 啟動依賴服務並執行測試
+      - name: Run Tests with pytest
+        run: |
+          docker compose -f docker-compose.yml run --rm backend python -m pytest tests/
+          
+      # 把啟動的 DB、Redis 容器與 Volume 清理乾淨
+      - name: Clean up Docker resources
+        if: always()
+        run: docker compose -f docker-compose.yml down -v
