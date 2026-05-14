@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 import uuid
+from contextlib import contextmanager
 
 from app.main import app
 from app.db.base import Base
@@ -11,6 +12,7 @@ from app.api.deps import get_db
 from app.models import user, problem, submission, exam, exam_problem, testcase
 from app.models.user import User
 from app.models.enums import UserRole
+from app.api import deps
 
 
 @pytest.fixture(scope="function")
@@ -98,3 +100,18 @@ def candidate_user(db_session: Session):
     db_session.commit()
     db_session.refresh(user)
     return user
+
+@pytest.fixture
+def override_auth():
+    """
+    提供一個動態覆蓋權限的工具。
+    使用 yield 確保測試結束後自動 clear()。
+    """
+    overrides = app.dependency_overrides
+    
+    def _apply_login(user):
+        overrides[deps.get_current_user] = lambda: user
+
+    yield _apply_login
+    
+    overrides.clear()
