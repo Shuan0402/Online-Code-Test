@@ -1,4 +1,4 @@
-from typing import Generator
+from typing import Generator, List
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -58,10 +58,24 @@ def get_current_user(
         raise credentials_exception
 
     user: Optional[User] = db.query(User).filter(User.id == token_data.sub).first()
-    if not user:
-        raise credentials_exception
-    
+
     if not user or not user.is_active:
         raise credentials_exception
     
     return user
+
+class RoleChecker:
+    def __init__(self, allowed_roles: List[str]):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, current_user: User = Depends(get_current_user)):
+        if current_user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="權限不足，無法執行此操作"
+            )
+        return current_user
+
+# 預定義常用的權限入口
+get_admin_user = RoleChecker(["Admin"])
+get_staff_user = RoleChecker(["Admin", "Questioner", "Interviewer"])
