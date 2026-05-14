@@ -69,10 +69,12 @@ class RoleChecker:
         self.allowed_roles = allowed_roles
 
     def __call__(self, current_user: User = Depends(get_current_user)):
-        if current_user.role not in self.allowed_roles:
+        user_role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+        
+        if user_role_value not in self.allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="權限不足，無法執行此操作"
+                detail=f"權限不足。需要: {self.allowed_roles}, 實際為: {user_role_value}"
             )
         return current_user
 
@@ -80,3 +82,4 @@ class RoleChecker:
 get_admin_user = RoleChecker(["Admin"])
 get_staff_user = RoleChecker(["Admin", "Questioner", "Interviewer"])
 get_questioner_user = RoleChecker(["Admin", "Questioner"])
+get_interviewer_user = RoleChecker(["Admin", "Interviewer"])

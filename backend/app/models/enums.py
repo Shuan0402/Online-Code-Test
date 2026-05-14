@@ -1,24 +1,24 @@
 import enum
 
-class UserRole(enum.Enum):
+class UserRole(str, enum.Enum):
     Admin = "Admin"
     Candidate = "Candidate"
     Interviewer = "Interviewer"
     Questioner = "Questioner"
 
-class DifficultyLevel(enum.Enum):
+class DifficultyLevel(str, enum.Enum):
     Easy = "Easy"
     Medium = "Medium"
     Hard = "Hard"
 
-class ExamStatus(enum.Enum):
+class ExamStatus(str, enum.Enum):
     Draft = "Draft"
     Published = "Published"
     Ongoing = "Ongoing"
     Finished = "Finished"
     Archived = "Archived"
 
-class JudgeStatus(enum.Enum):
+class JudgeStatus(str, enum.Enum):
     Pending = "Pending"
     Judging = "Judging"
     AC = "AC"
@@ -28,6 +28,6 @@ class JudgeStatus(enum.Enum):
     RE = "RE"
     CE = "CE"
 
-class SubmissionType(enum.Enum):
+class SubmissionType(str, enum.Enum):
     RUN_ONLY = "RUN_ONLY"
     OFFICIAL = "OFFICIAL"
