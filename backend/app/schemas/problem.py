@@ -29,6 +29,16 @@ class ProblemBase(BaseModel):
     time_limit: int = Field(default=1000, gt=0, description="單位為 ms")
     memory_limit: int = Field(default=256, gt=0, description="單位為 MB")
 
+class ProblemShortRead(BaseModel):
+    """
+    用於 GET /problems 列表展示。
+    """
+    id: int
+    title: str
+    difficulty: DifficultyLevel
+    
+    model_config = ConfigDict(from_attributes=True)
+
 class ProblemCreate(ProblemBase):
     """
     建立題目時，允許同時帶入多組測資。
