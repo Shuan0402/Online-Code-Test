@@ -201,3 +201,102 @@ def test_create_problem_forbidden_as_candidate(client: TestClient, candidate_use
     response = client.post("/api/v1/problems/", json=payload)
 
     assert response.status_code == 403
+
+# --- PATCH /problems/{problem_id} (增量更新) ---
+def test_update_problem_basic_fields(client: TestClient, admin_user: User, db_session: Session, override_auth):
+    """
+    測試僅修改題目的基本資訊（不更動測資）
+    """
+    p = Problem(title="Old Title", description="Old Desc", difficulty=DifficultyLevel.Easy, creator_id=admin_user.id)
+    db_session.add(p)
+    db_session.commit()
+
+    override_auth(admin_user)
+    payload = {"title": "New Title", "difficulty": "Hard"}
+    response = client.patch(f"/api/v1/problems/{p.id}", json=payload)
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "New Title"
+    assert data["difficulty"] == "Hard"
+    assert data["description"] == "Old Desc"
+
+def test_update_problem_incremental_test_cases(client: TestClient, admin_user: User, db_session: Session, override_auth):
+    """
+    增量更新測資邏輯，修改 ID 1、刪除 ID 2 (不傳送)、新增一筆測資
+    """
+    p = Problem(title="TC Test", description="...", difficulty=DifficultyLevel.Medium, creator_id=admin_user.id)
+    db_session.add(p)
+    db_session.flush()
+    tc1 = TestCase(input_data="in1", expected_output="out1", problem_id=p.id)
+    tc2 = TestCase(input_data="in2", expected_output="out2", problem_id=p.id)
+    db_session.add_all([tc1, tc2])
+    db_session.commit()
+    db_session.refresh(tc1)
+    db_session.refresh(tc2)
+
+    override_auth(admin_user)
+    payload = {
+        "test_cases": [
+            {
+                "id": tc1.id, 
+                "input_data": "updated_in1", 
+                "expected_output": "out1"
+            },
+            {
+                "input_data": "new_in3", 
+                "expected_output": "out3", 
+                "is_sample": True
+            }
+        ]
+    }
+    
+    response = client.patch(f"/api/v1/problems/{p.id}", json=payload)
+    assert response.status_code == 200
+    
+    data = response.json()
+    tcs = data["test_cases"]
+    assert len(tcs) == 2
+    
+    updated_tc1 = next(tc for tc in tcs if tc["id"] == tc1.id)
+    assert updated_tc1["input_data"] == "updated_in1"
+    new_tc = next(tc for tc in tcs if tc["input_data"] == "new_in3")
+    assert new_tc["expected_output"] == "out3"
+    assert new_tc["is_sample"] is True
+    assert not any(tc["id"] == tc2.id for tc in tcs)
+
+def test_update_problem_cross_user_permission(client: TestClient, admin_user: User, questioner_user: User, db_session: Session, override_auth):
+    """
+    測試出題者 A 修改出題者 B 的題目
+    """
+    p = Problem(title="Admin's Problem", description="...", difficulty=DifficultyLevel.Easy, creator_id=admin_user.id)
+    db_session.add(p)
+    db_session.commit()
+
+    override_auth(questioner_user)
+    payload = {"title": "Updated by Questioner"}
+    response = client.patch(f"/api/v1/problems/{p.id}", json=payload)
+    
+    assert response.status_code == 200
+    assert response.json()["title"] == "Updated by Questioner"
+
+def test_update_problem_forbidden_as_candidate(client: TestClient, candidate_user: User, admin_user: User, db_session: Session, override_auth):
+    """
+    測試考生嘗試修改題目
+    """
+    p = Problem(title="No Touch", description="...", difficulty=DifficultyLevel.Easy, creator_id=admin_user.id)
+    db_session.add(p)
+    db_session.commit()
+
+    override_auth(candidate_user)
+    response = client.patch(f"/api/v1/problems/{p.id}", json={"title": "Hacked"})
+    
+    assert response.status_code == 403
+
+def test_update_problem_not_found(client: TestClient, admin_user: User, override_auth):
+    """
+    測試修改不存在的題目編號
+    """
+    override_auth(admin_user)
+    response = client.patch("/api/v1/problems/99999", json={"title": "Ghost"})
+    assert response.status_code == 404
