@@ -83,3 +83,78 @@ def test_read_problems_pagination(client: TestClient, db_session: Session):
     data = response.json()
     assert len(data) == 2
     assert data[0]["title"] == "Problem 3"
+
+
+# --- GET /problems/{problem_id} (詳細資訊) ---
+def mock_get_current_user(user: User):
+    """
+    用來覆蓋 FastAPI 的 deps.get_current_user
+    """
+    return lambda: user
+
+def test_read_problem_detail_as_admin(client: TestClient, db_session: Session):
+    """
+    測試 Admin 讀取細節：應看到所有測資（包含隱藏測資）
+    """
+    admin_user = User(
+        id=uuid.uuid4(), 
+        username="admin_test", 
+        password_hash="hashed_pwd",
+        role=UserRole.Admin,
+        is_active=True
+    )
+    db_session.add(admin_user)
+    db_session.flush()
+
+    p = Problem(title="Admin Problem", description="...", difficulty=DifficultyLevel.Hard, creator_id=admin_user.id)
+    db_session.add(p)
+    db_session.flush()
+    db_session.add(TestCase(input_data="in", expected_output="out", is_sample=False, problem_id=p.id))
+    db_session.commit()
+
+    app.dependency_overrides[deps.get_current_user] = mock_get_current_user(admin_user)
+    response = client.get(f"/api/v1/problems/{p.id}")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert len(response.json()["test_cases"]) == 1
+
+def test_read_problem_detail_as_candidate_security(client: TestClient, db_session: Session):
+    """
+    測試 Candidate 讀取細節：只能看到範例測資，隱藏測資應被過濾掉
+    """
+    creator = User(id=uuid.uuid4(), username="q_user", password_hash="h", role=UserRole.Questioner)
+    candidate = User(id=uuid.uuid4(), username="student", password_hash="h", role=UserRole.Candidate)
+    db_session.add_all([creator, candidate])
+    db_session.flush()
+
+    p = Problem(title="Secret Test", description="...", difficulty=DifficultyLevel.Easy, creator_id=creator.id)
+    db_session.add(p)
+    db_session.flush()
+    db_session.add(TestCase(input_data="sample", expected_output="ok", is_sample=True, problem_id=p.id))
+    db_session.add(TestCase(input_data="hidden", expected_output="no", is_sample=False, problem_id=p.id))
+    db_session.commit()
+
+    
+    app.dependency_overrides[deps.get_current_user] = mock_get_current_user(candidate)
+    response = client.get(f"/api/v1/problems/{p.id}")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["test_cases"]) == 1
+    assert data["test_cases"][0]["is_sample"] is True
+
+def test_read_problem_not_found(client: TestClient, db_session: Session):
+    """
+    測試讀取不存在的題目應回傳 404
+    """
+    any_user = User(id=uuid.uuid4(), username="any", password_hash="h", role=UserRole.Candidate)
+    db_session.add(any_user)
+    db_session.commit()
+
+    app.dependency_overrides[deps.get_current_user] = mock_get_current_user(any_user)    
+    response = client.get("/api/v1/problems/99999")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
