@@ -80,17 +80,37 @@ def update_problem(
     current_user: User = Depends(get_questioner_user)
 ):
     """
-    修改題目資訊。
+    修改題目資訊與測資。
     """
     db_problem = db.query(Problem).filter(Problem.id == problem_id).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="題目不存在")
 
-    update_data = problem_in.model_dump(exclude_unset=True)
+    update_data = problem_in.model_dump(exclude_unset=True, exclude={"test_cases"})
     for field, value in update_data.items():
         setattr(db_problem, field, value)
 
-    db.add(db_problem)
+    if problem_in.test_cases is not None:
+        current_tcs = {tc.id: tc for tc in db_problem.test_cases}
+        incoming_tc_ids = []
+
+        for tc_data in problem_in.test_cases:
+            if tc_data.id and tc_data.id in current_tcs:
+                target_tc = current_tcs[tc_data.id]
+                for field, value in tc_data.model_dump(exclude_unset=True).items():
+                    setattr(target_tc, field, value)
+                incoming_tc_ids.append(tc_data.id)
+            else:
+                new_tc = TestCase(
+                    **tc_data.model_dump(exclude={"id"}), 
+                    problem_id=db_problem.id
+                )
+                db.add(new_tc)
+                
+        for tc_id, tc_obj in current_tcs.items():
+            if tc_id not in incoming_tc_ids:
+                db.delete(tc_obj)
+
     db.commit()
     db.refresh(db_problem)
     return db_problem

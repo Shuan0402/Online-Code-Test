@@ -18,8 +18,10 @@ class TestCaseCreate(TestCaseBase):
 
 class TestCaseRead(TestCaseBase):
     id: int
-    
     model_config = ConfigDict(from_attributes=True)
+
+class TestCaseUpdate(TestCaseBase):
+    id: Optional[int] = Field(None, description="現有測資的 ID")
 
 # Problem Schemas
 class ProblemBase(BaseModel):
@@ -54,6 +56,7 @@ class ProblemUpdate(BaseModel):
     difficulty: Optional[DifficultyLevel] = None
     time_limit: Optional[int] = Field(None, gt=0)
     memory_limit: Optional[int] = Field(None, gt=0)
+    test_cases: Optional[List[TestCaseUpdate]] = Field(None, description="傳入則代表重設所有測資")
 
 class ProblemRead(ProblemBase):
     """
