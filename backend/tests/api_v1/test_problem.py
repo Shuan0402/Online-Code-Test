@@ -265,13 +265,11 @@ def test_update_problem_incremental_test_cases(client: TestClient, admin_user: U
     assert new_tc["is_sample"] is True
     assert not any(tc["id"] == tc2.id for tc in tcs)
 
-def test_update_problem_cross_user_permission(client: TestClient, admin_user: User, questioner_user: User, db_session: Session, override_auth):
+def test_update_problem_cross_user_permission(client: TestClient, admin_user: User, questioner_user: User, db_session: Session, override_auth, create_test_problem):
     """
     測試出題者 A 修改出題者 B 的題目
     """
-    p = Problem(title="Admin's Problem", description="...", difficulty=DifficultyLevel.Easy, creator_id=admin_user.id)
-    db_session.add(p)
-    db_session.commit()
+    p = create_test_problem(title="My Title", creator_id=admin_user.id)
 
     override_auth(questioner_user)
     payload = {"title": "Updated by Questioner"}
@@ -280,13 +278,11 @@ def test_update_problem_cross_user_permission(client: TestClient, admin_user: Us
     assert response.status_code == 200
     assert response.json()["title"] == "Updated by Questioner"
 
-def test_update_problem_forbidden_as_candidate(client: TestClient, candidate_user: User, admin_user: User, db_session: Session, override_auth):
+def test_update_problem_forbidden_as_candidate(client: TestClient, candidate_user: User, admin_user: User, db_session: Session, override_auth, create_test_problem):
     """
     測試考生嘗試修改題目
     """
-    p = Problem(title="No Touch", description="...", difficulty=DifficultyLevel.Easy, creator_id=admin_user.id)
-    db_session.add(p)
-    db_session.commit()
+    p = create_test_problem(title="My Title", creator_id=admin_user.id)
 
     override_auth(candidate_user)
     response = client.patch(f"/api/v1/problems/{p.id}", json={"title": "Hacked"})
@@ -299,4 +295,69 @@ def test_update_problem_not_found(client: TestClient, admin_user: User, override
     """
     override_auth(admin_user)
     response = client.patch("/api/v1/problems/99999", json={"title": "Ghost"})
+    assert response.status_code == 404
+
+# --- DELETE /problems/{problem_id} (Soft Delete) ---
+def test_delete_problem_soft_success(client: TestClient, db_session: Session, admin_user, override_auth, create_test_problem):
+    """
+    測試成功執行軟刪除。
+    """
+    p = create_test_problem(title="My Title", creator_id=admin_user.id)
+    db_session.refresh(p)
+
+    override_auth(admin_user)
+    response = client.delete(f"/api/v1/problems/{p.id}")
+    
+    assert response.status_code == 204
+    assert response.text == ""
+    db_session.expire_all()
+    db_p = db_session.query(Problem).filter(Problem.id == p.id).first()
+    assert db_p is not None
+    assert db_p.is_deleted is True
+
+def test_delete_problem_already_deleted_returns_404(client: TestClient, db_session: Session, admin_user, override_auth, create_test_problem):
+    """
+    測試刪除一個「已經被軟刪除」的題目。
+    """
+    p = create_test_problem(title="My Title", creator_id=admin_user.id, is_deleted=True)
+
+    override_auth(admin_user)
+    response = client.delete(f"/api/v1/problems/{p.id}")
+    
+    assert response.status_code == 404
+    assert response.json()["detail"] == "題目不存在"
+
+def test_delete_problem_cross_user_success(client: TestClient, db_session: Session, questioner_user, admin_user, override_auth, create_test_problem):
+    """
+    驗證出題者 A 可以刪除出題者 B 的題目。
+    """
+    p = create_test_problem(title="My Title", creator_id=admin_user.id)
+
+    override_auth(questioner_user)
+    response = client.delete(f"/api/v1/problems/{p.id}")
+    
+    assert response.status_code == 204
+    db_session.expire_all()
+    db_p = db_session.query(Problem).filter(Problem.id == p.id).first()
+    assert db_p.is_deleted is True
+
+def test_delete_problem_forbidden_for_candidate(client: TestClient, db_session: Session, candidate_user, admin_user, override_auth, create_test_problem):
+    """
+    驗證一般考生 (Candidate) 無權刪除題目。
+    """
+    p = create_test_problem(title="My Title", creator_id=admin_user.id)
+
+    override_auth(candidate_user)
+    response = client.delete(f"/api/v1/problems/{p.id}")
+    
+    assert response.status_code == 403
+    db_session.refresh(p)
+    assert p.is_deleted is False
+
+def test_delete_problem_not_found(client: TestClient, admin_user, override_auth):
+    """
+    測試刪除不存在的 ID。
+    """
+    override_auth(admin_user)
+    response = client.delete("/api/v1/problems/99999")
     assert response.status_code == 404
