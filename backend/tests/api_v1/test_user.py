@@ -301,3 +301,37 @@ def test_reset_user_password_not_found(client, admin_user, override_auth):
     
     assert response.status_code == 404
     assert "找不到" in response.json()["detail"]
+
+# --- DELETE /users/{user_id} (刪除使用者) ---
+def test_delete_user_by_admin_success(client, admin_user, create_test_user, override_auth):
+    """
+    管理員 Admin 應該要能順利刪除一個一般學生。
+    """
+    override_auth(admin_user)
+    target_student = create_test_user(username="temp_student")
+    
+    response = client.delete(f"/api/v1/users/{target_student.id}")
+    
+    assert response.status_code == 200
+    assert response.json()["detail"] == "使用者帳號已成功刪除"
+
+
+def test_delete_user_forbidden_for_interviewer(client, interviewer_user, candidate_user, override_auth):
+    """
+    一般面試主管沒有權限，應回傳 403。
+    """
+    override_auth(interviewer_user)
+    
+    response = client.delete(f"/api/v1/users/{candidate_user.id}")
+    assert response.status_code == 403
+
+
+def test_delete_user_admin_self_blocked(client, admin_user, override_auth):
+    """
+    Admin 嘗試刪除自己時，應該被 400 阻止。
+    """
+    override_auth(admin_user)
+    
+    response = client.delete(f"/api/v1/users/{admin_user.id}")
+    assert response.status_code == 400
+    assert "無法刪除自身" in response.json()["detail"]

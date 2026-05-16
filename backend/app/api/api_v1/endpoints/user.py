@@ -165,3 +165,31 @@ def reset_user_password(
     db.commit()
     
     return {"detail": "已成功強制重設該使用者密碼"}
+
+@router.delete("/{user_id}", status_code=status.HTTP_200_OK)
+def delete_user_by_id(
+    user_id: UUID,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_admin_user) 
+):
+    """
+    刪除使用者帳號。
+    - 僅限最高管理員 Admin 操作。
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到該使用者"
+        )
+    
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="管理員無法刪除自身的管理員帳號"
+        )
+        
+    db.delete(user)
+    db.commit()
+    
+    return {"detail": "使用者帳號已成功刪除"}
