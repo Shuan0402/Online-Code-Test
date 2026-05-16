@@ -218,3 +218,47 @@ def test_update_other_user_not_found(client, admin_user, override_auth):
     response = client.patch(f"/api/v1/users/{fake_id}", json={"full_name": "NoOne"})
     assert response.status_code == 404
     assert "找不到" in response.json()["detail"]
+
+# --- PUT /users/me/password (修改個人密碼) ---
+def test_update_my_password_success(client, candidate_user, override_auth):
+    """
+    輸入正確的舊密碼，應該要能成功變更為新密碼。
+    """
+    override_auth(candidate_user)
+    
+    password_payload = {
+        "old_password": "testpassword123",
+        "new_password": "my_brand_new_password_999"
+    }
+    response = client.put("/api/v1/users/me/password", json=password_payload)
+    
+    assert response.status_code == 200
+    assert response.json()["detail"] == "密碼已成功修改"
+
+
+def test_update_my_password_wrong_old(client, candidate_user, override_auth):
+    """
+    如果舊密碼猜錯，應回傳 400 Bad Request。
+    """
+    override_auth(candidate_user)
+    
+    wrong_payload = {
+        "old_password": "wrong_old_password_haha",
+        "new_password": "secure_password_abc"
+    }
+    response = client.put("/api/v1/users/me/password", json=wrong_payload)
+    
+    assert response.status_code == 400
+    assert "舊密碼輸入錯誤" in response.json()["detail"]
+
+
+def test_update_my_password_unauthenticated(client):
+    """
+    未登入的使用者嘗試修改密碼，應回傳 401。
+    """
+    ghost_payload = {
+        "old_password": "any",
+        "new_password": "any"
+    }
+    response = client.put("/api/v1/users/me/password", json=ghost_payload)
+    assert response.status_code == 401

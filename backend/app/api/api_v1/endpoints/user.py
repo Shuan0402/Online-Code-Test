@@ -5,7 +5,7 @@ from uuid import UUID
 
 from app.api import deps
 from app.models.user import User
-from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.schemas.user import UserCreate, UserRead, UserUpdate, UserUpdatePassword
 from app.core.security import SecurityManager
 from app.models.enums import UserRole
 
@@ -118,3 +118,25 @@ def update_user_by_id(
     db.commit()
     db.refresh(user)
     return user
+
+@router.put("/me/password", status_code=status.HTTP_200_OK)
+def update_my_password(
+    payload: UserUpdatePassword,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    一般使用者/考生自行修改密碼。
+    - 必須驗證舊密碼（old_password）是否正確。
+    """
+    if not SecurityManager.verify_password(payload.old_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="舊密碼輸入錯誤"
+        )
+        
+    current_user.password_hash = SecurityManager.hash_password(payload.new_password)
+    db.add(current_user)
+    db.commit()
+    
+    return {"detail": "密碼已成功修改"}
