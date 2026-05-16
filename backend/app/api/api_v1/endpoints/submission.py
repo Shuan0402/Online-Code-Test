@@ -1,5 +1,6 @@
 import json
 from uuid import UUID
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
@@ -127,3 +128,36 @@ def get_submission_by_id(
         )
         
     return submission
+
+@router.get("/", response_model=List[SubmissionRead])
+def get_submissions(
+    problem_id: Optional[int] = None,
+    user_id: Optional[UUID] = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    獲取提交紀錄列表 API
+
+    - 考生（Candidate）只能看見自己的歷史紀錄。
+    - 管理員與面試官可以跨全局調閱，並透過 `user_id` 或 `problem_id` 進行篩選。
+    """
+    query = db.query(Submission)
+
+    if current_user.role == UserRole.Candidate:
+        query = query.filter(Submission.user_id == current_user.id)
+    else:
+        if user_id:
+            query = query.filter(Submission.user_id == user_id)
+
+    if problem_id:
+        query = query.filter(Submission.problem_id == problem_id)
+
+    return (
+        query.order_by(Submission.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )

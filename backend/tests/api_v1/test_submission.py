@@ -9,6 +9,7 @@ from app.services.queue_manager import queue_manager
 from app.models.submission import Submission
 
 
+# --- POST /submissions (建立提交) ---
 def test_create_submission_success(client, db_session, candidate_user, override_auth, create_test_problem, monkeypatch):
     """
     測試正常繳交流程
@@ -58,7 +59,7 @@ def test_create_submission_reject_run_only(client, candidate_user, override_auth
     assert response.status_code == 422
     assert "submission_type" in response.text
 
-
+# --- GET /submissions/{submission_id} (詳細資訊) ---
 def test_get_submission_success_by_owner(client, db_session, candidate_user, override_auth, create_test_problem, create_mock_submission):
     """
     本人查詢自己的提交，應該順利拿到資料且包含 details 明細。
@@ -104,7 +105,6 @@ def test_get_submission_forbidden_for_other_candidate(client, db_session, candid
     assert response.status_code == 403
     assert "沒有權限" in response.json()["detail"]
 
-
 def test_get_submission_not_found(client, candidate_user, override_auth):
     """
     查詢一個幽靈 UUID，應該回傳 404。
@@ -115,3 +115,36 @@ def test_get_submission_not_found(client, candidate_user, override_auth):
     response = client.get(f"/api/v1/submissions/{random_uuid}")
     assert response.status_code == 404
     
+# --- GET /submissions (列表查詢) ---
+def test_get_submissions_list_as_candidate(client, db_session, candidate_user, create_test_user, override_auth, create_test_problem, create_mock_submission):
+    """
+    學生只能看到自己的，看不到其他學生的提交。
+    """
+    problem = create_test_problem()
+    other_student = create_test_user()
+    create_mock_submission(user_id=candidate_user.id, problem_id=problem.id)
+    create_mock_submission(user_id=other_student.id, problem_id=problem.id)
+    
+    override_auth(candidate_user)
+    response = client.get("/api/v1/submissions/")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["user_id"] == str(candidate_user.id)
+
+
+def test_get_submissions_list_as_admin(client, db_session, candidate_user, admin_user, override_auth, create_test_problem, create_mock_submission):
+    """
+    管理者可以跨全局調閱，並透過 user_id 進行精準查榜。
+    """
+    problem = create_test_problem()
+    create_mock_submission(user_id=candidate_user.id, problem_id=problem.id)
+
+    override_auth(admin_user)
+    response = client.get(f"/api/v1/submissions/?user_id={candidate_user.id}")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["user_id"] == str(candidate_user.id)
