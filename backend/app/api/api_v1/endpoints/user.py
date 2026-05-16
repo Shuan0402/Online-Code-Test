@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -9,11 +9,15 @@ from app.core.security import SecurityManager
 
 router = APIRouter()
 
-@router.post("/", response_model=UserRead)
-def create_user(obj_in: UserCreate, db: Session = Depends(deps.get_db)):
+@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def create_user(
+    obj_in: UserCreate, 
+    db: Session = Depends(deps.get_db), 
+    current_user: User = Depends(deps.get_interviewer_user)
+):
     user = db.query(User).filter(User.username == obj_in.username).first()
     if user:
-        raise HTTPException(status_code=400, detail="Username already exists")
+        raise HTTPException(status_code=400, detail="該帳號名稱已存在")
     
     new_user = User(
         username=obj_in.username,

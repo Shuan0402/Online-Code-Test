@@ -1,20 +1,80 @@
 from app.models.enums import UserRole
 
-
-def test_create_user_api(client):
+# --- POST /users/ (建立新使用者) ---
+def test_create_user_success_by_admin(client, admin_user, override_auth):
+    """
+    最高權限 Admin 建立新使用者，應該成功通關並回傳 201。
+    """
+    override_auth(admin_user)
+    
     data = {
-        "username": "api_test_user",
-        "full_name": "API Tester",
-        "password": "testpassword123",
+        "username": "new_student_99",
+        "full_name": "New Student",
+        "password": "strong_password123",
         "role": "Candidate"
     }
-
+    
     response = client.post("/api/v1/users/", json=data)
+    
+    assert response.status_code == 201
     content = response.json()
-
-    assert response.status_code == 200
-    assert content["username"] == "api_test_user"
+    assert content["username"] == "new_student_99"
     assert "id" in content
+
+
+def test_create_user_success_by_interviewer(client, interviewer_user, override_auth):
+    """
+    面試主管建立新使用者，應該成功通關並回傳 201。
+    """
+    override_auth(interviewer_user)
+    
+    data = {
+        "username": "candidate_alex",
+        "full_name": "Alex Chang",
+        "password": "alex_password_xyz",
+        "role": "Candidate"
+    }
+    
+    response = client.post("/api/v1/users/", json=data)
+    assert response.status_code == 201
+
+
+def test_create_user_forbidden_for_candidate(client, candidate_user, override_auth):
+    """
+    一般考生建立別的帳號，應被 403 Forbidden 擋下。
+    """
+    override_auth(candidate_user)
+    
+    data = {
+        "username": "illegal_user",
+        "full_name": "I am a hacker",
+        "password": "hacker_password123",
+        "role": "Admin"  # 企圖把自己升級成管理員
+    }
+    
+    response = client.post("/api/v1/users/", json=data)
+    
+    assert response.status_code == 403
+    assert "帳號角色權限不足" in response.json()["detail"]
+
+
+def test_create_user_duplicate_username(client, admin_user, candidate_user, override_auth):
+    """
+    重複註冊相同帳號，應觸發 400 Bad Request。
+    """
+    override_auth(admin_user)
+    
+    data = {
+        "username": candidate_user.username,
+        "full_name": "Cloned User",
+        "password": "cloned_password123",
+        "role": "Candidate"
+    }
+    
+    response = client.post("/api/v1/users/", json=data)
+    
+    assert response.status_code == 400
+    assert "已存在" in response.json()["detail"]
 
 # --- GET /users/me (獲取當前登入者資訊) ---
 def test_get_me_success(client, candidate_user, override_auth):
