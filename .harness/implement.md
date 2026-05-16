@@ -197,3 +197,88 @@ e2e:       skipped — backend endpoints not yet live; route wiring verified at 
 - Verifier verdict: green — no action needed.
 - Open question from executor: backend `POST /auth/login` response schema does not include `role`; LoginPage's fallback path passes `null` role, which would cause an apparent redirect-loop after successful login. Flagged for backend team — should be resolved before browser E2E. Not a P2 blocker for build/static review.
 - **Committed P2 as `b0c0b55`** on `feat/frontend-scaffold`.
+
+## P3 — Candidate exam list page + Start exam confirmation modal  (2026-05-16T00:00:00Z)
+
+### Files created/modified
+
+| Path | Role |
+|------|------|
+| `frontend/src/components/ExamStatusBadge.jsx` | Created — maps ExamStatus enum (Draft/Published/Ongoing/Finished/Archived) to Chinese-labelled coloured Badge |
+| `frontend/src/pages/candidate/ExamListPage.jsx` | Created — fetches GET /api/v1/exams; renders exam list with title, status badge, duration, score; "開始作答" for Published/Ongoing; inline Dialog confirmation; POST /api/v1/exams/{id}/start on confirm; navigate to take page; loading/error/empty states |
+| `frontend/src/components/ui/dialog.jsx` | Created via `npx shadcn@4.6.0 add dialog badge --yes` |
+| `frontend/src/components/ui/badge.jsx` | Created via `npx shadcn@4.6.0 add dialog badge --yes` |
+| `frontend/src/App.jsx` | Modified — replaced `CandidateStub` at `/candidate/exams` with `ExamListPage`; added `ExamListPage` import |
+
+### Commands run
+
+- `npx shadcn@4.6.0 add dialog badge --yes` — exit 0; created `dialog.jsx` and `badge.jsx` in `src/components/ui/`
+- `npm run build` — **exit 0**; vite v5.4.21; 1646 modules transformed; dist 289 kB JS / 18 kB CSS
+
+### Deviations from plan
+
+1. **`duration` field name** — plan says "duration (minutes)" but backend schema field name is not confirmed; `ExamListPage` reads both `exam.duration_minutes` and `exam.duration` (fallback) to be robust to either convention.
+2. **Dialog `onOpenChange` instead of separate `isOpen` prop** — used shadcn Dialog's controlled `open={!!selectedExam}` pattern with `onOpenChange` handler; semantically equivalent to plan, simpler.
+
+### Adjacent findings (not fixed)
+
+- `npm run build` now produces 1646 modules vs 109 in P2 — the jump is entirely from Radix UI Dialog + Badge transitive deps pulled in by shadcn. No action needed.
+- `badge.jsx` shadcn component uses `class-variance-authority`; its default variant styling applies a border. The `ExamStatusBadge` overrides colour via `className` prop which works correctly, but Tailwind's specificity could be fragile if shadcn updates badge variant styles. A custom simple `<span>` would be more resilient; flagged for polish pass.
+
+### Blockers for P4
+
+- Browser E2E for P3 is blocked on `GET /api/v1/exams` and `POST /api/v1/exams/{id}/start` (backend not yet live — same as prior phases).
+- P4 requires `POST /api/v1/submissions`, `GET /api/v1/submissions/{id}`, `GET /api/v1/submissions/latest?problem_id=X`, and `GET /api/v1/problems/{id}` to be live.
+
+
+### Verifier verdict (P3)
+
+```
+build:    pass   (exit 0; vite v5.4.21; 1646 modules; 289 kB JS / 18 kB CSS)
+dev:      pass   (HTTP 200, valid HTML at http://localhost:5173 within 4s)
+ts-files: pass   (zero .ts/.tsx files under frontend/src)
+deps:     pass   (typescript absent; @radix-ui/react-dialog only new Radix dep — expected for dialog;
+                  badge.jsx is a pure-styled span, no extra @radix-ui/react-badge peer;
+                  no junk packages; all 13 direct deps expected)
+lint:     no lint configured (unchanged from P1/P2)
+e2e:      skipped (backend GET /api/v1/exams + POST /api/v1/exams/{id}/start not yet live)
+```
+
+**Verdict: green**
+
+### Reviewer verdict (P3)
+
+**Verdict: ship**
+
+#### Criteria scorecard
+
+| Criterion | Score | Note |
+|-----------|-------|------|
+| `npm run build` exits 0 | pass | Independently confirmed: exit 0, 1646 modules, 289 kB JS |
+| `/candidate/exams` renders list or "目前沒有考試" empty state | pass | `ExamListPage.jsx:92-94` — empty-state text is exactly "目前沒有考試" |
+| Each row shows title, status badge, duration, score if finished | pass | `ExamListPage.jsx:105-111` — all four fields rendered; score gated on `status === 'Finished' && exam.score != null` |
+| Draft / Archived do NOT show "開始作答" | pass | `ExamListPage.jsx:116` — `STARTABLE_STATUSES = ['Published', 'Ongoing']`; Draft and Archived are absent |
+| Clicking "開始作答" opens dialog — no immediate navigation | pass | `ExamListPage.jsx:53-57` — opens dialog via `setSelectedExam(exam)` only; `navigate` not called here |
+| "取消" closes dialog without navigation | pass | `ExamListPage.jsx:59-63` — `closeDialog()` zeroes `selectedExam`; no `navigate` call; guarded against close while in-flight |
+| "確認開始" calls `POST /api/v1/exams/{id}/start` then navigates to `/candidate/exams/{id}/take` | pass | `ExamListPage.jsx:71-72` — correct path, correct method, `navigate` on 200 |
+| 5xx/network error on start shows inline error in dialog | pass | `ExamListPage.jsx:74` — catch sets `startError` to "無法開始考試，請稍後再試。"; rendered at line 139 |
+| API path under `/api/v1/...` | pass | `ExamListPage.jsx:39,71` — `/api/v1/exams` and `/api/v1/exams/${id}/start` |
+| Uses shared `api` axios instance | pass | `ExamListPage.jsx:3` — imports from `@/lib/api`; no raw fetch or new axios instance |
+| No TypeScript files introduced | pass | `find` returns empty for `.ts` / `.tsx` in `src/` |
+| 純中文 strings / no English placeholders | pass | All user-visible strings are Chinese; no TODO/FIXME/English label found |
+
+#### Must-fix issues
+
+None found.
+
+#### Nice-to-have
+
+1. **Score shown only for `status === 'Finished'`** (`ExamListPage.jsx:109`) — the plan says "score (if finished)" which is satisfied, but an exam that has been `Ongoing` and the backend has a partial score would be silently hidden. This is a product/backend contract ambiguity, not a code defect; flag for P5 when the result endpoint shape is confirmed.
+
+2. **`closeDialog` blocked while `starting`** (`ExamListPage.jsx:60`) — the Radix Dialog backdrop-click also fires `onOpenChange(false)` at `ExamListPage.jsx:130`, which calls `closeDialog()`. The guard `if (starting) return` correctly prevents dismissal mid-request, which is the right UX choice. No action required — noted as intentional.
+
+3. **`ExamStatusBadge` fallback for unknown status** (`ExamStatusBadge.jsx:17`) — renders the raw enum string as the label. If the backend sends an unexpected value (e.g., `"Cancelled"`), the badge shows the English string instead of Chinese. Low risk for this project, but a generic Chinese fallback like "未知" would be more robust.
+
+#### Verification gaps
+
+- Browser E2E is blocked on backend endpoints (`GET /api/v1/exams`, `POST /api/v1/exams/{id}/start`). Static analysis confirms all eight acceptance criteria are satisfied in code. No browser or Playwright check is needed before merge given P3 is a build-only gate; E2E can be deferred until the backend ships those endpoints.
