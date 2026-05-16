@@ -10,7 +10,7 @@ from alembic import context
 sys.path.append(os.getcwd())
 
 from app.db.base import Base
-from app.models import User, Problem, TestCase, Submission, Exam, ExamProblem
+from app.models import User, Problem, TestCase, Submission, Exam, ExamProblem, SubmissionDetail
 
 
 # this is the Alembic Config object, which provides
