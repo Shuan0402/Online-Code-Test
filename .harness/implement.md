@@ -282,3 +282,10 @@ None found.
 #### Verification gaps
 
 - Browser E2E is blocked on backend endpoints (`GET /api/v1/exams`, `POST /api/v1/exams/{id}/start`). Static analysis confirms all eight acceptance criteria are satisfied in code. No browser or Playwright check is needed before merge given P3 is a build-only gate; E2E can be deferred until the backend ships those endpoints.
+
+### Supervisor resolution + commit (P3)
+
+- Reviewer verdict: **ship**. Two nice-to-haves (Chinese fallback label in `ExamStatusBadge`, score visibility for `Ongoing`) deferred — neither is a defect; first is cosmetic, second depends on backend contract clarification owed in P5.
+- Verifier verdict: **green**. No action needed.
+- Backend dependency `GET /api/v1/exams` + `POST /api/v1/exams/{id}/start` still not live; static wiring complete, browser E2E remains blocked but unblocking is on backend team's plate per PR #18.
+- **Committed P3 as `a335ed1`** on `feat/frontend-scaffold`.
