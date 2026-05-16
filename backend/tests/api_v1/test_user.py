@@ -143,3 +143,37 @@ def test_get_user_by_id_not_found(client, admin_user, override_auth):
     response = client.get(f"/api/v1/users/{fake_id}")
     assert response.status_code == 404
     assert "找不到" in response.json()["detail"]
+
+# --- PATCH /users/me (修改個人資料) ---
+def test_update_me_full_name_success(client, candidate_user, override_auth):
+    """
+    一般考生應能自由修改自己的姓名。
+    """
+    override_auth(candidate_user)
+    
+    update_data = {"full_name": "Tony Stark (IronMan)"}
+    response = client.patch("/api/v1/users/me", json=update_data)
+    
+    assert response.status_code == 200
+    assert response.json()["full_name"] == "Tony Stark (IronMan)"
+
+
+def test_update_me_role_forbidden(client, candidate_user, override_auth):
+    """
+    一般考生企圖把自己改成 Admin，必須被 403 攔截。
+    """
+    override_auth(candidate_user)
+    
+    evil_data = {"full_name": "Hacker Nick", "role": "Admin"}
+    response = client.patch("/api/v1/users/me", json=evil_data)
+    
+    assert response.status_code == 403
+    assert "沒有權限變更" in response.json()["detail"]
+
+
+def test_update_me_unauthenticated(client):
+    """
+    未登入者修改個人資料，應被 401 拒絕。
+    """
+    response = client.patch("/api/v1/users/me", json={"full_name": "Ghost"})
+    assert response.status_code == 401

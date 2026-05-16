@@ -5,8 +5,10 @@ from uuid import UUID
 
 from app.api import deps
 from app.models.user import User
-from app.schemas.user import UserCreate, UserRead
+from app.schemas.user import UserCreate, UserRead, UserUpdate
 from app.core.security import SecurityManager
+from app.models.enums import UserRole
+
 
 router = APIRouter()
 
@@ -59,3 +61,31 @@ def read_user_by_id(
             detail="找不到該使用者"
         )
     return user
+
+@router.patch("/me", response_model=UserRead)
+def update_current_user_profile(
+    obj_in: UserUpdate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user) # 已登入者皆可
+):
+    """
+    修改個人資料。
+    - 任何人皆可修改自己的 full_name。
+    - 非 Admin 企圖變更自己的 role 回傳 403。
+    """
+    if obj_in.role is not None and current_user.role != UserRole.Admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您沒有權限變更您的帳號角色"
+        )
+
+    if obj_in.full_name is not None:
+        current_user.full_name = obj_in.full_name
+        
+    if obj_in.role is not None and current_user.role == UserRole.Admin:
+        current_user.role = obj_in.role
+
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
