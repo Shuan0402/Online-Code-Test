@@ -13,8 +13,10 @@ from app.models import user, problem, submission, exam, exam_problem, testcase
 from app.models.user import User
 from app.models.problem import Problem
 from app.models.testcase import TestCase
-from app.models.enums import UserRole, DifficultyLevel
+from app.models.enums import UserRole, DifficultyLevel, JudgeStatus
 from app.api import deps
+from app.models.submission import Submission, SubmissionDetail
+
 
 @pytest.fixture(scope="session")
 def setup_db():
@@ -169,3 +171,75 @@ def create_test_problem(db_session, admin_user):
         return db_problem
 
     return _create_problem
+
+@pytest.fixture
+def create_mock_submission(db_session):
+    """
+    建立繳交紀錄的工廠 Fixture。
+    支援自定義繳交屬性，並且會自動建立一筆對應的 SubmissionDetail。
+    """
+    def _create(user_id, problem_id, status="AC", score=100):
+        tc = db_session.query(TestCase).filter(TestCase.problem_id == problem_id).first()
+        if not tc:
+            tc = TestCase(
+                problem_id=problem_id,
+                input_data="mock input",
+                expected_output="mock output"
+            )
+            db_session.add(tc)
+            db_session.flush()
+
+        sub = Submission(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            problem_id=problem_id,
+            language="python",
+            code_s3_url="s3://octest-submissions/test.py",
+            status=status,
+            score=score,
+            submission_type="OFFICIAL"
+        )
+        db_session.add(sub)
+        db_session.flush()
+        
+        detail = SubmissionDetail(
+            submission_id=sub.id,
+            testcase_id=tc.id,
+            status=JudgeStatus(status),
+            execution_time=12,
+            score=score
+        )
+        db_session.add(detail)
+        db_session.commit()
+        return sub
+
+    return _create
+
+@pytest.fixture
+def create_test_user(db_session: Session):
+    """
+    建立使用者的工廠 Fixture。
+    預設建立 Candidate (一般考生)，username 支援傳入或自動加上隨機後綴防衝突。
+    """
+    def _create_user(username: str = None, role: UserRole = UserRole.Candidate, **kwargs):
+        unique_id = uuid.uuid4().hex[:6]
+        final_username = username or f"user_{role.value.lower()}_{unique_id}"
+        
+        defaults = {
+            "password_hash": "hashed_password",
+            "is_active": True
+        }
+        defaults.update(kwargs)
+        
+        db_user = User(
+            id=uuid.uuid4(),
+            username=final_username,
+            role=role,
+            **defaults
+        )
+        db_session.add(db_user)
+        db_session.commit()
+        db_session.refresh(db_user)
+        return db_user
+
+    return _create_user

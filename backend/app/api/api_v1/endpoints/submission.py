@@ -1,13 +1,14 @@
 import json
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
 from app.models.submission import Submission
 from app.models.problem import Problem
 from app.schemas.submission import SubmissionCreate, SubmissionRead, JudgeTaskPayload
 from app.services.queue_manager import queue_manager
+from app.models.enums import UserRole
 
 
 router = APIRouter()
@@ -93,3 +94,36 @@ def create_submission(
         )
 
     return db_submission
+
+@router.get("/{submission_id}", response_model=SubmissionRead)
+def get_submission_by_id(
+    submission_id: UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    狀態查詢與明細 API
+    
+    - 考生（Candidate）只能查看「自己」的提交。
+    - 管理員（Admin）、出題者（Questioner）、面試官（Interviewer）等非考生角色擁有全局調閱權限。
+    """
+    submission = (
+        db.query(Submission)
+        .options(joinedload(Submission.details))
+        .filter(Submission.id == submission_id)
+        .first()
+    )
+    
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到該筆繳交紀錄"
+        )
+    
+    if submission.user_id != current_user.id and current_user.role == UserRole.Candidate:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您沒有權限查看此繳交紀錄"
+        )
+        
+    return submission
