@@ -89,3 +89,32 @@ def update_current_user_profile(
     db.commit()
     db.refresh(current_user)
     return current_user
+
+@router.patch("/{user_id}", response_model=UserRead)
+def update_user_by_id(
+    user_id: UUID,
+    obj_in: UserUpdate,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_admin_user)
+):
+    """
+    修改特定使用者（改姓名或變更權限角色）。
+    - 僅限最高管理員 Admin 操作。
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到該使用者"
+        )
+        
+    if obj_in.full_name is not None:
+        user.full_name = obj_in.full_name
+        
+    if obj_in.role is not None:
+        user.role = obj_in.role
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

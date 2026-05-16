@@ -177,3 +177,44 @@ def test_update_me_unauthenticated(client):
     """
     response = client.patch("/api/v1/users/me", json={"full_name": "Ghost"})
     assert response.status_code == 401
+
+# --- PATCH /users/{user_id} (修改特定使用者) ---
+def test_update_other_user_by_admin_success(client, admin_user, candidate_user, override_auth):
+    """
+    最高管理員 Admin 應該要能成功把一般學生的角色提拔為 Interviewer。
+    """
+    override_auth(admin_user)
+    
+    update_payload = {
+        "full_name": "Upgraded Interviewer",
+        "role": "Interviewer"
+    }
+    response = client.patch(f"/api/v1/users/{candidate_user.id}", json=update_payload)
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["full_name"] == "Upgraded Interviewer"
+    assert data["role"] == UserRole.Interviewer.value
+
+
+def test_update_other_user_forbidden_for_interviewer(client, interviewer_user, candidate_user, override_auth):
+    """
+    一般面試官企圖修改其他人的權限，應回傳 403。"""
+    override_auth(interviewer_user)
+    
+    update_payload = {"role": "Admin"}
+    response = client.patch(f"/api/v1/users/{candidate_user.id}", json=update_payload)
+    
+    assert response.status_code == 403
+
+
+def test_update_other_user_not_found(client, admin_user, override_auth):
+    """
+    管理員嘗試修改一組不存在的 UUID 時，應回傳 404。
+    """
+    override_auth(admin_user)
+    fake_id = uuid.uuid4()
+    
+    response = client.patch(f"/api/v1/users/{fake_id}", json={"full_name": "NoOne"})
+    assert response.status_code == 404
+    assert "找不到" in response.json()["detail"]
