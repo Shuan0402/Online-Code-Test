@@ -1,4 +1,3 @@
-import pytest
 from fastapi import status
 
 def test_login_success(client):

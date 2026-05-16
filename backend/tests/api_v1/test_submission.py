@@ -1,6 +1,5 @@
 # backend/tests/api_v1/test_submission.py
 import uuid
-import pytest
 from unittest.mock import MagicMock
 from datetime import datetime, timedelta
 
