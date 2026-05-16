@@ -16,6 +16,7 @@ from app.models.testcase import TestCase
 from app.models.enums import UserRole, DifficultyLevel, JudgeStatus
 from app.api import deps
 from app.models.submission import Submission, SubmissionDetail
+from app.core.security import SecurityManager
 
 
 @pytest.fixture(scope="session")
@@ -57,64 +58,24 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 @pytest.fixture
-def admin_user(db_session: Session):
+def admin_user(create_test_user):
     """建立並回傳一個 Admin 使用者"""
-    user = User(
-        id=uuid.uuid4(),
-        username="admin_boss",
-        password_hash="hashed_password",
-        role=UserRole.Admin,
-        is_active=True
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+    return create_test_user(username="admin_boss", role=UserRole.Admin)
 
 @pytest.fixture
-def questioner_user(db_session: Session):
+def questioner_user(create_test_user):
     """建立並回傳一個出題者使用者"""
-    user = User(
-        id=uuid.uuid4(),
-        username="problem_setter",
-        password_hash="hashed_password",
-        role=UserRole.Questioner,
-        is_active=True
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+    return create_test_user(username="problem_setter", role=UserRole.Questioner)
 
 @pytest.fixture
-def interviewer_user(db_session: Session):
+def interviewer_user(create_test_user):
     """建立並回傳一個面試官使用者"""
-    user = User(
-        id=uuid.uuid4(),
-        username="hr_interviewer",
-        password_hash="hashed_password",
-        role=UserRole.Interviewer,
-        is_active=True
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+    return create_test_user(username="hr_interviewer", role=UserRole.Interviewer)
 
 @pytest.fixture
-def candidate_user(db_session: Session):
+def candidate_user(create_test_user):
     """建立並回傳一個考生使用者"""
-    user = User(
-        id=uuid.uuid4(),
-        username="student_01",
-        password_hash="hashed_password",
-        role=UserRole.Candidate,
-        is_active=True
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+    return create_test_user(username="student_01")
 
 @pytest.fixture
 def override_auth():
@@ -226,7 +187,7 @@ def create_test_user(db_session: Session):
         final_username = username or f"user_{role.value.lower()}_{unique_id}"
         
         defaults = {
-            "password_hash": "hashed_password",
+            "password_hash": SecurityManager.hash_password("testpassword123"),
             "is_active": True
         }
         defaults.update(kwargs)
