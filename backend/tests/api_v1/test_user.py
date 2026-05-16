@@ -1,4 +1,7 @@
+import uuid
+
 from app.models.enums import UserRole
+
 
 # --- POST /users/ (建立新使用者) ---
 def test_create_user_success_by_admin(client, admin_user, override_auth):
@@ -119,3 +122,24 @@ def test_read_users_list_forbidden_for_candidate(client, candidate_user, overrid
     override_auth(candidate_user)
     response = client.get("/api/v1/users/")
     assert response.status_code == 403
+
+
+# --- GET /users/{user_id} (獲取特定使用者細節) ---
+def test_get_user_by_id_success(client, admin_user, candidate_user, override_auth):
+    """
+    管理方透過 UUID 查詢特定學生，應成功回傳。
+    """
+    override_auth(admin_user)
+    response = client.get(f"/api/v1/users/{candidate_user.id}")
+    assert response.status_code == 200
+    assert response.json()["username"] == candidate_user.username
+
+def test_get_user_by_id_not_found(client, admin_user, override_auth):
+    """
+    查詢不存在的 UUID，應回傳 404。
+    """
+    override_auth(admin_user)
+    fake_id = uuid.uuid4()
+    response = client.get(f"/api/v1/users/{fake_id}")
+    assert response.status_code == 404
+    assert "找不到" in response.json()["detail"]

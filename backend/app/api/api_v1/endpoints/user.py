@@ -41,3 +41,21 @@ def get_current_user_info(current_user: User = Depends(deps.get_current_user)):
     獲取當前登入使用者的詳細資訊。
     """
     return current_user
+
+@router.get("/{user_id}", response_model=UserRead)
+def read_user_by_id(
+    user_id: UUID,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_interviewer_user)
+):
+    """
+    獲取特定使用者細節。
+    - 僅限 Admin 或 Interviewer 操作。
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到該使用者"
+        )
+    return user
