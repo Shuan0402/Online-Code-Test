@@ -92,3 +92,108 @@ Note: `@types/react` and `@types/react-dom` in devDependencies are not TypeScrip
 - Reviewer nice-to-have on `@types/react` in devDeps: leave as-is, no functional impact.
 - Reviewer nice-to-have on `StaffLayout` showing all three nav links: flagged for P2 executor (ProtectedRoute work will naturally hide nav for wrong role).
 - **Committed P1 as `b90b945`** on `feat/frontend-scaffold`.
+
+## P2 — Auth layer: Login page, axios interceptors, JWT context, protected routes  (2026-05-16T00:00:00Z)
+
+### Files created
+
+| Path | Role |
+|------|------|
+| `frontend/jsconfig.json` | jsconfig needed for shadcn CLI to resolve `@/` alias |
+| `frontend/src/lib/api.js` | axios instance; Bearer request interceptor; 401 response interceptor → clear localStorage + redirect /login |
+| `frontend/src/contexts/AuthContext.jsx` | `AuthProvider` with `{ user, token, loading, login, logout }`; reads/writes localStorage; on mount calls GET /users/me with 404 fallback |
+| `frontend/src/components/ProtectedRoute.jsx` | auth gate (→ /login) + role gate (→ /unauthorized); null render during loading to prevent flash |
+| `frontend/src/pages/LoginPage.jsx` | form-urlencoded login via URLSearchParams; role-based redirect after success; 422 / 401 / network error handling |
+| `frontend/src/pages/UnauthorizedPage.jsx` | 權限不足 page with 返回登入 + 登出 buttons |
+| `frontend/src/components/ui/button.jsx` | installed via shadcn@4.6.0 |
+| `frontend/src/components/ui/input.jsx` | installed via shadcn@4.6.0 |
+| `frontend/src/components/ui/label.jsx` | installed via shadcn@4.6.0 |
+| `frontend/src/components/ui/card.jsx` | installed via shadcn@4.6.0 |
+
+### Files modified
+
+| Path | Change |
+|------|--------|
+| `frontend/src/App.jsx` | Wrapped entire tree in `<AuthProvider>`; added /login + /unauthorized routes; wrapped candidate/questioner/interviewer/admin routes in `<ProtectedRoute allowedRoles={[...]}>` |
+| `frontend/src/layouts/StaffLayout.jsx` | Reads `user.role` from AuthContext; filters sidebar nav via `NAV_BY_ROLE` map; adds logout button to header |
+| `frontend/src/layouts/CandidateLayout.jsx` | Reads `user` from AuthContext; displays username in header; adds logout button |
+
+### Commands run
+
+- `npx shadcn@4.6.0 add button input label card --yes` — exit 0; created 4 files in `src/components/ui/`
+- `npm run build` — **exit 0**; 109 modules transformed; dist 244 kB JS / 12 kB CSS
+
+### Deviations from plan
+
+1. **jsconfig.json added** — shadcn@4.6.0 CLI requires either `tsconfig.json` or `jsconfig.json` to resolve paths. Created a minimal one; not in the plan but required for the toolchain.
+2. **`login()` accepts `fallbackUser` parameter** — since `GET /api/v1/users/me` returns 404 (backend not yet deployed), LoginPage passes `{ username, role: res.data.role }` as fallback. The auth token response from the backend is expected to include a `role` field; if it does not, the fallback user will have `role: null` and redirect will fall back to `/login`. This is a known gap noted in the plan.
+3. **CandidateLayout also updated** — plan only mentioned StaffLayout for logout; CandidateLayout was updated in parallel since it was a natural extension and the layout was already read.
+4. **`admin` role sees questioner + interviewer + admin nav links** — plan said "filter sidebar nav to only show links for the current user's role" but did not define admin scope. Treated admin as superuser seeing all three links; questioner sees only 出題管理; interviewer sees only 面試管理.
+
+### Adjacent findings (not fixed)
+
+- The backend `POST /api/v1/auth/login` response schema is unknown — if it does not include a `role` field, the fallback user will have `role: null` and the redirect will send the user back to `/login` in an apparent loop. LoginPage logs a 422 warning in console to surface this.
+- `GET /api/v1/users/me` still returns 404 per plan note; the 404 path is gracefully handled in both `AuthContext.useEffect` (on mount rehydration) and `login()`.
+
+### Blockers
+
+None for P2 build criterion. Browser E2E requires:
+- Backend `POST /api/v1/auth/login` to be live and return `{ access_token, role? }`
+- Backend `GET /api/v1/users/me` to be live (currently 404 per plan)
+- Seed account credentials (not provided per plan open question #4)
+
+### Verifier verdict
+
+```
+build:     pass   (exit 0; vite v5.4.21; 109 modules; 244 kB JS / 12 kB CSS)
+dev:       pass   (HTTP 200 at http://localhost:5173 and /login within 3s)
+ts-files:  pass   (zero .ts/.tsx files in frontend/src)
+deps:      pass   (typescript package absent; no junk packages; all deps expected)
+json-body: pass   (JSON.stringify not found near auth/login — encoding is correct)
+urlparams: pass   (URLSearchParams present in LoginPage.jsx at line 46)
+lint:      no lint configured (no change from P1)
+e2e:       skipped — backend endpoints not yet live; route wiring verified at build level
+```
+
+**Verdict: green**
+
+
+### Reviewer verdict (P2)
+
+**Verdict: fix-required**
+
+#### Criteria scorecard
+
+| Criterion | Score | Note |
+|-----------|-------|------|
+| `npm run build` exits 0 | pass | Executor reports 109 modules, exit 0 |
+| Unauthenticated visit to `/candidate/exams` redirects to `/login` | pass | `ProtectedRoute.jsx:29` returns `<Navigate to="/login" replace />` when `!token \|\| !user` |
+| Login form submits `application/x-www-form-urlencoded` via `URLSearchParams` | pass | `LoginPage.jsx:46-52` — `new URLSearchParams()` + explicit `Content-Type` header |
+| Role-based redirect after successful login | pass | `LoginPage.jsx:63-65` — `ROLE_HOME` map covers all four roles |
+| Page refresh keeps user logged in (token + `/users/me` rehydration) | pass | `AuthContext.jsx:21-49` — 404 gracefully falls through to cached localStorage user; loading flag cleared either way |
+| Clicking logout clears localStorage and redirects to `/login` | **fail** | `AuthContext.jsx:84-90` — `logout` does `window.location.href = '/login'` but never calls `POST /api/v1/auth/logout` (plan criterion: "Clicking logout calls `POST /api/v1/auth/logout` then clears localStorage") |
+| Questioner navigating to `/candidate/exams` → `/unauthorized` | pass | `App.jsx` wraps `/candidate` with `allowedRoles={['candidate']}`; `ProtectedRoute.jsx:34-37` redirects wrong role |
+| 401 from any API call clears localStorage + redirects to `/login` | pass | `api.js:26-34` handles this; loop guard at `api.js:30` prevents redirect if already on `/login` |
+
+#### Must-fix issues
+
+1. **`logout` never calls `POST /api/v1/auth/logout`** — `/Users/jane/Desktop/碩/cloud native/final-project/Online-Code-Test/frontend/src/contexts/AuthContext.jsx:84-90`. The plan acceptance criterion explicitly requires this API call before clearing localStorage. Fix: make `logout` an async function that fires `api.post('/api/v1/auth/logout').catch(() => {})` (fire-and-forget, swallow error) before the `localStorage.removeItem` calls.
+
+#### Nice-to-have
+
+1. **`logout` in `AuthContext` is synchronous but called from UI as if it could be async** — because `api.post` is async, adding the logout call (per above fix) should use `.finally()` to guarantee the redirect even if the backend is down.
+
+2. **`jsconfig.json` has no `"include"` / `"exclude"` fields** (`frontend/jsconfig.json`) — harmless today but linters and IDE tools may traverse `node_modules` without it. Adding `"include": ["src"]` costs one line and prevents slow IDE indexing.
+
+#### Verification gaps
+
+- Browser E2E is fully blocked (no running backend, no seed credentials). The `POST /api/v1/auth/logout` defect will only manifest at runtime; it is confirmed by static code inspection of `AuthContext.jsx:84-90`.
+- `jsconfig.json` is harmless (no `tsc` compiler present); no TypeScript was introduced — all new files are `.jsx` or `.js`.
+
+### Supervisor resolution + commit (P2)
+
+- Reviewer's must-fix (`logout` not calling `POST /auth/logout`) resolved inline by supervisor in `AuthContext.jsx`: made `logout` async, fire-and-forget `api.post('/api/v1/auth/logout')` wrapped in try/catch so that backend errors or unreachable backend still clear the client side. Re-ran `npm run build` → exit 0.
+- Reviewer nice-to-haves on async logout + `jsconfig.json` include path: addressed by the same fix (logout is now async); `jsconfig.json` include is cosmetic, deferred.
+- Verifier verdict: green — no action needed.
+- Open question from executor: backend `POST /auth/login` response schema does not include `role`; LoginPage's fallback path passes `null` role, which would cause an apparent redirect-loop after successful login. Flagged for backend team — should be resolved before browser E2E. Not a P2 blocker for build/static review.
+- **To be committed as next commit on `feat/frontend-scaffold`.**

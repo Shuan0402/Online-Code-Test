@@ -1,8 +1,13 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 
+import { AuthProvider } from '@/contexts/AuthContext'
+import ProtectedRoute from '@/components/ProtectedRoute'
+
 import CandidateLayout from './layouts/CandidateLayout'
 import StaffLayout from './layouts/StaffLayout'
 import NotFoundPage from './pages/NotFoundPage'
+import LoginPage from './pages/LoginPage'
+import UnauthorizedPage from './pages/UnauthorizedPage'
 import QuestionerStubPage from './pages/stubs/QuestionerStubPage'
 import InterviewerStubPage from './pages/stubs/InterviewerStubPage'
 import AdminStubPage from './pages/stubs/AdminStubPage'
@@ -18,36 +23,72 @@ function CandidateStub() {
 
 export default function App() {
   return (
-    <Routes>
-      {/* Redirect root to candidate exams as a sensible default */}
-      <Route path="/" element={<Navigate to="/candidate/exams" replace />} />
+    <AuthProvider>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
-      {/* Candidate panel — top-header-only layout */}
-      <Route path="/candidate" element={<CandidateLayout />}>
-        <Route index element={<Navigate to="/candidate/exams" replace />} />
-        <Route path="exams" element={<CandidateStub />} />
-        <Route path="exams/:id/take" element={<CandidateStub />} />
-        <Route path="exams/:id/result" element={<CandidateStub />} />
-      </Route>
+        {/* Redirect root to candidate exams as a sensible default */}
+        <Route path="/" element={<Navigate to="/candidate/exams" replace />} />
 
-      {/* Staff panels — sidebar + header layout */}
-      <Route path="/questioner" element={<StaffLayout />}>
-        <Route index element={<QuestionerStubPage />} />
-        <Route path="*" element={<QuestionerStubPage />} />
-      </Route>
+        {/* Candidate panel — top-header-only layout */}
+        <Route
+          path="/candidate"
+          element={
+            <ProtectedRoute allowedRoles={['candidate']}>
+              <CandidateLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/candidate/exams" replace />} />
+          <Route path="exams" element={<CandidateStub />} />
+          <Route path="exams/:id/take" element={<CandidateStub />} />
+          <Route path="exams/:id/result" element={<CandidateStub />} />
+        </Route>
 
-      <Route path="/interviewer" element={<StaffLayout />}>
-        <Route index element={<InterviewerStubPage />} />
-        <Route path="*" element={<InterviewerStubPage />} />
-      </Route>
+        {/* Questioner panel */}
+        <Route
+          path="/questioner"
+          element={
+            <ProtectedRoute allowedRoles={['questioner', 'admin']}>
+              <StaffLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<QuestionerStubPage />} />
+          <Route path="*" element={<QuestionerStubPage />} />
+        </Route>
 
-      <Route path="/admin" element={<StaffLayout />}>
-        <Route index element={<AdminStubPage />} />
-        <Route path="*" element={<AdminStubPage />} />
-      </Route>
+        {/* Interviewer panel */}
+        <Route
+          path="/interviewer"
+          element={
+            <ProtectedRoute allowedRoles={['interviewer', 'admin']}>
+              <StaffLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<InterviewerStubPage />} />
+          <Route path="*" element={<InterviewerStubPage />} />
+        </Route>
 
-      {/* 404 catch-all */}
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+        {/* Admin panel */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <StaffLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<AdminStubPage />} />
+          <Route path="*" element={<AdminStubPage />} />
+        </Route>
+
+        {/* 404 catch-all */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </AuthProvider>
   )
 }

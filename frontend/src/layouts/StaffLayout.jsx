@@ -1,4 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom'
+import { useAuth } from '@/contexts/AuthContext'
 
 // Sidebar + header shell for Questioner / Interviewer / Admin roles.
 function SidebarLink({ to, label }) {
@@ -18,18 +19,50 @@ function SidebarLink({ to, label }) {
   )
 }
 
+// Nav links visible per role.
+const NAV_BY_ROLE = {
+  questioner: [{ to: '/questioner', label: '出題管理' }],
+  interviewer: [{ to: '/interviewer', label: '面試管理' }],
+  admin: [
+    { to: '/questioner', label: '出題管理' },
+    { to: '/interviewer', label: '面試管理' },
+    { to: '/admin', label: '系統管理' },
+  ],
+}
+
 export default function StaffLayout() {
+  const { user, logout } = useAuth()
+
+  const role = user?.role?.toLowerCase()
+  // Fall back to showing all links if role is somehow unknown (shouldn't happen with ProtectedRoute).
+  const navLinks = NAV_BY_ROLE[role] ?? [
+    { to: '/questioner', label: '出題管理' },
+    { to: '/interviewer', label: '面試管理' },
+    { to: '/admin', label: '系統管理' },
+  ]
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b bg-white px-6 py-3 flex items-center shadow-sm">
+      <header className="border-b bg-white px-6 py-3 flex items-center justify-between shadow-sm">
         <span className="text-lg font-semibold text-primary">線上程式測驗 — 管理後台</span>
+        <div className="flex items-center gap-3">
+          {user && (
+            <span className="text-sm text-muted-foreground">{user.username ?? user.email ?? ''}</span>
+          )}
+          <button
+            onClick={logout}
+            className="text-sm px-3 py-1.5 rounded-md border border-input hover:bg-accent transition-colors"
+          >
+            登出
+          </button>
+        </div>
       </header>
       <div className="flex flex-1">
-        {/* Sidebar */}
+        {/* Sidebar — only shows links applicable to this user's role */}
         <aside className="w-56 border-r bg-white p-4 space-y-1 shrink-0">
-          <SidebarLink to="/questioner" label="出題管理" />
-          <SidebarLink to="/interviewer" label="面試管理" />
-          <SidebarLink to="/admin" label="系統管理" />
+          {navLinks.map((link) => (
+            <SidebarLink key={link.to} to={link.to} label={link.label} />
+          ))}
         </aside>
         {/* Main content */}
         <main className="flex-1 p-6">
