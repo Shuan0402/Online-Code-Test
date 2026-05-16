@@ -1,5 +1,7 @@
+import os
+from functools import lru_cache
 from typing import Generator, List
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -10,8 +12,34 @@ from app.core.config import settings
 from app.models.user import User
 from app.schemas.token import TokenPayload
 from app.core.redis_client import redis_client
+from app.services.storage import StorageService, build_storage_from_env
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+@lru_cache(maxsize=1)
+def get_storage() -> StorageService:
+    """Cached storage client. Tests should `app.dependency_overrides[get_storage] = ...`."""
+    return build_storage_from_env()
+
+
+def verify_worker_secret(x_worker_secret: Optional[str] = Header(default=None)):
+    """Worker → backend callback 認證。
+
+    合約 3：header X-Worker-Secret 必須等於 backend env WORKER_SECRET。
+    missing / mismatch 一律 401（不分辨、避免 timing 洩漏訊息）。
+    """
+    expected = os.environ.get("WORKER_SECRET")
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="server misconfigured: WORKER_SECRET unset",
+        )
+    if not x_worker_secret or x_worker_secret != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid worker secret",
+        )
 
 def get_db() -> Generator:
     """

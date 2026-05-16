@@ -7,3 +7,6 @@ services:
     # The resulting image is tagged with the `image:` name from the main file
     # (backend:dev), so other compose commands stay consistent.
     build: ./backend
+
+  worker:
+    build: ./judge-worker

@@ -28,7 +28,8 @@ WORKDIR /sandbox
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# python3 -：從 stdin 讀 source code 執行。
+# Step 8 protocol：source code 由 worker bind mount 到 /sandbox/source.py、
+# stdin 純粹是 testcase input、餵 process stdin。
 # 寫 python3 而非 python：distroless 只 ship python3 binary，沒有無版本 symlink。
 # 寫死 ENTRYPOINT 而非用 base image 預設：避免上游升級時 entrypoint 改動造成行為飄移。
-ENTRYPOINT ["python3", "-"]
+ENTRYPOINT ["python3", "/sandbox/source.py"]

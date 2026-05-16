@@ -1,0 +1,288 @@
+"""
+worker.py Step 8 unit tests — fakeredis + 假 spawner + monkey-patch fetch/callback。
+
+不啟動真 Redis、不打 docker、不打網路。
+"""
+
+import json
+from unittest.mock import MagicMock, patch
+
+import fakeredis
+import pytest
+import requests
+
+# WORKER_SECRET 由 conftest.py setdefault（這裡 setdefault 太晚、見 conftest 註解）
+import worker
+from spawner.base import CompletedRun, SpawnerError
+
+
+# ── helpers ────────────────────────────────────────────────────────
+
+
+def _make_completed_run(stdout="3\n", stderr="", exit_code=0, timed_out=False, duration=0.05):
+    return CompletedRun(
+        stdout=stdout,
+        stderr=stderr,
+        exit_code=exit_code,
+        duration_sec=duration,
+        timed_out=timed_out,
+    )
+
+
+def _make_msg(
+    sub_id="sub-1",
+    language="python",
+    testcases=None,
+    submission_type="OFFICIAL",
+    time_limit_ms=1000,
+):
+    return {
+        "submission_id": sub_id,
+        "language": language,
+        "presigned_url": "http://minio:9000/octest/sub-1.py?sig=x",
+        "submission_type": submission_type,
+        "time_limit_ms": time_limit_ms,
+        "memory_limit_mb": 256,
+        "testcases": testcases if testcases is not None else [
+            {"testcase_id": 1, "input_data": "1 2\n", "expected_output": "3\n", "is_sample": True},
+        ],
+    }
+
+
+@pytest.fixture
+def r():
+    """Fresh fakeredis client per test."""
+    return fakeredis.FakeRedis(decode_responses=False)
+
+
+@pytest.fixture
+def fake_spawner():
+    """Spawner mock — set .run.return_value or .run.side_effect in each test."""
+    sp = MagicMock()
+    sp.run.return_value = _make_completed_run()
+    return sp
+
+
+@pytest.fixture(autouse=True)
+def stub_fetch_source(monkeypatch):
+    """所有 test 用統一 source；test_fetch_source 自己覆寫。"""
+    monkeypatch.setattr(worker, "fetch_source", lambda http, url: "print(3)\n")
+
+
+@pytest.fixture
+def fake_http():
+    """requests.Session mock — .post.return_value 預設 200。"""
+    s = MagicMock(spec=requests.Session)
+    resp = MagicMock()
+    resp.raise_for_status.return_value = None
+    s.post.return_value = resp
+    return s
+
+
+# ── startup_sweep ──────────────────────────────────────────────────
+
+
+def test_startup_sweep_returns_orphans_to_pending(r):
+    """processing 殘留訊息要 LMOVE 回 pending head；保留原順序（LEFT LEFT）。"""
+    r.rpush(worker.QUEUE_PROCESSING, b"msg-a", b"msg-b")
+    r.rpush(worker.QUEUE_PENDING, b"msg-c")
+
+    swept = worker.startup_sweep(r)
+
+    assert swept == 2
+    # pending head 該是先撈的 msg-a (LEFT LEFT 保序)，msg-b 接著，msg-c 殿後
+    assert r.lrange(worker.QUEUE_PENDING, 0, -1) == [b"msg-b", b"msg-a", b"msg-c"]
+    assert r.llen(worker.QUEUE_PROCESSING) == 0
+
+
+def test_startup_sweep_empty_processing_noop(r):
+    assert worker.startup_sweep(r) == 0
+    assert r.llen(worker.QUEUE_PENDING) == 0
+
+
+# ── consume_once happy path ────────────────────────────────────────
+
+
+def test_consume_once_happy_path_acks(r, fake_spawner, fake_http):
+    msg = _make_msg()
+    r.rpush(worker.QUEUE_PENDING, json.dumps(msg).encode())
+
+    acked = worker.consume_once(r, fake_spawner, fake_http)
+
+    assert acked is True
+    assert r.llen(worker.QUEUE_PENDING) == 0
+    assert r.llen(worker.QUEUE_PROCESSING) == 0   # LREM 砍掉了
+    # callback 被打、payload 含 submission_id 跟 per_testcase
+    fake_http.post.assert_called_once()
+    call_kwargs = fake_http.post.call_args.kwargs
+    assert call_kwargs["json"]["submission_id"] == "sub-1"
+    assert len(call_kwargs["json"]["per_testcase"]) == 1
+    assert call_kwargs["json"]["per_testcase"][0]["case_verdict"] == "AC"
+    # X-Worker-Secret header 有帶
+    assert call_kwargs["headers"]["X-Worker-Secret"] == "test-secret"
+
+
+# ── consume_once exception 真值表 ─────────────────────────────────
+
+
+def test_consume_once_callback_http_error_does_not_ack(r, fake_spawner, fake_http):
+    """callback 5xx → 訊息留 processing、靠 sweep 重做。"""
+    fake_http.post.return_value.raise_for_status.side_effect = requests.HTTPError("500")
+    raw = json.dumps(_make_msg()).encode()
+    r.rpush(worker.QUEUE_PENDING, raw)
+
+    acked = worker.consume_once(r, fake_spawner, fake_http)
+
+    assert acked is False
+    assert r.llen(worker.QUEUE_PROCESSING) == 1   # 訊息還在
+    assert r.lrange(worker.QUEUE_PROCESSING, 0, -1) == [raw]
+
+
+def test_consume_once_spawner_error_acks(r, fake_spawner, fake_http):
+    """SpawnerError → ACK、丟訊息、靠監控 alert。"""
+    fake_spawner.run.side_effect = SpawnerError("docker daemon down")
+    r.rpush(worker.QUEUE_PENDING, json.dumps(_make_msg()).encode())
+
+    acked = worker.consume_once(r, fake_spawner, fake_http)
+
+    assert acked is True
+    assert r.llen(worker.QUEUE_PROCESSING) == 0
+    fake_http.post.assert_not_called()
+
+
+def test_consume_once_run_only_not_implemented_acks(r, fake_spawner, fake_http):
+    """RUN_ONLY → NotImplementedError → ACK、不擋 queue（合約 5a）。"""
+    msg = _make_msg(submission_type="RUN_ONLY")
+    r.rpush(worker.QUEUE_PENDING, json.dumps(msg).encode())
+
+    acked = worker.consume_once(r, fake_spawner, fake_http)
+
+    assert acked is True
+    assert r.llen(worker.QUEUE_PROCESSING) == 0
+    fake_spawner.run.assert_not_called()
+    fake_http.post.assert_not_called()
+
+
+def test_consume_once_bad_json_acks(r, fake_spawner, fake_http):
+    """JSONDecodeError → ACK 丟掉。"""
+    r.rpush(worker.QUEUE_PENDING, b"{not json")
+
+    acked = worker.consume_once(r, fake_spawner, fake_http)
+
+    assert acked is True
+    assert r.llen(worker.QUEUE_PROCESSING) == 0
+
+
+def test_consume_once_unexpected_exception_acks(r, fake_spawner, fake_http):
+    """KeyError 等 unexpected 也 ACK、避免 poison message 堵 queue。"""
+    fake_spawner.run.side_effect = KeyError("uhoh")
+    r.rpush(worker.QUEUE_PENDING, json.dumps(_make_msg()).encode())
+
+    acked = worker.consume_once(r, fake_spawner, fake_http)
+
+    assert acked is True
+    assert r.llen(worker.QUEUE_PROCESSING) == 0
+
+
+# ── run_official fail-fast ─────────────────────────────────────────
+
+
+def test_run_official_all_ac(fake_spawner):
+    testcases = [
+        {"testcase_id": 1, "input_data": "1 2\n", "expected_output": "3\n", "is_sample": True},
+        {"testcase_id": 2, "input_data": "5 7\n", "expected_output": "12\n", "is_sample": False},
+    ]
+    fake_spawner.run.side_effect = [
+        _make_completed_run(stdout="3\n", duration=0.05),
+        _make_completed_run(stdout="12\n", duration=0.07),
+    ]
+
+    per_tc, judge_log, max_exec_ms = worker.run_official(
+        spawner=fake_spawner, source="x", language="python",
+        testcases=testcases, time_limit_ms=1000,
+    )
+
+    assert [tc["case_verdict"] for tc in per_tc] == ["AC", "AC"]
+    assert max_exec_ms == 70
+    assert judge_log == ""
+
+
+def test_run_official_fail_fast_breaks_on_wa(fake_spawner):
+    testcases = [
+        {"testcase_id": 1, "input_data": "1 2\n", "expected_output": "3\n", "is_sample": True},
+        {"testcase_id": 2, "input_data": "5 7\n", "expected_output": "12\n", "is_sample": False},
+        {"testcase_id": 3, "input_data": "9 1\n", "expected_output": "10\n", "is_sample": False},
+    ]
+    fake_spawner.run.side_effect = [
+        _make_completed_run(stdout="3\n"),
+        _make_completed_run(stdout="99\n"),   # WA
+        _make_completed_run(stdout="10\n"),   # 不該跑到
+    ]
+
+    per_tc, _, _ = worker.run_official(
+        spawner=fake_spawner, source="x", language="python",
+        testcases=testcases, time_limit_ms=1000,
+    )
+
+    assert len(per_tc) == 2, "fail-fast 應該在 WA 那筆 break"
+    assert [tc["case_verdict"] for tc in per_tc] == ["AC", "WA"]
+    assert fake_spawner.run.call_count == 2
+
+
+def test_run_official_passes_safety_margin_to_spawner(fake_spawner):
+    testcases = [{"testcase_id": 1, "input_data": "", "expected_output": "", "is_sample": True}]
+    worker.run_official(
+        spawner=fake_spawner, source="x", language="python",
+        testcases=testcases, time_limit_ms=1000,
+    )
+
+    kwargs = fake_spawner.run.call_args.kwargs
+    expected_timeout = 1.0 + worker.SAFETY_MARGIN_SEC
+    assert kwargs["timeout"] == pytest.approx(expected_timeout)
+
+
+def test_run_official_stdin_is_testcase_input_not_source(fake_spawner):
+    """Step 8 protocol：stdin = testcase input、source 走 source 參數。"""
+    testcases = [{"testcase_id": 1, "input_data": "1 2\n", "expected_output": "3\n", "is_sample": True}]
+    worker.run_official(
+        spawner=fake_spawner, source="a, b = map(int, input().split())\nprint(a+b)\n",
+        language="python", testcases=testcases, time_limit_ms=1000,
+    )
+
+    kwargs = fake_spawner.run.call_args.kwargs
+    assert kwargs["stdin"] == "1 2\n"
+    assert "input().split" in kwargs["source"]
+
+
+# ── decide_case_verdict ─────────────────────────────────────────────
+
+
+def test_decide_case_verdict_tle_beats_everything():
+    result = _make_completed_run(stdout="", exit_code=-1, timed_out=True)
+    assert worker.decide_case_verdict(result, "3\n", "python") == "TLE"
+
+
+def test_decide_case_verdict_cpp_exit_100_is_ce():
+    result = _make_completed_run(stdout="", exit_code=100)
+    assert worker.decide_case_verdict(result, "anything", "cpp") == "CE"
+
+
+def test_decide_case_verdict_python_exit_100_is_re():
+    """exit 100 對 python 是 RE、不是 CE（python 沒編譯階段）。"""
+    result = _make_completed_run(stdout="", exit_code=100)
+    assert worker.decide_case_verdict(result, "anything", "python") == "RE"
+
+
+def test_decide_case_verdict_nonzero_exit_is_re():
+    result = _make_completed_run(stdout="", exit_code=1)
+    assert worker.decide_case_verdict(result, "3\n", "python") == "RE"
+
+
+def test_decide_case_verdict_stdout_mismatch_is_wa():
+    result = _make_completed_run(stdout="4\n", exit_code=0)
+    assert worker.decide_case_verdict(result, "3\n", "python") == "WA"
+
+
+def test_decide_case_verdict_match_is_ac():
+    result = _make_completed_run(stdout="3\n", exit_code=0)
+    assert worker.decide_case_verdict(result, "3\n", "python") == "AC"

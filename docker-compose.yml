@@ -29,6 +29,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
+      WORKER_SECRET: ${WORKER_SECRET}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASSWORD: ${MINIO_PASSWORD}
+      MINIO_BUCKET: octest-submissions
+      MINIO_PRESIGN_EXPIRES_SEC: "600"
       PYTHONPATH: /app
       POSTGRES_HOST: pg
       REDIS_HOST: redis
@@ -60,5 +66,47 @@ services:
       retries: 5
       start_period: 5s
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API — backend / worker use http://minio:9000 inside compose net
+      - "9001:9001"   # console UI
+    # /minio/health/live is always served; no curl in image so use wget via busybox
+    # fallback isn't available either, but minio image ships its own /usr/bin/mc.
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    image: judge-worker:dev
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      BACKEND_URL: http://backend:8000
+      WORKER_SECRET: ${WORKER_SECRET}
+      QUEUE_PENDING: submissions:pending
+      QUEUE_PROCESSING: submissions:processing
+    volumes:
+      # DooD: worker uses host docker daemon to spawn sandbox sibling containers.
+      # See judge-worker/Dockerfile header for the security trade-off.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    # No ports — worker is outbound-only (BLMOVE redis + POST backend).
+    # No healthcheck — no HTTP endpoint exposed; rely on docker restart policy.
+    restart: unless-stopped
+
 volumes:
   pg_data:
+  minio_data:

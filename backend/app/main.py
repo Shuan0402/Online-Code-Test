@@ -14,6 +14,8 @@
 # ============================================================
 
 import os
+from contextlib import asynccontextmanager
+
 import psycopg
 from fastapi import FastAPI
 
@@ -24,7 +26,20 @@ from .models import user, problem, submission, exam, exam_problem, testcase
 from app.api.api_v1.api import api_router
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Dev convenience: create octest-submissions bucket if missing.
+    # Soft-fail if MinIO unreachable so tests / cold boots don't crash.
+    from app.api.deps import get_storage
+    try:
+        get_storage().ensure_bucket()
+    except KeyError:
+        # MINIO_USER / MINIO_PASSWORD env not set (e.g. some test envs).
+        pass
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(api_router, prefix="/api/v1")
 
