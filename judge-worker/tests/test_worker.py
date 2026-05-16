@@ -5,18 +5,15 @@ worker.py Step 8 unit tests — fakeredis + 假 spawner + monkey-patch fetch/cal
 """
 
 import json
-import os
 from unittest.mock import MagicMock, patch
 
 import fakeredis
 import pytest
 import requests
 
-# 確保 worker import 時 env 有 WORKER_SECRET（不然 main() warm-up 報錯；test 不跑 main）
-os.environ.setdefault("WORKER_SECRET", "test-secret")
-
-import worker  # noqa: E402
-from spawner.base import CompletedRun, SpawnerError  # noqa: E402
+# WORKER_SECRET 由 conftest.py setdefault（這裡 setdefault 太晚、見 conftest 註解）
+import worker
+from spawner.base import CompletedRun, SpawnerError
 
 
 # ── helpers ────────────────────────────────────────────────────────
