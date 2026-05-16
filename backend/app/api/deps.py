@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from typing import Generator, List
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -11,8 +12,15 @@ from app.core.config import settings
 from app.models.user import User
 from app.schemas.token import TokenPayload
 from app.core.redis_client import redis_client
+from app.services.storage import StorageService, build_storage_from_env
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+
+@lru_cache(maxsize=1)
+def get_storage() -> StorageService:
+    """Cached storage client. Tests should `app.dependency_overrides[get_storage] = ...`."""
+    return build_storage_from_env()
 
 
 def verify_worker_secret(x_worker_secret: Optional[str] = Header(default=None)):

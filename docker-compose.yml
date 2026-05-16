@@ -30,6 +30,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       WORKER_SECRET: ${WORKER_SECRET}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASSWORD: ${MINIO_PASSWORD}
+      MINIO_BUCKET: octest-submissions
+      MINIO_PRESIGN_EXPIRES_SEC: "600"
       PYTHONPATH: /app
       POSTGRES_HOST: pg
       REDIS_HOST: redis

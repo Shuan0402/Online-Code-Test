@@ -11,4 +11,4 @@ pydantic-settings
 python-jose[cryptography]
 python-multipart
 argon2-cffi
-argon2-cffi
+boto3>=1.35
