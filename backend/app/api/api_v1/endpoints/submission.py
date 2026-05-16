@@ -96,6 +96,32 @@ def create_submission(
 
     return db_submission
 
+@router.get("/latest", response_model=SubmissionRead)
+def get_latest_submission(
+    problem_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    獲取特定題目最後一次提交 API
+    - 專供考生進入題目時，自動還原上一次寫到一半的程式碼。
+    - 僅鎖定當前登入使用者的最新一筆紀錄。
+    """
+    submission = (
+        db.query(Submission)
+        .filter(Submission.problem_id == problem_id, Submission.user_id == current_user.id)
+        .order_by(Submission.created_at.desc())
+        .first()
+    )
+    
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="您針對該題目尚未有任何提交紀錄"
+        )
+        
+    return submission
+
 @router.get("/{submission_id}", response_model=SubmissionRead)
 def get_submission_by_id(
     submission_id: UUID,

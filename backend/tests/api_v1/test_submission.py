@@ -2,6 +2,7 @@
 import uuid
 import pytest
 from unittest.mock import MagicMock
+from datetime import datetime, timedelta
 
 from app.main import app
 from app.api import deps
@@ -148,3 +149,36 @@ def test_get_submissions_list_as_admin(client, db_session, candidate_user, admin
     data = response.json()
     assert len(data) == 1
     assert data[0]["user_id"] == str(candidate_user.id)
+
+# --- GET /submissions/latest (最新提交查詢) ---
+def test_get_latest_submission_success(client, db_session, candidate_user, override_auth, create_test_problem, create_mock_submission):
+    """
+    有多筆提交時，應該正確回傳最新產生的那一筆。
+    """
+    override_auth(candidate_user)
+    problem = create_test_problem()
+
+    sub1 = create_mock_submission(user_id=candidate_user.id, problem_id=problem.id, score=40)
+    sub1.created_at = datetime.now() - timedelta(minutes=5)
+    db_session.add(sub1)
+    db_session.commit()
+    latest_sub = create_mock_submission(user_id=candidate_user.id, problem_id=problem.id, score=100)
+    
+    response = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(latest_sub.id)
+    assert data["score"] == 100
+
+
+def test_get_latest_submission_not_found(client, candidate_user, override_auth, create_test_problem):
+    """
+    如果從來沒交過這題，應該回傳 404。
+    """
+    override_auth(candidate_user)
+    problem = create_test_problem()
+    
+    response = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}")
+    assert response.status_code == 404
+    assert "尚未有任何提交紀錄" in response.json()["detail"]
