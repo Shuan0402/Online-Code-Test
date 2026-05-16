@@ -1,8 +1,9 @@
-from typing import Generator
+from typing import Generator, List
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
+from typing import Generator, Optional
 
 from app.db.session import SessionLocal
 from app.core.config import settings
@@ -56,8 +57,29 @@ def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.id == token_data.sub).first()
-    if not user:
+    user: Optional[User] = db.query(User).filter(User.id == token_data.sub).first()
+
+    if not user or not user.is_active:
         raise credentials_exception
     
     return user
+
+class RoleChecker:
+    def __init__(self, allowed_roles: List[str]):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, current_user: User = Depends(get_current_user)):
+        user_role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+        
+        if user_role_value not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"權限不足。需要: {self.allowed_roles}, 實際為: {user_role_value}"
+            )
+        return current_user
+
+# 預定義常用的權限入口
+get_admin_user = RoleChecker(["Admin"])
+get_staff_user = RoleChecker(["Admin", "Questioner", "Interviewer"])
+get_questioner_user = RoleChecker(["Admin", "Questioner"])
+get_interviewer_user = RoleChecker(["Admin", "Interviewer"])

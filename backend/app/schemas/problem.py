@@ -18,8 +18,10 @@ class TestCaseCreate(TestCaseBase):
 
 class TestCaseRead(TestCaseBase):
     id: int
-    
     model_config = ConfigDict(from_attributes=True)
+
+class TestCaseUpdate(TestCaseBase):
+    id: Optional[int] = Field(None, description="現有測資的 ID")
 
 # Problem Schemas
 class ProblemBase(BaseModel):
@@ -28,6 +30,16 @@ class ProblemBase(BaseModel):
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.Easy)
     time_limit: int = Field(default=1000, gt=0, description="單位為 ms")
     memory_limit: int = Field(default=256, gt=0, description="單位為 MB")
+
+class ProblemShortRead(BaseModel):
+    """
+    用於 GET /problems 列表展示。
+    """
+    id: int
+    title: str
+    difficulty: DifficultyLevel
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class ProblemCreate(ProblemBase):
     """
@@ -44,6 +56,7 @@ class ProblemUpdate(BaseModel):
     difficulty: Optional[DifficultyLevel] = None
     time_limit: Optional[int] = Field(None, gt=0)
     memory_limit: Optional[int] = Field(None, gt=0)
+    test_cases: Optional[List[TestCaseUpdate]] = Field(None, description="傳入則代表重設所有測資")
 
 class ProblemRead(ProblemBase):
     """
