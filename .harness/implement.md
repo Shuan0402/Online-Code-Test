@@ -196,4 +196,4 @@ e2e:       skipped — backend endpoints not yet live; route wiring verified at 
 - Reviewer nice-to-haves on async logout + `jsconfig.json` include path: addressed by the same fix (logout is now async); `jsconfig.json` include is cosmetic, deferred.
 - Verifier verdict: green — no action needed.
 - Open question from executor: backend `POST /auth/login` response schema does not include `role`; LoginPage's fallback path passes `null` role, which would cause an apparent redirect-loop after successful login. Flagged for backend team — should be resolved before browser E2E. Not a P2 blocker for build/static review.
-- **To be committed as next commit on `feat/frontend-scaffold`.**
+- **Committed P2 as `b0c0b55`** on `feat/frontend-scaffold`.
