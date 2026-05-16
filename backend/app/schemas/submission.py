@@ -1,7 +1,7 @@
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from app.models.enums import JudgeStatus
 
 class SubmissionBase(BaseModel):
@@ -29,6 +29,26 @@ class JudgeTaskPayload(BaseModel):
     code_s3_url: str
     time_limit: int = Field(..., description="時間限制 (ms)")
     memory_limit: int = Field(..., description="記憶體限制 (MB)")
+
+class CallbackTestcase(BaseModel):
+    """Worker callback 中每筆 testcase 的結果。
+
+    case_verdict 用 str 而非 JudgeStatus enum，避免 worker 送來新值（例如未來
+    加 PE / OLE）時 Pydantic 直接 422、callback 訊息卡 processing 無法 ACK。
+    """
+    testcase_id: int
+    case_verdict: str
+    exec_time_ms: int
+
+
+class JudgeCallbackPayload(BaseModel):
+    """Worker → backend POST /internal/judge-callback 的 body（合約 3）。"""
+    submission_id: UUID
+    per_testcase: List[CallbackTestcase]
+    exec_time_ms: int = Field(..., description="跑過 testcase 中最慢的耗時")
+    memory_mb: Optional[int] = Field(default=None, description="step 9+ 才填")
+    judge_log: str = ""
+
 
 class SubmissionRead(SubmissionBase):
     """
