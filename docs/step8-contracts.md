@@ -13,14 +13,12 @@ Step 8（worker 接 Redis queue + HTTP callback）開工前要釘死的合約。
 | 合約 4 | Backend idempotency | ✅ **Step 8 必做**：DB PK + SQL `UPDATE WHERE status IN ('Pending', 'Judging')` guard、rowcount=0 silent 200 |
 | 合約 5b | 算分 | ✅ Backend 算（worker 不收 `score_weight`） |
 | 合約 5c | Worker fail strategy | ✅ Fail-fast |
-| 合約 5a | RUN_ONLY 行為 | ⏸️ Pass、step 8 只做 `OFFICIAL` |
+| 合約 5a | RUN_ONLY 行為 | ✅ **Step 8 OFFICIAL only**：Backend `POST /submissions` 必須 reject `submission_type=RUN_ONLY`（400 / 422）、queue 永遠不收 RUN_ONLY。Worker 若收到 → `NotImplementedError` → ACK + drop（fallback、不該被觸發）|
 
 **待 Shuan 對齊**：
-- 合約 1：queue name `oj_judge_queue` → `submissions:pending` rename（Pre-flight Gap 2）
-- 合約 2：bucket 名 + key 結構（建議 `octest-submissions` / `{submission_id}.{ext}`）；queue 訊息欄位建議從 `code_s3_url` 改名 `presigned_url`（跟 DB column 區隔）
-- 合約 3：Pydantic schema 嚴格度 / response code 統一
-- 合約 4：用 (A) 直接 update `Submission` 還是 (B) 加 `submission_result_log` table（Pre-flight Gap 3）
-- 合約 5a：`RUN_ONLY` 行為（推後）
+- 合約 1：queue name `oj_judge_queue` → `submissions:pending` rename（Pre-flight Gap 2、worker 端已用新名 / PR #17）
+- 合約 2：bucket 名 + key 結構（已釘 `octest-submissions` / `{submission_id}.{ext}`、實作於 PR #17 `backend/app/services/storage.py`）；queue 訊息欄位 `presigned_url` 跟 DB `code_s3_url` 區隔（已實作）
+- 合約 3：Pydantic schema 已 ship `JudgeCallbackPayload` (PR #17 `backend/app/schemas/submission.py`)、response code 一律 200（含 silent no-op）/ 401（auth fail）
 
 ---
 
@@ -36,6 +34,8 @@ Step 8（worker 接 Redis queue + HTTP callback）開工前要釘死的合約。
 
 **分工建議**：`POST /submissions` 由 Shuan（D 域）寫、`POST /internal/judge-callback` 由 user（worker 配對）寫。
 
+**Status**：`POST /internal/judge-callback` 已 ship（PR #17 `backend/app/api/api_v1/endpoints/internal.py`）。`POST /submissions` 待 Shuan。
+
 ### Gap 2: queue_manager queue name 不一致
 
 ```python
@@ -46,6 +46,8 @@ self.client.rpush(self.queue_name, ...)   # 方向已對齊 ✅
 
 **動作**：main rename `oj_judge_queue` → `submissions:pending`（一行常數改動）。
 
+**Status**：worker 已用 `submissions:pending` / `submissions:processing`（PR #17 `judge-worker/worker.py`）。Backend `queue_manager.py` 還沒 rename、待 Shuan 在 `POST /submissions` 一起改。
+
 ### Gap 3: 無獨立 result table
 
 `Submission` 表已含 result 欄位（`status` / `score` / `execution_time` / `memory_usage` / `judge_log`）、沒獨立 `submission_result_log`。
@@ -53,6 +55,8 @@ self.client.rpush(self.queue_name, ...)   # 方向已對齊 ✅
 **影響合約 4 兩種寫法**：
 - (A) `UPDATE Submission SET ... WHERE id=$1 AND status IN ('Pending', 'Judging')`（推薦 step 8、不動 schema）
 - (B) 加 log table + `INSERT ON CONFLICT DO NOTHING`（留 step 9 audit trail）
+
+**Status**：選 (A)、已 ship（PR #17 `backend/app/api/api_v1/endpoints/internal.py`、SQL `UPDATE WHERE status IN ('Pending', 'Judging')` guard + rowcount=0 silent 200）。
 
 ---
 
@@ -293,3 +297,29 @@ For loop 遇第一個非 AC 就 break；`per_testcase` 只含跑過的（包括 
 4. **Backend callback handler**：兩層 idempotency（DB PK + SQL UPDATE WHERE guard）
 5. **Integration test**：sandbox smoke / DockerSpawner / `test_malicious` assert / **callback idempotency**（POST 兩次驗只動 DB 一次）/ **queue redelivery**（kill worker mid-judge 驗 sweep + 重做）
 6. **Step 9+**：NACK / DLQ / monitoring / `RUN_ONLY` / rejudge / 多 worker scaling
+
+---
+
+## 實作狀態（B 域，PR #17）
+
+PR #17 `step8/queue-callback` 已 ship 下列項目（57 tests 全綠）：
+
+| 合約 / Pre-flight | 檔 | 狀態 |
+|---|---|---|
+| 合約 1 (queue 機制) | `judge-worker/worker.py` | ✅ sweep + BLMOVE + LREM |
+| 合約 2 (MinIO + presigned URL helper) | `backend/app/services/storage.py` | ✅ `StorageService` (boto3) |
+| 合約 3 (Callback endpoint + auth) | `backend/app/api/api_v1/endpoints/internal.py` + `backend/app/api/deps.py` | ✅ + `verify_worker_secret` |
+| 合約 3 (Overall verdict aggregation) | `backend/app/services/judging.py` | ✅ `aggregate_verdict` |
+| 合約 4 (Backend idempotency) | `internal.py` SQL `UPDATE WHERE status IN` guard | ✅ Pre-flight Gap 3 寫法 (A) |
+| 合約 5b (Score) | `judging.py` `calc_score` partial credit | ✅ |
+| 合約 5c (Worker fail-fast) | `worker.py` `run_official` | ✅ |
+| 合約 5a (RUN_ONLY) | worker `NotImplementedError` + drop | ✅ fallback。Backend reject 待 Shuan |
+| Pre-flight Gap 1 (callback endpoint) | `internal.py` | ✅ |
+| Pre-flight Gap 1 (POST /submissions) | — | ⏳ Shuan |
+| Pre-flight Gap 2 (queue name rename) | worker 端已用新名 | ⏳ Shuan 改 `queue_manager.py` |
+| Pre-flight Gap 3 (idempotency 寫法) | 選 (A) UPDATE WHERE guard | ✅ |
+| Sandbox protocol (源碼隔離 stdin) | `judge-worker/spawner/` + `judge-sandbox/images/*` | ✅ bind mount source 到 `/sandbox`、stdin 純餵 testcase input |
+| Worker 容器化 | `judge-worker/Dockerfile` + compose worker service (DooD) | ✅ |
+| MinIO compose service | `docker-compose.yml` | ✅ |
+
+待 Shuan：`POST /submissions` 寫 + `queue_manager.py` rename + reject `submission_type=RUN_ONLY`。
