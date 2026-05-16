@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from uuid import UUID
 
 from app.api import deps
 from app.models.user import User
@@ -31,7 +32,7 @@ def create_user(
     return new_user
 
 @router.get("/", response_model=List[UserRead])
-def read_users(db: Session = Depends(deps.get_db)):
+def read_users(db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_interviewer_user)):
     return db.query(User).all()
 
 @router.get("/me", response_model=UserRead)

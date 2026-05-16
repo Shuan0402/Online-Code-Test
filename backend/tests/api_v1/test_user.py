@@ -101,3 +101,21 @@ def test_get_me_unauthenticated(client):
     response = client.get("/api/v1/users/me")
     
     assert response.status_code == 401
+
+# --- GET /users/ (獲取所有人清單) ---
+def test_read_users_list_success(client, admin_user, override_auth):
+    """
+    管理方應能順利取得所有人名冊。
+    """
+    override_auth(admin_user)
+    response = client.get("/api/v1/users/")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+def test_read_users_list_forbidden_for_candidate(client, candidate_user, override_auth):
+    """
+    一般考生嘗試偷看所有人名冊，應被 403 拒絕。
+    """
+    override_auth(candidate_user)
+    response = client.get("/api/v1/users/")
+    assert response.status_code == 403
