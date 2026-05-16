@@ -84,3 +84,11 @@ Note: `@types/react` and `@types/react-dom` in devDependencies are not TypeScrip
 #### Verification gaps
 
 - Browser rendering of the three acceptance criteria (dev server start, layout checks, 404) was not verified by running the dev server; the reviewer confirms the code wiring is correct but a one-minute manual browser check is recommended before dispatching P2.
+
+### Supervisor resolution + commit
+
+- Reviewer's must-fix (`node_modules/` and `dist/` not git-ignored) resolved inline by supervisor: added `node_modules/`, `dist/`, `.vite/`, `*.log` to root `.gitignore`. Verified with `git check-ignore frontend/node_modules frontend/dist` (both ignored).
+- Verifier's yellow on missing lint: deferred. User is a frontend beginner; ESLint adds friction without paying off for P1 scaffold. Can be added in a polish pass later.
+- Reviewer nice-to-have on `@types/react` in devDeps: leave as-is, no functional impact.
+- Reviewer nice-to-have on `StaffLayout` showing all three nav links: flagged for P2 executor (ProtectedRoute work will naturally hide nav for wrong role).
+- **Committed P1 as `b90b945`** on `feat/frontend-scaffold`.
