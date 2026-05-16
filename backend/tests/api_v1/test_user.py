@@ -262,3 +262,42 @@ def test_update_my_password_unauthenticated(client):
     }
     response = client.put("/api/v1/users/me/password", json=ghost_payload)
     assert response.status_code == 401
+
+# --- PUT /users/{user_id}/password-reset (強制重設他人密碼) ---
+def test_reset_user_password_by_admin_success(client, admin_user, candidate_user, override_auth):
+    """
+    最高管理員 Admin 應能無條件強制重設一般考生的密碼。
+    """
+    override_auth(admin_user)
+    
+    reset_payload = {"new_password": "admin_forced_password_555"}
+    response = client.put(f"/api/v1/users/{candidate_user.id}/password-reset", json=reset_payload)
+    
+    assert response.status_code == 200
+    assert response.json()["detail"] == "已成功強制重設該使用者密碼"
+
+
+def test_reset_user_password_forbidden_for_interviewer(client, interviewer_user, candidate_user, override_auth):
+    """
+    面試主管沒有權力重設他人密碼，應回傳 403。
+    """
+    override_auth(interviewer_user)
+    
+    reset_payload = {"new_password": "interviewer_hacked_pass"}
+    response = client.put(f"/api/v1/users/{candidate_user.id}/password-reset", json=reset_payload)
+    
+    assert response.status_code == 403
+
+
+def test_reset_user_password_not_found(client, admin_user, override_auth):
+    """
+    管理員若傳入不存在的 UUID 改密碼，應回傳 404。
+    """
+    override_auth(admin_user)
+    fake_id = uuid.uuid4()
+    
+    reset_payload = {"new_password": "some_password_123"}
+    response = client.put(f"/api/v1/users/{fake_id}/password-reset", json=reset_payload)
+    
+    assert response.status_code == 404
+    assert "找不到" in response.json()["detail"]

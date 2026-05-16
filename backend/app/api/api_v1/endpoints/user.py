@@ -5,7 +5,7 @@ from uuid import UUID
 
 from app.api import deps
 from app.models.user import User
-from app.schemas.user import UserCreate, UserRead, UserUpdate, UserUpdatePassword
+from app.schemas.user import UserCreate, UserRead, UserUpdate, UserUpdatePassword, UserPasswordReset
 from app.core.security import SecurityManager
 from app.models.enums import UserRole
 
@@ -140,3 +140,28 @@ def update_my_password(
     db.commit()
     
     return {"detail": "密碼已成功修改"}
+
+@router.put("/{user_id}/password-reset", status_code=status.HTTP_200_OK)
+def reset_user_password(
+    user_id: UUID,
+    payload: UserPasswordReset,
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_admin_user)
+):
+    """
+    最高管理員強制重設他人密碼。
+    - 僅限最高管理員 Admin 操作。
+    - 僅需提供 new_password，無需舊密碼。
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到該使用者"
+        )
+        
+    user.password_hash = SecurityManager.hash_password(payload.new_password)
+    db.add(user)
+    db.commit()
+    
+    return {"detail": "已成功強制重設該使用者密碼"}
