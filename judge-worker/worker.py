@@ -64,11 +64,19 @@ def decide_verdict(result: CompletedRun, sub: dict) -> str:
     return "AC"
 
 
+SOURCE_FILENAME_BY_LANGUAGE = {
+    "python": "source.py",
+    "cpp": "source.cpp",
+}
+
+
 def judge(spawner: SandboxSpawner, sub: dict) -> None:
     image = f"sandbox:{sub['language']}"
     result = spawner.run(
         image=image,
-        stdin=sub["source_code"],
+        source=sub["source_code"],
+        source_filename=SOURCE_FILENAME_BY_LANGUAGE[sub["language"]],
+        stdin=sub.get("stdin_input", ""),
         timeout=sub["timeout_sec"],
     )
     verdict = decide_verdict(result, sub)

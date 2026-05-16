@@ -7,52 +7,85 @@ DockerSpawner——SandboxSpawner 的 docker 版實作。
 3. 所有 docker 細節（CLI 字串、cidfile、kill 邏輯）都藏在這個檔案裡，
    worker 主流程只跟 SandboxSpawner ABC 對話
 
-Step 7 之後會在 _build_run_cmd() 加 runtime 安全旗標
-（--network=none --read-only --tmpfs --cap-drop=ALL --memory --pids-limit ...），
-worker 主流程不需要動。
+Step 8 sandbox protocol 變動：
+- source code 寫到 host tempdir、bind mount 到 /sandbox:ro
+- stdin 純粹是 testcase input、餵 process stdin
+- 跑完 finally 清 tempdir
+
+Step 7 會在 _build_run_cmd() 加 runtime 安全旗標
+（--network=none --read-only --tmpfs /tmp --cap-drop=ALL --memory --pids-limit ...），
+worker 主流程不需要動。注意：/sandbox 是 readonly mount、不能再 tmpfs；
+cpp 的 a.out 寫 /tmp、所以 /tmp 要保留 tmpfs rw。
 """
 
+import shutil
 import subprocess
+import tempfile
 import time
 import uuid
+from pathlib import Path
 
 from .base import CompletedRun, SandboxSpawner
 
 
 class DockerSpawner(SandboxSpawner):
-    def run(self, image: str, stdin: str, timeout: int) -> CompletedRun:
-        container_name = f"sandbox-{uuid.uuid4().hex[:12]}"
-        cmd = self._build_run_cmd(image, container_name)
-
-        start = time.monotonic()
+    def run(
+        self,
+        image: str,
+        source: str,
+        source_filename: str,
+        stdin: str,
+        timeout: int,
+    ) -> CompletedRun:
+        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-"))
         try:
-            proc = subprocess.run(
-                cmd,
-                input=stdin,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            return CompletedRun(
-                stdout=proc.stdout,
-                stderr=proc.stderr,
-                exit_code=proc.returncode,
-                duration_sec=time.monotonic() - start,
-                timed_out=False,
-            )
-        except subprocess.TimeoutExpired as e:
-            self._kill_container(container_name)
-            return CompletedRun(
-                stdout="",
-                stderr=self._decode(e.stderr),
-                exit_code=-1,
-                duration_sec=time.monotonic() - start,
-                timed_out=True,
-            )
+            (host_dir / source_filename).write_text(source)
 
-    def _build_run_cmd(self, image: str, container_name: str) -> list[str]:
+            container_name = f"sandbox-{uuid.uuid4().hex[:12]}"
+            cmd = self._build_run_cmd(image, container_name, host_dir)
+
+            start = time.monotonic()
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    input=stdin,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+                return CompletedRun(
+                    stdout=proc.stdout,
+                    stderr=proc.stderr,
+                    exit_code=proc.returncode,
+                    duration_sec=time.monotonic() - start,
+                    timed_out=False,
+                )
+            except subprocess.TimeoutExpired as e:
+                self._kill_container(container_name)
+                return CompletedRun(
+                    stdout="",
+                    stderr=self._decode(e.stderr),
+                    exit_code=-1,
+                    duration_sec=time.monotonic() - start,
+                    timed_out=True,
+                )
+        finally:
+            shutil.rmtree(host_dir, ignore_errors=True)
+
+    def _build_run_cmd(
+        self,
+        image: str,
+        container_name: str,
+        host_dir: Path,
+    ) -> list[str]:
         # Step 7 會在這裡加 --network=none / --read-only / --memory / ...
-        return ["docker", "run", "--rm", "-i", "--name", container_name, image]
+        # 注意：/sandbox 已是 readonly bind mount、別再 --tmpfs /sandbox
+        return [
+            "docker", "run", "--rm", "-i",
+            "--name", container_name,
+            "-v", f"{host_dir}:/sandbox:ro",
+            image,
+        ]
 
     def _kill_container(self, container_name: str) -> None:
         # 不檢查 returncode：container 可能已自然結束，docker kill 失敗無所謂；
