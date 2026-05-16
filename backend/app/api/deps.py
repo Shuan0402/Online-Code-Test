@@ -13,6 +13,7 @@ from app.models.user import User
 from app.schemas.token import TokenPayload
 from app.core.redis_client import redis_client
 from app.services.storage import StorageService, build_storage_from_env
+from app.models.enums import UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
@@ -94,20 +95,18 @@ def get_current_user(
 
 class RoleChecker:
     def __init__(self, allowed_roles: List[str]):
-        self.allowed_roles = allowed_roles
+        self.allowed_roles = set(allowed_roles) | {UserRole.Admin}
 
     def __call__(self, current_user: User = Depends(get_current_user)):
-        user_role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-        
-        if user_role_value not in self.allowed_roles:
+        if current_user.role not in self.allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"權限不足。需要: {self.allowed_roles}, 實際為: {user_role_value}"
+                detail="您的帳號角色權限不足，拒絕存取此端點"
             )
         return current_user
 
 # 預定義常用的權限入口
-get_admin_user = RoleChecker(["Admin"])
-get_staff_user = RoleChecker(["Admin", "Questioner", "Interviewer"])
-get_questioner_user = RoleChecker(["Admin", "Questioner"])
-get_interviewer_user = RoleChecker(["Admin", "Interviewer"])
+get_admin_user       = RoleChecker([UserRole.Admin])
+get_staff_user       = RoleChecker([UserRole.Questioner, UserRole.Interviewer]) # 👈 不用再手動寫 Admin 了！
+get_questioner_user  = RoleChecker([UserRole.Questioner])
+get_interviewer_user = RoleChecker([UserRole.Interviewer])
