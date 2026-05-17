@@ -1,4 +1,5 @@
 from app.models.enums import UserRole
+from app.models.testcase import TestCase
 
 
 # --- GET /problems/{id}/testcases (獲得完整測資) ---
@@ -70,7 +71,7 @@ def test_create_problem_testcase_candidate_blocked(client, candidate_user, overr
 
     assert response.status_code == 403
 
-# --- PATCH /problems/{id} (修改測資) ---
+# --- PATCH /testcases/{id} (修改測資) ---
 def test_update_testcase_success(client, questioner_user, override_auth, create_test_problem, db_session):
     """
     出題者成功修改指定測資的部分欄位
@@ -119,4 +120,39 @@ def test_update_testcase_candidate_blocked(client, candidate_user, override_auth
     db_session.commit()
     
     response = client.patch(f"/api/v1/testcases/{tc.id}", json={"score_weight": 100})
+    assert response.status_code == 403
+
+# --- DELETE /testcases/{id} (刪除測資) ---
+def test_delete_testcase_success(client, questioner_user, override_auth, create_test_problem, db_session):
+    """
+    出題者成功刪除指定測資，且資料庫同步抹除
+    """
+    override_auth(questioner_user)
+    prob = create_test_problem()
+    
+    tc = TestCase(problem_id=prob.id, input_data="DELETE_ME", expected_output="OUT")
+    db_session.add(tc)
+    db_session.commit()
+    db_session.refresh(tc)
+    
+    response = client.delete(f"/api/v1/testcases/{tc.id}")
+    assert response.status_code == 204
+    
+    db_session.expire_all()
+    deleted_tc = db_session.query(TestCase).filter(TestCase.id == tc.id).first()
+    assert deleted_tc is None
+
+
+def test_delete_testcase_candidate_blocked(client, candidate_user, override_auth, create_test_problem, db_session):
+    """
+    考生禁止刪除任何測資
+    """
+    override_auth(candidate_user)
+    prob = create_test_problem()
+    
+    tc = TestCase(problem_id=prob.id, input_data="SAFE_DATA", expected_output="OUT")
+    db_session.add(tc)
+    db_session.commit()
+    
+    response = client.delete(f"/api/v1/testcases/{tc.id}")
     assert response.status_code == 403
