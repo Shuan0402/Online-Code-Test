@@ -7,6 +7,7 @@ from app.main import app
 from app.api import deps
 from app.services.queue_manager import queue_manager
 from app.models.submission import Submission
+from app.models.exam import Exam
 
 
 # --- POST /submissions (建立提交) ---
@@ -58,6 +59,24 @@ def test_create_submission_reject_run_only(client, candidate_user, override_auth
     
     assert response.status_code == 422
     assert "submission_type" in response.text
+
+def test_create_submission_reject_unsupported_language(client, candidate_user, override_auth, create_test_problem):
+    """
+    測試合約防線：拒絕不支援的程式語言 (非 python/cpp)
+    """
+    override_auth(candidate_user)
+    problem = create_test_problem()
+    
+    payload = {
+        "problem_id": problem.id,
+        "language": "java",  # 不在白名單內
+        "source_code": "System.out.println('Hello NTUT');",
+        "submission_type": "OFFICIAL"
+    }
+    response = client.post("/api/v1/submissions/", json=payload)
+    
+    assert response.status_code == 422
+    assert "language" in response.text
 
 # --- GET /submissions/{submission_id} (詳細資訊) ---
 def test_get_submission_success_by_owner(client, db_session, candidate_user, override_auth, create_test_problem, create_mock_submission):
@@ -115,6 +134,88 @@ def test_get_submission_not_found(client, candidate_user, override_auth):
     response = client.get(f"/api/v1/submissions/{random_uuid}")
     assert response.status_code == 404
     
+def test_get_submission_includes_presigned_url(client, candidate_user, override_auth, create_test_problem, create_mock_submission):
+    """
+    測試單筆查詢防線：當紀錄具有有效 S3 路徑時，必須動態派發 presigned_url 供前端下載明文 Code。
+    """
+    override_auth(candidate_user)
+    problem = create_test_problem()
+    sub = create_mock_submission(user_id=candidate_user.id, problem_id=problem.id)
+    sub.code_s3_url = "s3://octest-submissions/my_code.cpp" 
+
+    mock_storage = MagicMock()
+    mock_storage.sign_get_url.return_value = "http://mock-minio-link.com/download-my-code"
+    app.dependency_overrides[deps.get_storage] = lambda: mock_storage
+
+    response = client.get(f"/api/v1/submissions/{sub.id}")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["presigned_url"] == "http://mock-minio-link.com/download-my-code"
+
+    if deps.get_storage in app.dependency_overrides:
+        del app.dependency_overrides[deps.get_storage]
+
+def test_get_latest_submission_includes_presigned_url(client, candidate_user, override_auth, create_test_problem, create_mock_submission):
+    """
+    測試斷線還原防線：最新提交 API 必須包含 presigned_url，前端才能順利還原編輯器程式碼。
+    """
+    override_auth(candidate_user)
+    problem = create_test_problem()
+    sub = create_mock_submission(user_id=candidate_user.id, problem_id=problem.id)
+    sub.code_s3_url = "s3://octest-submissions/latest_recovery.py"
+
+    mock_storage = MagicMock()
+    mock_storage.sign_get_url.return_value = "http://mock-minio-link.com/download-latest-recovery"
+    app.dependency_overrides[deps.get_storage] = lambda: mock_storage
+
+    response = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["presigned_url"] == "http://mock-minio-link.com/download-latest-recovery"
+
+    if deps.get_storage in app.dependency_overrides:
+        del app.dependency_overrides[deps.get_storage]
+
+
+def test_get_latest_submission_with_exam_id_filtering(client, db_session, interviewer_user, candidate_user, override_auth, create_test_problem, create_mock_submission):
+    """
+    測試斷線還原加固：當傳入特定 exam_id 時，應回傳該場考試的最新提交，排除其他考試的干擾。
+    """
+    override_auth(candidate_user)
+    problem = create_test_problem()
+    exam_a = Exam(id=uuid.uuid4(), title="模擬考 A", creator_id=interviewer_user.id, candidate_id=candidate_user.id)
+    exam_b = Exam(id=uuid.uuid4(), title="模擬考 B", creator_id=interviewer_user.id, candidate_id=candidate_user.id)
+    db_session.add(exam_a)
+    db_session.add(exam_b)
+    db_session.commit()
+
+    sub_a = create_mock_submission(user_id=candidate_user.id, problem_id=problem.id, score=85)
+    sub_a.exam_id = exam_a.id
+    sub_a.created_at = datetime.now() - timedelta(minutes=10)
+    db_session.add(sub_a)
+    sub_b = create_mock_submission(user_id=candidate_user.id, problem_id=problem.id, score=98)
+    sub_b.exam_id = exam_b.id
+    db_session.add(sub_b)
+    db_session.commit()
+
+    # 不帶 exam_id ➔ 預設回傳全局最新 (考試 B)
+    response_global = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}")
+    assert response_global.status_code == 200
+    assert response_global.json()["id"] == str(sub_b.id)
+
+    # 帶上 exam_id=A ➔ 回傳較舊、但屬於該場考試的 sub_a
+    response_exam_a = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}&exam_id={exam_a.id}")
+    assert response_exam_a.status_code == 200
+    assert response_exam_a.json()["id"] == str(sub_a.id)
+    assert response_exam_a.json()["score"] == 85
+
+    # 傳入一個該生從未在此題提交過的 exam_id ➔ 必須妥善拋出 404
+    fake_exam_id = uuid.uuid4()
+    response_fake = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}&exam_id={fake_exam_id}")
+    assert response_fake.status_code == 404
+
 # --- GET /submissions (列表查詢) ---
 def test_get_submissions_list_as_candidate(client, db_session, candidate_user, create_test_user, override_auth, create_test_problem, create_mock_submission):
     """

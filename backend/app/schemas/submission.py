@@ -27,6 +27,14 @@ class SubmissionCreate(BaseModel):
         if v.upper() == "RUN_ONLY":
             raise ValueError("此版本尚未支援 'RUN_ONLY' 運行模式，請使用 'OFFICIAL' 繳交。")
         return v.upper()
+    
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str) -> str:
+        allowed_languages = ["python", "cpp"]
+        if v.lower() not in allowed_languages:
+            raise ValueError(f"暫不支援 '{v}' 語言。目前僅開放: {allowed_languages}")
+        return v.lower()
 
 class JudgeTaskPayload(BaseModel):
     """
@@ -92,5 +100,7 @@ class SubmissionRead(SubmissionBase):
     created_at: datetime
 
     details: List[SubmissionDetailRead] = []
+
+    presigned_url: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)

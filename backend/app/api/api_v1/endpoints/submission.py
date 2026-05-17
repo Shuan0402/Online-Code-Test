@@ -99,17 +99,23 @@ def create_submission(
 @router.get("/latest", response_model=SubmissionRead)
 def get_latest_submission(
     problem_id: int,
+    exam_id: Optional[UUID] = None,
     db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    current_user = Depends(deps.get_current_user),
+    storage_service = Depends(deps.get_storage)
 ):
     """
     獲取特定題目最後一次提交 API
     - 專供考生進入題目時，自動還原上一次寫到一半的程式碼。
     - 僅鎖定當前登入使用者的最新一筆紀錄。
     """
+    filters = [Submission.problem_id == problem_id, Submission.user_id == current_user.id]
+    if exam_id:
+        filters.append(Submission.exam_id == exam_id)
+        
     submission = (
         db.query(Submission)
-        .filter(Submission.problem_id == problem_id, Submission.user_id == current_user.id)
+        .filter(*filters)
         .order_by(Submission.created_at.desc())
         .first()
     )
@@ -119,6 +125,9 @@ def get_latest_submission(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="您針對該題目尚未有任何提交紀錄"
         )
+    
+    if submission.code_s3_url and submission.code_s3_url != "PENDING_UPLOAD":
+        submission.presigned_url = storage_service.sign_get_url(submission.code_s3_url)
         
     return submission
 
@@ -126,7 +135,8 @@ def get_latest_submission(
 def get_submission_by_id(
     submission_id: UUID,
     db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    current_user = Depends(deps.get_current_user),
+    storage_service = Depends(deps.get_storage)
 ):
     """
     狀態查詢與明細 API
@@ -152,7 +162,10 @@ def get_submission_by_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="您沒有權限查看此繳交紀錄"
         )
-        
+    
+    if submission.code_s3_url and submission.code_s3_url != "PENDING_UPLOAD":
+        submission.presigned_url = storage_service.sign_get_url(submission.code_s3_url)
+    
     return submission
 
 @router.get("/", response_model=List[SubmissionRead])
