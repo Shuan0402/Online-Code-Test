@@ -402,3 +402,45 @@ def publish_exam_session(
     db.commit()
     db.refresh(exam)
     return exam
+
+@router.get("/{exam_id}", response_model=ExamRead)
+def get_exam_session_by_id(
+    exam_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    單一考試場次詳細調閱 API。
+    - 面試官 / 管理員：可直接調閱系統內任意場次（含 Draft 草稿）。
+    - 一般考生：限制只能查看指派給自己的考卷，若該考卷處於 Draft (草稿) 狀態，強制阻斷查看。
+    """
+    exam = (
+        db.query(Exam)
+        .options(
+            joinedload(Exam.exam_problems).joinedload(ExamProblem.problem),
+            joinedload(Exam.candidate)
+        )
+        .filter(Exam.id == exam_id)
+        .first()
+    )
+
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定的考試項目。"
+        )
+
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        if exam.candidate_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="權限不足，您無法查看不屬於您的考試場次。"
+            )
+        
+        if exam.status == ExamStatus.Draft:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="權限不足，該考試目前處於草稿階段，尚未對考生開放。"
+            )
+
+    return exam

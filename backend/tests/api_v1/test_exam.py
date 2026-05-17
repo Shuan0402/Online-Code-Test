@@ -522,3 +522,87 @@ def test_publish_exam_not_found(client, interviewer_user, override_auth):
     response = client.post(f"/api/v1/exams/{fake_id}/publish")
     assert response.status_code == 404
     assert "找不到指定的考試" in response.json()["detail"]
+
+# --- GET /exams/{id} (單一場次詳細調閱) ---
+def test_get_single_exam_as_interviewer_any_status(client, interviewer_user, candidate_user, override_auth, create_test_exam):
+    """
+    驗證面試官可以調閱任何狀態（包含 Draft 草稿）的單一考卷。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(
+        title="面試官草稿審查卷", 
+        candidate_id=candidate_user.id, 
+        status=ExamStatus.Draft,
+        easy_count=1
+    )
+
+    response = client.get(f"/api/v1/exams/{exam.id}")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "面試官草稿審查卷"
+
+
+def test_get_single_exam_as_candidate_own_published_success(client, candidate_user, interviewer_user, override_auth, create_test_exam):
+    """
+    驗證一般考生可以順利調閱指派給自己、且已發布（Published）的考卷。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(
+        title="正式派發期末考", 
+        candidate_id=candidate_user.id, 
+        status=ExamStatus.Published,
+        easy_count=1
+    )
+
+    override_auth(candidate_user)
+    response = client.get(f"/api/v1/exams/{exam.id}")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "正式派發期末考"
+
+
+def test_get_single_exam_as_candidate_own_draft_forbidden(client, candidate_user, interviewer_user, override_auth, create_test_exam):
+    """
+    驗證即使考卷指派在該考生名下，只要狀態是 Draft，考生呼叫時應回傳 403。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(
+        title="未完成的編輯中考卷", 
+        candidate_id=candidate_user.id, 
+        status=ExamStatus.Draft,
+        easy_count=1
+    )
+
+    override_auth(candidate_user)
+    response = client.get(f"/api/v1/exams/{exam.id}")
+
+    assert response.status_code == 403
+    assert "尚未對考生開放" in response.json()["detail"]
+
+
+def test_get_single_exam_as_candidate_steal_others_forbidden(client, candidate_user, interviewer_user, override_auth, create_test_exam, create_test_user):
+    """
+    驗證考生如果企圖透過隨機遞增或竊取 UUID 來查看別人的 Ongoing 考卷，應回傳 403。
+    """
+    other_candidate = create_test_user(role=UserRole.Candidate)
+    
+    override_auth(interviewer_user)
+    exam = create_test_exam(title="別人的考卷", candidate_id=other_candidate.id, status=ExamStatus.Published)
+
+    override_auth(candidate_user)
+    response = client.get(f"/api/v1/exams/{exam.id}")
+
+    assert response.status_code == 403
+    assert "無法查看不屬於您的考試" in response.json()["detail"]
+
+
+def test_get_single_exam_not_found(client, interviewer_user, override_auth):
+    """
+    帶入隨機不存在的 UUID，系統應回傳 404 Not Found。
+    """
+    override_auth(interviewer_user)
+    fake_id = uuid.uuid4()
+    
+    response = client.get(f"/api/v1/exams/{fake_id}")
+    assert response.status_code == 404
+    assert "找不到指定的考試項目" in response.json()["detail"]
