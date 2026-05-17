@@ -787,3 +787,38 @@ def test_add_exam_problem_manual_not_in_draft_blocked(client, interviewer_user, 
     response = client.post(f"/api/v1/exams/{exam.id}/problems", json=payload)
     assert response.status_code == 400
     assert "只有在 Draft (草稿) 狀態才允許修改題目清單" in response.json()["detail"]
+
+# --- GET /exams/{exam_id}/problems (獲得指定考試題目列表) ----
+def test_get_exam_problems_success_by_staff(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    面試主管能成功調閱任何場次的配置題目
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam()
+    prob = create_test_problem(title="應考架構測試題")
+    
+    assoc = ExamProblem(exam_id=exam.id, problem_id=prob.id)
+    db_session.add(assoc)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/problems")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "應考架構測試題"
+
+
+def test_get_exam_problems_candidate_blocked_for_others(client, candidate_user, override_auth, create_test_exam, create_test_user):
+    """
+    考生企圖調閱「不屬於自己」的考試場次題目，系統應回傳 403
+    """
+    other_candidate = create_test_user(role=UserRole.Candidate)
+    other_exam = create_test_exam(candidate_id=other_candidate.id)
+    
+    override_auth(candidate_user)
+    
+    response = client.get(f"/api/v1/exams/{other_exam.id}/problems")
+    
+    assert response.status_code == 403
+    assert "非本人名下" in response.json()["detail"]

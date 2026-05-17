@@ -12,6 +12,8 @@ from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
+from app.schemas.problem import ProblemRead
+
 
 router = APIRouter()
 
@@ -599,3 +601,33 @@ def add_exam_problem_manual(
     db.commit()
     db.refresh(exam)
     return exam
+
+@router.get("/{exam_id}/problems", response_model=List[ProblemRead])
+def get_exam_problems(
+    exam_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    獲取特定考試場次配置的所有題目清單
+    - Admin/Interviewer 可看全域；Candidate 僅限看自己名下的場次
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="找不到該筆考試場次。"
+        )
+
+    if current_user.role == UserRole.Candidate and str(exam.candidate_id) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，您無權存取此非本人名下的考試場次。"
+        )
+
+    problems = db.query(Problem)\
+        .join(ExamProblem, Problem.id == ExamProblem.problem_id)\
+        .filter(ExamProblem.exam_id == exam_id)\
+        .all()
+        
+    return problems
