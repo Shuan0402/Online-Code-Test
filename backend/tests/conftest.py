@@ -9,7 +9,7 @@ from app.main import app
 from app.db.base import Base
 from app.db.session import engine as prod_engine, SQLALCHEMY_DATABASE_URL
 from app.api.deps import get_db
-from app.models import user, problem, submission, exam, exam_problem, testcase
+from app.models import user, problem, submission, exam, testcase
 from app.models.user import User
 from app.models.problem import Problem
 from app.models.testcase import TestCase
