@@ -33,3 +33,11 @@ class TestCaseUpdate(BaseModel):
     expected_output: Optional[str] = Field(None, description="預期輸出資料 (Expected Output)")
     score_weight: Optional[int] = Field(None, ge=0, description="本筆測資的分數權重")
     is_sample: Optional[bool] = Field(None, description="是否展示給考生作為範例測資")
+
+class RejudgeResponse(BaseModel):
+    """
+    題目重測啟動後的回傳狀態
+    """
+    message: str = Field(..., description="提示訊息")
+    problem_id: int = Field(..., description="重測的題目 ID")
+    submissions_triggered: int = Field(..., description="本次觸發非同步重測的提交總筆數")

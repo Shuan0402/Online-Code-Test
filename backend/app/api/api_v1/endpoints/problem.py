@@ -8,10 +8,14 @@ from app.models.user import User
 from app.models.problem import Problem
 from app.models.testcase import TestCase
 from app.models.enums import UserRole
+from app.models.submission import Submission
+from app.models.enums import JudgeStatus
+from app.schemas.testcase import RejudgeResponse
 from app.schemas.problem import ProblemCreate, ProblemUpdate, ProblemRead, ProblemShortRead
 from app.schemas.testcase import TestCaseRead, TestCaseCreate
 from app.api.deps import get_questioner_user
-
+from app.services.storage import StorageService
+from app.services.queue_manager import queue_manager
 
 router = APIRouter()
 
@@ -194,3 +198,65 @@ def create_problem_testcase(
     db.refresh(db_obj)
     
     return db_obj
+
+@router.post("/{id}/rejudge", response_model=RejudgeResponse, status_code=status.HTTP_202_ACCEPTED)
+def rejudge_problem_submissions(
+    id: int,
+    db: Session = Depends(deps.get_db),
+    storage_service: StorageService = Depends(deps.get_storage),
+    current_user = Depends(deps.get_questioner_user)
+):
+    """
+    一鍵重測該題目的所有歷史提交
+    - 僅限 Questioner 與 Admin
+    """
+    problem = db.query(Problem).filter(Problem.id == id).first()
+    if not problem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的題目。")
+
+    submissions = db.query(Submission).filter(Submission.problem_id == id).all()
+    submission_count = len(submissions)
+
+    if submission_count == 0:
+        return RejudgeResponse(
+            message="本題目目前尚無任何考生繳交紀錄，無需執行重測。",
+            problem_id=id,
+            submissions_triggered=0
+        )
+
+    latest_testcases = db.query(TestCase).filter(TestCase.problem_id == id).order_by(TestCase.id.asc()).all()
+    
+    testcases_payload = [
+        {
+            "testcase_id": tc.id,
+            "input_data": tc.input_data,
+            "expected_output": tc.expected_output
+        }
+        for tc in latest_testcases
+    ]
+
+    for sub in submissions:
+        sub.status = JudgeStatus.Pending
+        sub.score = 0
+        db.add(sub)
+    db.commit()
+
+    for sub in submissions:
+        presigned_url = storage_service.sign_get_url(sub.code_s3_url)
+        
+        worker_message = {
+            "submission_id": str(sub.id),
+            "submission_type": "OFFICIAL", 
+            "presigned_url": presigned_url,
+            "language": sub.language,
+            "time_limit_ms": getattr(problem, "time_limit_ms", 2000), 
+            "testcases": testcases_payload 
+        }
+        
+        queue_manager.push_to_queue(queue_manager.QUEUE_PENDING, worker_message)
+
+    return RejudgeResponse(
+        message=f"已成功載入 {len(testcases_payload)} 筆最新測資，並將該題目的 {submission_count} 筆歷史提交推送至 Redis 評測佇列。",
+        problem_id=id,
+        submissions_triggered=submission_count
+    )
