@@ -9,6 +9,7 @@ from app.models.problem import Problem
 from app.models.testcase import TestCase
 from app.models.enums import UserRole
 from app.schemas.problem import ProblemCreate, ProblemUpdate, ProblemRead, ProblemShortRead
+from app.schemas.testcase import TestCaseRead
 from app.api.deps import get_questioner_user
 
 
@@ -135,3 +136,27 @@ def delete_problem(
     db.add(db_problem)
     db.commit()
     return None
+
+@router.get("/{id}/testcases", response_model=list[TestCaseRead])
+def get_problem_testcases(
+    id: int,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    獲取指定題目的完整測試資料（包含隱密輸入/輸出）
+    - 僅限 Admin, Interviewer, Questioner
+    """
+    if current_user.role not in [UserRole.Admin, UserRole.Interviewer, UserRole.Questioner]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有出題者或管理員可以查看完整測資。"
+        )
+    
+    problem = db.query(Problem).filter(Problem.id == id).first()
+    if not problem:
+        raise HTTPException(status_code=404, detail="找不到指定的題目。")
+    
+    testcases = db.query(TestCase).filter(TestCase.problem_id == id).order_by(TestCase.id.asc()).all()
+
+    return testcases
