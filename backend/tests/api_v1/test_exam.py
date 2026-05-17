@@ -387,3 +387,101 @@ def test_generate_exam_problems_insufficient_bank(client, interviewer_user, over
     response = client.post(f"/api/v1/exams/{exam.id}/problems/generate")
     assert response.status_code == 400
     assert "題目數量不足" in response.json()["detail"]
+
+# --- POST /exams/{id}/publish (發布考試場次) ---
+def test_publish_exam_session_success(client, db_session, interviewer_user, override_auth, create_test_exam, create_test_problem):
+    """
+    面試主管成功發布考卷，驗證在場次具備「抽題藍圖」且「確實配置實體題目」後，狀態能順利流轉為 Published。
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam(
+        title="測試測驗",
+        status=ExamStatus.Draft,
+        easy_count=1,
+        medium_count=0,
+        hard_count=0
+    )
+    
+    prob = create_test_problem(title="Docker Container Security")
+    
+    ep = ExamProblem(
+        exam_id=exam.id,
+        problem_id=prob.id,
+        sequence=1,
+        points=100,
+        problem=prob
+    )
+    db_session.add(ep)
+    db_session.commit()
+
+    response = client.post(f"/api/v1/exams/{exam.id}/publish")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert data["status"] == "Published"
+    assert data["exam_problems"][0]["title"] == "Docker Container Security"
+
+    db_session.refresh(exam)
+    assert exam.status == ExamStatus.Published
+
+
+def test_publish_exam_failed_empty_physical_problems(client, interviewer_user, override_auth, create_test_exam):
+    """
+    驗證當資料庫中間表沒有任何實體題目時，後端會回傳 400 Bad Request。
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam(
+        title="忘記按自動抽題的草稿",
+        status=ExamStatus.Draft,
+        easy_count=1
+    )
+
+    response = client.post(f"/api/v1/exams/{exam.id}/publish")
+    
+    assert response.status_code == 400
+    assert "尚未配置任何實體題目" in response.json()["detail"]
+
+
+def test_publish_exam_forbidden_for_candidate(client, candidate_user, override_auth, create_test_exam):
+    """
+    驗證受測學生（Candidate）如果企圖越權發布自己的考卷，應回傳 403 Forbidden。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(status=ExamStatus.Draft, easy_count=1)
+
+    response = client.post(f"/api/v1/exams/{exam.id}/publish")
+    assert response.status_code == 403
+    assert "只有面試官或管理員可以發布" in response.json()["detail"]
+
+
+def test_publish_exam_invalid_transition(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    驗證如果考試已經在進行中（Ongoing），不可再次觸發發布端點。
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam(status=ExamStatus.Ongoing, easy_count=1)
+    prob = create_test_problem(title="Existing Problem")
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100, problem=prob)
+    db_session.add(ep)
+    db_session.commit()
+
+    response = client.post(f"/api/v1/exams/{exam.id}/publish")
+    
+    assert response.status_code == 400
+    assert "只有草稿狀態的考試可以被發布" in response.json()["detail"]
+
+
+def test_publish_exam_not_found(client, interviewer_user, override_auth):
+    """
+    帶入不存在的隨機 UUID 執行發布，應回傳 404 Not Found。
+    """
+    override_auth(interviewer_user)
+    fake_id = uuid.uuid4()
+    
+    response = client.post(f"/api/v1/exams/{fake_id}/publish")
+    assert response.status_code == 404
+    assert "找不到指定的考試" in response.json()["detail"]

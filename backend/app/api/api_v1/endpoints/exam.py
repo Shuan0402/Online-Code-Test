@@ -344,3 +344,45 @@ def generate_exam_problems(
         .filter(Exam.id == exam_id)
         .first()
     )
+
+@router.post("/{exam_id}/publish", response_model=ExamRead)
+def publish_exam_session(
+    exam_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    發布考試場次 API。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以發布考試場次。"
+        )
+
+    exam = (
+        db.query(Exam)
+        .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
+        .filter(Exam.id == exam_id)
+        .first()
+    )
+    
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+
+    if exam.status != ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"目前考試狀態為 {exam.status}。只有草稿狀態的考試可以被發布。"
+        )
+
+    if not exam.exam_problems or len(exam.exam_problems) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="發布失敗！本場考試尚未配置任何實體題目，請先自動抽選題目。"
+        )
+
+    exam.status = ExamStatus.Published
+    db.commit()
+    db.refresh(exam)
+    return exam
