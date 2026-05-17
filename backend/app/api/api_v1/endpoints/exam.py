@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
@@ -13,6 +13,7 @@ from app.models.submission import Submission
 from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
 from app.schemas.problem import ProblemRead
+from app.services.exam import exam_service
 
 
 router = APIRouter()
@@ -633,3 +634,41 @@ def get_exam_problems(
         .all()
         
     return problems
+
+@router.delete("/{exam_id}/problems/{p_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_exam_problem(
+    exam_id: str,
+    p_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_staff_user)
+):
+    """
+    從指定考試場次中，移除特定的一道題目
+    - 僅限 Admin, Interviewer
+    - 如果考試已經開始，禁止任何人拔題
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到該筆考試場次。")
+    
+    if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"該場考試目前狀態為 [{exam.status}]，不允許變更題目配置。"
+        )
+    
+    assoc = db.query(ExamProblem).filter(
+        ExamProblem.exam_id == exam_id,
+        ExamProblem.problem_id == p_id
+    ).first()
+    
+    if not assoc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="在該場考試中找不到此題目的配置紀錄。"
+        )
+
+    db.delete(assoc)
+    db.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

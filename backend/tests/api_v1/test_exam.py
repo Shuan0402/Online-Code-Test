@@ -822,3 +822,39 @@ def test_get_exam_problems_candidate_blocked_for_others(client, candidate_user, 
     
     assert response.status_code == 403
     assert "非本人名下" in response.json()["detail"]
+
+def test_delete_exam_problem_success(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    面試官成功將特定題目從考試中移除，且關係表同步抹除。
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam()
+    prob = create_test_problem(title="準備被拔掉的題目")
+    
+    assoc = ExamProblem(exam_id=exam.id, problem_id=prob.id)
+    db_session.add(assoc)
+    db_session.commit()
+
+    response = client.delete(f"/api/v1/exams/{exam.id}/problems/{prob.id}")
+
+    assert response.status_code == 204
+    db_session.expire_all()
+    deleted_assoc = db_session.query(ExamProblem).filter(
+        ExamProblem.exam_id == exam.id, 
+        ExamProblem.problem_id == prob.id
+    ).first()
+    assert deleted_assoc is None
+
+
+def test_delete_exam_problem_candidate_blocked(client, candidate_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    考生禁止擅自移除考試中的題目
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam()
+    prob = create_test_problem()
+    
+    response = client.delete(f"/api/v1/exams/{exam.id}/problems/{prob.id}")
+
+    assert response.status_code == 403
