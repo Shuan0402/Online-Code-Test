@@ -1,5 +1,7 @@
 from fastapi import status
 
+
+# --- POST /login (使用者登入) ---
 def test_login_success(client, create_test_user):
     """
     測試正常登入流程。
@@ -14,6 +16,9 @@ def test_login_success(client, create_test_user):
 
     assert response.status_code == 200
     assert "access_token" in response.json()
+    assert "token_type" in response.json()
+    assert "role" in response.json()
+    assert "user_id" in response.json()
 
 def test_login_wrong_password(client, create_test_user):
     """
@@ -41,6 +46,7 @@ def test_login_non_existent_user(client):
     
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
+ # --- POST /logout (使用者登出) ---
 def test_logout_authenticated(client, create_test_user):
     """
     測試已登入使用者執行登出。

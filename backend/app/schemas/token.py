@@ -5,6 +5,8 @@ from app.models.enums import UserRole
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    role: str
+    user_id: str
 
 class TokenPayload(BaseModel):
     """
