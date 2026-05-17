@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.api_v1.endpoints import user, submission, auth, problem, internal, exam
+from app.api.api_v1.endpoints import user, submission, auth, problem, internal, exam, testcase
 
 api_router = APIRouter()
 
@@ -9,3 +9,4 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(problem.router, prefix="/problems", tags=["problems"])
 api_router.include_router(internal.router, prefix="/internal", tags=["internal"])
 api_router.include_router(exam.router, prefix="/exams", tags=["exams"])
+api_router.include_router(testcase.router, prefix="/testcases", tags=["testcases"])

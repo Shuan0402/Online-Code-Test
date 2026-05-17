@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
+from typing import Optional
+
 
 class TestCaseBase(BaseModel):
     input_data: str = Field(..., description="標準輸入資料 (Standard Input)")
@@ -22,3 +24,12 @@ class TestCaseRead(TestCaseBase):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+class TestCaseUpdate(BaseModel):
+    """
+    修改測資時前端傳入的 Request Body 規格
+    """
+    input_data: Optional[str] = Field(None, description="標準輸入資料 (Standard Input)")
+    expected_output: Optional[str] = Field(None, description="預期輸出資料 (Expected Output)")
+    score_weight: Optional[int] = Field(None, ge=0, description="本筆測資的分數權重")
+    is_sample: Optional[bool] = Field(None, description="是否展示給考生作為範例測資")
