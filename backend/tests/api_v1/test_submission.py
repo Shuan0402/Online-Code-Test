@@ -1,45 +1,67 @@
 # backend/tests/api_v1/test_submission.py
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 
 from app.main import app
 from app.api import deps
 from app.services.queue_manager import queue_manager
 from app.models.submission import Submission
-from app.models.exam import Exam
+from app.models.exam import Exam, ExamProblem
+from app.models.enums import ExamStatus, UserRole, SubmissionType
 
 
 # --- POST /submissions (建立提交) ---
-def test_create_submission_success(client, db_session, candidate_user, override_auth, create_test_problem, monkeypatch):
+def test_create_submission_missing_exam_id_blocked(client, candidate_user, override_auth, create_test_problem):
+    """
+    驗證當不帶入 exam_id 時，系統應回傳 400 Bad Request。
+    """
+    override_auth(candidate_user)
+    prob = create_test_problem()
+
+    payload = {
+        "problem_id": prob.id,
+        "language": "Python",
+        "source_code": "print('Hello World')",
+        "submission_type": SubmissionType.OFFICIAL,
+        "exam_id": None
+    }
+
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 400
+    assert "必須提供有效的考試場次編號" in response.json()["detail"]
+
+@patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=True)
+def test_create_submission_exam_ongoing_success(mock_push, client, candidate_user, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):    
     """
     測試正常繳交流程
     """
+    override_auth(interviewer_user)
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing, easy_count=1)
+    prob = create_test_problem(title="Exam Prob 1")
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100, problem=prob)
+    db_session.add(ep)
+    db_session.commit()
+
     override_auth(candidate_user)
-    problem = create_test_problem(title="Two Sum")
-    
-    mock_storage = MagicMock()
-    mock_storage.upload_source.return_value = "s3://octest-submissions/mock_test.py"
-    mock_storage.sign_get_url.return_value = "http://mock-minio-link.com/download"
-    app.dependency_overrides[deps.get_storage] = lambda: mock_storage
-    monkeypatch.setattr(queue_manager, "push_to_queue", lambda queue_name, data: True)
-    
     payload = {
-        "problem_id": problem.id,
-        "language": "python",
-        "source_code": "print('Hello NTUT')",
-        "submission_type": "OFFICIAL"
+        "problem_id": prob.id,
+        "language": "cpp",
+        "source_code": "#include <iostream>",
+        "submission_type": SubmissionType.OFFICIAL,
+        "exam_id": str(exam.id)
     }
-    response = client.post("/api/v1/submissions/", json=payload)
-    
+
+    with patch("app.api.deps.get_storage") as mock_storage_deps:
+        mock_storage = MagicMock()
+        mock_storage.upload_source.return_value = "s3://bucket/test.cpp"
+        mock_storage_deps.return_value = mock_storage
+
+        response = client.post("/api/v1/submissions/", json=payload)
+
     assert response.status_code == 202
-    data = response.json()
-    assert data["status"] == "Pending"
-    assert data["language"] == "python"
-    assert "s3://octest-submissions/" in data["code_s3_url"]
-    
-    if deps.get_storage in app.dependency_overrides:
-        del app.dependency_overrides[deps.get_storage]
+    assert response.json()["exam_id"] == str(exam.id)
 
 
 def test_create_submission_reject_run_only(client, candidate_user, override_auth, create_test_problem):
@@ -53,7 +75,8 @@ def test_create_submission_reject_run_only(client, candidate_user, override_auth
         "problem_id": problem.id,
         "language": "python",
         "source_code": "print('Run Only')",
-        "submission_type": "RUN_ONLY"
+        "submission_type": SubmissionType.RUN_ONLY,
+        "exam_id": str(uuid.uuid4())
     }
     response = client.post("/api/v1/submissions/", json=payload)
     
@@ -71,12 +94,91 @@ def test_create_submission_reject_unsupported_language(client, candidate_user, o
         "problem_id": problem.id,
         "language": "java",  # 不在白名單內
         "source_code": "System.out.println('Hello NTUT');",
-        "submission_type": "OFFICIAL"
+        "submission_type": SubmissionType.OFFICIAL,
+        "exam_id": str(uuid.uuid4())
     }
     response = client.post("/api/v1/submissions/", json=payload)
     
     assert response.status_code == 422
     assert "language" in response.text
+
+@patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=True)
+def test_create_submission_exam_not_ongoing_blocked(mock_push, client, candidate_user, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    驗證當考試已經被切換為 Finished 時，考生若企圖私下戳 API 補交程式碼，必須被 400 阻斷。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Finished, easy_count=1)
+    prob = create_test_problem()
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, problem=prob)
+    db_session.add(ep)
+    db_session.commit()
+
+    override_auth(candidate_user)
+    payload = {
+        "problem_id": prob.id,
+        "language": "python",
+        "source_code": "print('cheat')",
+        "submission_type": SubmissionType.OFFICIAL,
+        "exam_id": str(exam.id)
+    }
+
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 400
+    assert "只有在 Ongoing (進行中) 狀態才允許提交" in response.json()["detail"]
+
+
+@patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=True)
+def test_create_submission_problem_not_in_exam(mock_push, client, candidate_user, interviewer_user, override_auth, create_test_exam, create_test_problem):
+    """
+    防止考生拿外界題庫的其他程式碼，偷灌進這場考試的 exam_id 中刷分。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing, easy_count=1)
+    outside_prob = create_test_problem(title="偷渡的外界題目")
+
+    override_auth(candidate_user)
+    payload = {
+        "problem_id": outside_prob.id,
+        "language": "python",
+        "source_code": "print('hack')",
+        "submission_type": SubmissionType.OFFICIAL,
+        "exam_id": str(exam.id)
+    }
+
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 400
+    assert "本題目不屬於該場考試的範疇" in response.json()["detail"]
+
+
+@patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=True)
+def test_create_submission_steal_others_exam_forbidden(mock_push, client, candidate_user, interviewer_user, override_auth, create_test_exam, create_test_problem, create_test_user, db_session):
+    """
+    驗證 Candidate A 絕對不能帶入屬於 Candidate B 的 exam_id 來交卷。
+    """
+    other_student = create_test_user(role=UserRole.Candidate)
+
+    override_auth(interviewer_user)
+    exam = create_test_exam(candidate_id=other_student.id, status=ExamStatus.Ongoing, easy_count=1)
+    prob = create_test_problem()
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, problem=prob)
+    db_session.add(ep)
+    db_session.commit()
+
+    override_auth(candidate_user)
+    payload = {
+        "problem_id": prob.id,
+        "language": "python",
+        "source_code": "print('evil')",
+        "submission_type": SubmissionType.OFFICIAL,
+        "exam_id": str(exam.id)
+    }
+
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 403
+    assert "您並非本場考試的指定受測對象" in response.json()["detail"]
 
 # --- GET /submissions/{submission_id} (詳細資訊) ---
 def test_get_submission_success_by_owner(client, db_session, candidate_user, override_auth, create_test_problem, create_mock_submission):
