@@ -1,12 +1,60 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from app.models.enums import ExamStatus, DifficultyLevel
+from app.models.enums import ExamStatus, DifficultyLevel, UserRole
+from app.models.user import User
 from app.models.submission import Submission
 from app.models.exam import Exam, ExamProblem
 
 
 # --- GET /exams (考試列表查詢) ---
+def test_get_global_exams_as_interviewer_success(client, interviewer_user, override_auth, create_test_exam):
+    """
+    驗證後台人員呼叫時，能跨越考生邊界，拿到全局所有的考卷。
+    """
+    override_auth(interviewer_user)
+    
+    base_time = datetime.now(timezone.utc)
+    create_test_exam(title="前端工程師考卷", easy_count=1, created_at=base_time - timedelta(minutes=5))
+    create_test_exam(title="後端工程師考卷", easy_count=1, created_at=base_time)
+
+    response = client.get("/api/v1/exams/")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert len(data) >= 2
+    assert data[0]["title"] == "後端工程師考卷"
+
+
+def test_candidate_list_isolation_and_draft_protection(client, candidate_user, interviewer_user, override_auth, create_test_exam, create_test_user):
+    """
+    學生視角的隱私與草稿防禦。
+    """
+    other_candidate = create_test_user(role=UserRole.Candidate)
+
+    override_auth(interviewer_user)
+    
+    create_test_exam(
+        title="別人的測驗", 
+        candidate_id=other_candidate.id, 
+        status=ExamStatus.Ongoing, 
+        easy_count=1
+    )
+    
+    create_test_exam(
+        title="我的草稿測驗", 
+        candidate_id=candidate_user.id, 
+        status=ExamStatus.Draft, 
+        easy_count=1
+    )
+
+    override_auth(candidate_user)
+    response = client.get("/api/v1/exams/")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 0
+
 def test_get_candidate_exams_success(client, db_session, candidate_user, interviewer_user, override_auth, create_test_exam):
     """
     測試考生成功獲取自己的考試清單，且清單中自動過濾掉 Draft（草稿）考卷。
@@ -41,17 +89,6 @@ def test_get_candidate_exams_isolation(client, db_session, candidate_user, creat
     
     assert response.status_code == 200
     assert len(response.json()) == 0
-
-
-def test_get_candidate_exams_forbidden_for_interviewer(client, interviewer_user, override_auth):
-    """
-    面試主管或非考生角色敲此端點，應回傳 403 Forbidden。
-    """
-    override_auth(interviewer_user)
-    response = client.get("/api/v1/exams/")
-    
-    assert response.status_code == 403
-    assert "專供受測考生調閱" in response.json()["detail"]
 
 # --- POST /exams/{exam_id}/start (開始考試) ---
 def test_start_exam_success_first_time(client, candidate_user, override_auth, create_test_exam):

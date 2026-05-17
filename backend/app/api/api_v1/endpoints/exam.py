@@ -21,25 +21,41 @@ def get_candidate_exams(
     current_user = Depends(deps.get_current_user)
 ):
     """
-    獲取考生自身被指派的考試清單
-    - 考生只能看到指派給自己的考試。
-    - 自動過濾掉尚未發布的草稿（Draft）考試。
+    考試場次列表調閱 API (多角色權限分流一體化)
+    - Interviewer / Admin (面試官/管理員): 撈取全系統所有考卷（含 Draft 草稿）。
+    - Candidate (一般考生): 只能看見指派給自己、且處於可檢視狀態（Published/Ongoing/Finished）的考卷。
     """
-    if current_user.role != UserRole.Candidate:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="本端點專供受測考生調閱清單使用。"
+    if current_user.role in [UserRole.Interviewer, UserRole.Admin]:
+        exams = (
+            db.query(Exam)
+            .options(
+                joinedload(Exam.exam_problems).joinedload(ExamProblem.problem),
+                joinedload(Exam.candidate)
+            )
+            .order_by(Exam.created_at.desc())
+            .all()
+        )
+        
+    else:
+        exams = (
+            db.query(Exam)
+            .options(
+                joinedload(Exam.exam_problems).joinedload(ExamProblem.problem)
+            )
+            .filter(
+                Exam.candidate_id == current_user.id,
+                Exam.status != ExamStatus.Draft
+            )
+            .order_by(Exam.created_at.desc())
+            .all()
         )
 
-    exams = (
-        db.query(Exam)
-        .filter(
-            Exam.candidate_id == current_user.id,
-            Exam.status != ExamStatus.Draft
-        )
-        .order_by(Exam.created_at.desc())
-        .all()
-    )
+    for exam in exams:
+        for ep in exam.exam_problems:
+            if ep.problem:
+                ep.title = ep.problem.title
+                ep.difficulty = ep.problem.difficulty
+
     return exams
 
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)
