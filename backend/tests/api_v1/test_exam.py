@@ -284,3 +284,66 @@ def test_get_exam_result_not_found(client, candidate_user, override_auth):
     fake_id = uuid.uuid4()
     response = client.get(f"/api/v1/exams/{fake_id}/result")
     assert response.status_code == 404
+
+# --- POST /exams (建立考試) ---
+def test_create_exam_session_success(client, interviewer_user, candidate_user, override_auth):
+    """
+    面試主管成功建立考試，且狀態預設為 Draft。
+    """
+    override_auth(interviewer_user)
+    
+    payload = {
+        "title": "2026 系統架構師後端實作測驗",
+        "duration_minutes": 100,
+        "easy_count": 1,
+        "medium_count": 2,
+        "hard_count": 0,
+        "candidate_id": str(candidate_user.id)
+    }
+
+    response = client.post("/api/v1/exams/", json=payload)
+    assert response.status_code == 201
+    
+    data = response.json()
+    assert data["title"] == payload["title"]
+    assert data["status"] == "Draft"
+    assert data["creator_id"] == str(interviewer_user.id)
+    assert data["candidate_id"] == str(candidate_user.id)
+
+
+def test_create_exam_forbidden_for_candidate(client, candidate_user, override_auth):
+    """
+    驗證受測學生（Candidate）如果呼叫建立考卷端點，應回傳 403。
+    """
+    override_auth(candidate_user)
+    
+    payload = {
+        "title": "學生自己發明的小測驗",
+        "duration_minutes": 60,
+        "easy_count": 1,
+        "candidate_id": str(candidate_user.id)
+    }
+
+    response = client.post("/api/v1/exams/", json=payload)
+    assert response.status_code == 403
+    assert "只有面試官或管理員可以建立" in response.json()["detail"]
+
+
+def test_create_exam_validation_error_empty_questions(client, interviewer_user, candidate_user, override_auth):
+    """
+    驗證當 easy/medium/hard 總和為 0 時，Pydantic model_validator 能否回傳 422。
+    """
+    override_auth(interviewer_user)
+    
+    payload = {
+        "title": "沒有題目的空虛考卷",
+        "duration_minutes": 60,
+        "easy_count": 0,
+        "medium_count": 0,
+        "hard_count": 0,
+        "candidate_id": str(candidate_user.id)
+    }
+
+    response = client.post("/api/v1/exams/", json=payload)
+    
+    assert response.status_code == 422

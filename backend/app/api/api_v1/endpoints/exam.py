@@ -1,4 +1,4 @@
-from uuid import UUID
+import uuid
 from typing import List
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,7 +8,7 @@ from app.api import deps
 from app.models.exam import Exam
 from app.models.enums import UserRole, ExamStatus
 from app.models.submission import Submission
-from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead
 
 router = APIRouter()
 
@@ -41,7 +41,7 @@ def get_candidate_exams(
 
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)
 def start_exam(
-    exam_id: UUID,
+    exam_id: uuid.UUID,
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user)
 ):
@@ -108,7 +108,7 @@ def start_exam(
 
 @router.post("/{exam_id}/submit", response_model=CandidateExamListRead)
 def submit_exam(
-    exam_id: UUID,
+    exam_id: uuid.UUID,
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user)
 ):
@@ -147,7 +147,7 @@ def submit_exam(
 
 @router.get("/{exam_id}/result", response_model=ExamResultRead)
 def get_exam_result(
-    exam_id: UUID,
+    exam_id: uuid.UUID,
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user)
 ):
@@ -232,3 +232,38 @@ def get_exam_result(
         end_time=exam.end_time,
         results=problem_results
     )
+
+@router.post("/", response_model=ExamRead, status_code=status.HTTP_201_CREATED)
+def create_exam_session(
+    obj_in: ExamCreate,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    建立考試場次 API。
+    - 限制只有 Interviewer 或 Admin 角色可以創建考試。
+    - 考卷主考官自動綁定目前登入的後台人員。
+    - 初始狀態一律鎖定為 Draft (草稿)。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以建立考試場次。"
+        )
+
+    new_exam = Exam(
+        id=uuid.uuid4(),
+        title=obj_in.title,
+        duration_minutes=obj_in.duration_minutes,
+        easy_count=obj_in.easy_count,
+        medium_count=obj_in.medium_count,
+        hard_count=obj_in.hard_count,
+        status=ExamStatus.Draft,
+        creator_id=current_user.id,
+        candidate_id=obj_in.candidate_id
+    )
+
+    db.add(new_exam)
+    db.commit()
+    db.refresh(new_exam)
+    return new_exam
