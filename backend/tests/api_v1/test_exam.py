@@ -2,6 +2,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.models.enums import ExamStatus
+from app.models.submission import Submission
+from app.models.exam_problem import ExamProblem
 
 
 # --- GET /exams (考試列表查詢) ---
@@ -150,3 +152,135 @@ def test_submit_exam_reject_if_not_ongoing(client, candidate_user, override_auth
     
     assert response.status_code == 400
     assert "非進行中狀態無法執行交卷" in response.json()["detail"]
+
+# --- GET /{exam_id}/result (獲取指定考試) ---"
+def test_get_exam_result_latest_submission_precedence(client, db_session, candidate_user, override_auth, create_test_exam, create_test_problem):
+    """
+    驗證當同一題有多次提交時，系統是否「只看最新時間戳記」。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(title="最新優先測試", status=ExamStatus.Ongoing)
+    prob = create_test_problem(title="Two Sum")
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    if hasattr(ExamProblem, 'title'): ep.title = "Two Sum"
+    db_session.add(ep)
+    db_session.commit()
+
+    base_time = datetime.now(timezone.utc)
+    
+    sub_old = Submission(
+        id=uuid.uuid4(), exam_id=exam.id, user_id=candidate_user.id, problem_id=prob.id,
+        score=100, status="AC", code_s3_url="s3://1", language="python", created_at=base_time - timedelta(minutes=10)
+    )
+    sub_new = Submission(
+        id=uuid.uuid4(), exam_id=exam.id, user_id=candidate_user.id, problem_id=prob.id,
+        score=40, status="WA", code_s3_url="s3://2", language="python", created_at=base_time - timedelta(minutes=2)
+    )
+    db_session.add_all([sub_old, sub_new])
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    assert response.status_code == 200
+    
+    result_node = response.json()["results"][0]
+    assert result_node["candidate_score"] == 40
+    assert result_node["submission_status"] == "WA"
+
+
+def test_get_exam_result_unsubmitted_fallback(client, db_session, candidate_user, override_auth, create_test_exam, create_test_problem):
+    """
+    驗證學生如果完全沒有上傳過 Code，該題是否會安全顯示 0 分與 "Unsubmitted"。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(status=ExamStatus.Ongoing)
+    prob = create_test_problem(title="Unsubmitted Problem")
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    if hasattr(ExamProblem, 'title'): ep.title = "Unsubmitted Problem"
+    db_session.add(ep)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    assert response.status_code == 200
+    
+    result_node = response.json()["results"][0]
+    assert result_node["candidate_score"] == 0
+    assert result_node["submission_status"] == "Unsubmitted"
+
+
+def test_get_exam_result_total_score_aggregation(client, db_session, candidate_user, override_auth, create_test_exam, create_test_problem):
+    """
+    整卷配分與考生得分的加總邏輯。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(status=ExamStatus.Ongoing)
+    prob1 = create_test_problem()
+    prob2 = create_test_problem()
+    
+    ep1 = ExamProblem(exam_id=exam.id, problem_id=prob1.id, sequence=1, points=80)
+    ep2 = ExamProblem(exam_id=exam.id, problem_id=prob2.id, sequence=2, points=40)
+    db_session.add_all([ep1, ep2])
+    
+    sub1 = Submission(
+        id=uuid.uuid4(), exam_id=exam.id, user_id=candidate_user.id, problem_id=prob1.id,
+        score=80, status="AC", code_s3_url="s3://3", language="python", created_at=datetime.now(timezone.utc)
+    )
+    db_session.add(sub1)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_exam_points"] == 120
+    assert data["total_candidate_score"] == 80
+
+
+def test_get_exam_result_forbidden_for_other_candidate(client, candidate_user, create_test_user, override_auth, create_test_exam):
+    """
+    其餘無關考生嘗試存取別人的成績單，應回傳 403 Forbidden。
+    """
+    hacker = create_test_user(username="hacker_student")
+    exam = create_test_exam(candidate_id=hacker.id, status=ExamStatus.Ongoing)
+
+    override_auth(candidate_user)
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    
+    assert response.status_code == 403
+    assert "無權調閱" in response.json()["detail"]
+
+
+def test_get_exam_result_draft_hidden_from_candidate(client, candidate_user, override_auth, create_test_exam):
+    """
+    如果考試還在 Draft 階段，考生不允許提前調閱結構，應回傳 403。
+    """
+    exam = create_test_exam(status=ExamStatus.Draft)
+
+    override_auth(candidate_user)
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    
+    assert response.status_code == 403
+    assert "尚未對外發布" in response.json()["detail"]
+
+
+def test_get_exam_result_accessible_by_interviewer(client, interviewer_user, candidate_user, override_auth, create_test_exam):
+    """
+    面試主管有權調閱任何考生的考試戰報。
+    """
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
+
+    override_auth(interviewer_user)
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    
+    assert response.status_code == 200
+    assert response.json()["id"] == str(exam.id)
+
+
+def test_get_exam_result_not_found(client, candidate_user, override_auth):
+    """
+    帶入隨機不存在的 UUID，應回傳 404。
+    """
+    override_auth(candidate_user)
+    fake_id = uuid.uuid4()
+    response = client.get(f"/api/v1/exams/{fake_id}/result")
+    assert response.status_code == 404

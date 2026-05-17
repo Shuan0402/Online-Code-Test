@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.api import deps
 from app.models.exam import Exam
 from app.models.enums import UserRole, ExamStatus
-from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead
+from app.models.submission import Submission
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead
 
 router = APIRouter()
 
@@ -143,3 +144,91 @@ def submit_exam(
     db.commit()
     db.refresh(exam)
     return exam
+
+@router.get("/{exam_id}/result", response_model=ExamResultRead)
+def get_exam_result(
+    exam_id: UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    獲取該場考試的實時各題狀態與總得分 (Candidate/Interviewer 共用)
+    - 考生只能看自己的考卷得分與狀態。
+    - 管理員與面試官可以跨全局調閱受測學生的得分與狀態。
+    - 自動計算該生在每道題目拿到的最新分數與狀態。
+    """
+    exam = (
+        db.query(Exam)
+        .options(joinedload(Exam.exam_problems))
+        .filter(Exam.id == exam_id)
+        .first()
+    )
+
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定的考試項目。"
+        )
+
+    if current_user.role == UserRole.Candidate and exam.candidate_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您無權調閱此場考試的結果報告。"
+        )
+        
+    if exam.status == ExamStatus.Draft and current_user.role == UserRole.Candidate:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="該場考試尚未對外發布。"
+        )
+
+    problem_results = []
+    accumulated_exam_points = 0
+    accumulated_candidate_score = 0
+
+    for ep in exam.exam_problems:
+        accumulated_exam_points += ep.points
+        
+        latest_sub = (
+            db.query(Submission)
+            .filter(
+                Submission.exam_id == exam.id,
+                Submission.user_id == exam.candidate_id,
+                Submission.problem_id == ep.problem_id
+            )
+            .order_by(Submission.created_at.desc())
+            .first()
+        )
+        
+        p_score = latest_sub.score if latest_sub else 0
+        p_status = latest_sub.status if latest_sub else "Unsubmitted"
+        
+        accumulated_candidate_score += p_score
+        
+        p_title = "Unknown Problem"
+        if hasattr(ep, "title") and ep.title:
+            p_title = ep.title
+        elif hasattr(ep, "problem") and ep.problem:
+            p_title = ep.problem.title
+
+        problem_results.append(
+            ExamProblemResultRead(
+                problem_id=ep.problem_id,
+                title=p_title,
+                sequence=ep.sequence,
+                max_points=ep.points,
+                candidate_score=p_score,
+                submission_status=p_status
+            )
+        )
+
+    return ExamResultRead(
+        id=exam.id,
+        title=exam.title,
+        status=exam.status,
+        total_exam_points=accumulated_exam_points,
+        total_candidate_score=accumulated_candidate_score,
+        start_time=exam.start_time,
+        end_time=exam.end_time,
+        results=problem_results
+    )

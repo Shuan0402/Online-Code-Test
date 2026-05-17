@@ -106,3 +106,33 @@ class ExamRead(ExamBase):
     exam_problems: List[ExamProblemRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class ExamProblemResultRead(BaseModel):
+    """
+    考試中單一題目的最新評測狀態。
+    """
+    problem_id: int = Field(..., description="題目 ID")
+    title: str = Field(..., description="題目名稱")
+    sequence: int = Field(..., description="題號順序")
+    max_points: int = Field(..., description="本題總配分")
+    candidate_score: int = Field(0, description="考生在該題取得的最高分數")
+    submission_status: str = Field("Unsubmitted", description="最新一筆提交的評測狀態")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExamResultRead(BaseModel):
+    """
+    整場考試的實時總得分。
+    """
+    id: UUID
+    title: str
+    status: ExamStatus
+    total_exam_points: int = Field(0, description="整份考卷的總配分")
+    total_candidate_score: int = Field(0, description="考生目前整場拿到點總分")
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    
+    results: List[ExamProblemResultRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
