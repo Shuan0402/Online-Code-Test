@@ -218,18 +218,15 @@ def create_test_exam(db_session, interviewer_user, candidate_user):
         duration_minutes: int = 120,
         **kwargs
     ):
-        exam = Exam(
-            id=uuid.uuid4(),
-            title=title,
-            status=status,
-            duration_minutes=duration_minutes,
-            creator_id=kwargs.get("creator_id", interviewer_user.id),
-            candidate_id=kwargs.get("candidate_id", candidate_user.id),
-        )
-        for key, value in kwargs.items():
-            if not hasattr(exam, key):
-                setattr(exam, key, value)
-                
+        kwargs.setdefault("id", uuid.uuid4())
+        kwargs.setdefault("title", title)
+        kwargs.setdefault("status", status)
+        kwargs.setdefault("duration_minutes", duration_minutes)
+        kwargs.setdefault("creator_id", interviewer_user.id)
+        kwargs.setdefault("candidate_id", candidate_user.id)
+        
+        exam = Exam(**kwargs)
+        
         db_session.add(exam)
         db_session.commit()
         return exam

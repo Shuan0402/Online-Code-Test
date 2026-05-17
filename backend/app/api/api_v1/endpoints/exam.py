@@ -1,11 +1,13 @@
+from uuid import UUID
 from typing import List
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
 from app.models.exam import Exam
 from app.models.enums import UserRole, ExamStatus
-from app.schemas.exam import CandidateExamListRead
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead
 
 router = APIRouter()
 
@@ -35,3 +37,70 @@ def get_candidate_exams(
         .all()
     )
     return exams
+
+@router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)
+def start_exam(
+    exam_id: UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    開始進行考試 API。
+    1. 鎖定狀態機：將 Published 改為 Ongoing
+    2. 寫入 start_time，並由後端精準計算剩餘秒數
+    3. 此時才加載題目明細，防止提早偷看題目
+    """
+    exam = (
+        db.query(Exam)
+        .options(joinedload(Exam.exam_problems))
+        .filter(Exam.id == exam_id)
+        .first()
+    )
+
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定的考試項目。"
+        )
+
+    if exam.candidate_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您無權參與此場考試。"
+        )
+
+    now = datetime.now(timezone.utc)
+
+    if exam.status == ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="該場考試尚未對外發布。"
+        )
+
+    elif exam.status == ExamStatus.Published:
+        exam.status = ExamStatus.Ongoing
+        exam.start_time = now
+        db.commit()
+        db.refresh(exam)
+
+    elif exam.status in [ExamStatus.Finished, ExamStatus.Archived]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="您已完成本場考試，無法重複作答。"
+        )
+
+    total_duration_seconds = exam.duration_minutes * 60
+    elapsed_seconds = (now - exam.start_time).total_seconds()
+    remaining_seconds = int(total_duration_seconds - elapsed_seconds)
+
+    if remaining_seconds <= 0:
+        exam.status = ExamStatus.Finished
+        exam.end_time = now
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="考試時間已截止，系統已自動收卷。"
+        )
+
+    exam.remaining_seconds = remaining_seconds
+    return exam
