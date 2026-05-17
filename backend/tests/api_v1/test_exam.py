@@ -606,3 +606,59 @@ def test_get_single_exam_not_found(client, interviewer_user, override_auth):
     response = client.get(f"/api/v1/exams/{fake_id}")
     assert response.status_code == 404
     assert "找不到指定的考試項目" in response.json()["detail"]
+
+# --- PATCH /exams/{id} (修改考試設定) ---
+def test_update_exam_session_success(client, interviewer_user, override_auth, create_test_exam, db_session):
+    """
+    驗證當考試處於 Draft 狀態時，面試官能自由變更 title 與 duration_minutes。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(title="舊的名稱", duration_minutes=60, status=ExamStatus.Draft, easy_count=1)
+
+    payload = {
+        "title": "新的名稱",
+        "duration_minutes": 180
+    }
+
+    response = client.patch(f"/api/v1/exams/{exam.id}", json=payload)
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert data["title"] == "新的名稱"
+    assert data["duration_minutes"] == 180
+    db_session.refresh(exam)
+    assert exam.title == "新的名稱"
+
+
+def test_update_exam_session_failed_non_draft(client, interviewer_user, override_auth, create_test_exam):
+    """
+    驗證當考卷正在應考，系統應回傳 400 Bad Request。
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam(title="正在考試的正式考卷", status=ExamStatus.Ongoing, easy_count=1)
+
+    payload = {
+        "title": "想改的標題"
+    }
+
+    response = client.patch(f"/api/v1/exams/{exam.id}", json=payload)
+    assert response.status_code == 400
+    assert "目前正在考試，無法修改考試資訊" in response.json()["detail"]
+
+
+def test_update_exam_session_forbidden_for_candidate(client, candidate_user, interviewer_user, override_auth, create_test_exam):
+    """
+    驗證受測學生沒有權限更動自己的考卷。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Draft, duration_minutes=60, easy_count=1)
+
+    override_auth(candidate_user)
+    payload = {
+        "duration_minutes": 999
+    }
+
+    response = client.patch(f"/api/v1/exams/{exam.id}", json=payload)
+    assert response.status_code == 403
+    assert "只有面試官或管理員可以修改" in response.json()["detail"]

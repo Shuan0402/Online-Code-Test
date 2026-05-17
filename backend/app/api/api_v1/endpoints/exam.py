@@ -11,7 +11,7 @@ from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.problem import Problem
-from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate
 
 router = APIRouter()
 
@@ -443,4 +443,43 @@ def get_exam_session_by_id(
                 detail="權限不足，該考試目前處於草稿階段，尚未對考生開放。"
             )
 
+    return exam
+
+@router.patch("/{exam_id}", response_model=ExamRead)
+def update_exam_session(
+    exam_id: uuid.UUID,
+    obj_in: ExamUpdate,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    # 修改考試設定 API。
+    - 限制只有 Interviewer 或 Admin 角色可以修改考試。
+    - 只有處於草稿或發布狀態的考試允許變更，一旦開考則禁止修改。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以修改考試設定。"
+        )
+
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定的考試項目。"
+        )
+
+    if exam.status == ExamStatus.Ongoing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"目前正在考試，無法修改考試資訊"
+        )
+
+    update_data = obj_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(exam, field, value)
+
+    db.commit()
+    db.refresh(exam)
     return exam
