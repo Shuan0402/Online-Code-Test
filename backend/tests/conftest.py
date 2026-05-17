@@ -13,6 +13,8 @@ from app.models import user, problem, submission, exam, exam_problem, testcase
 from app.models.user import User
 from app.models.problem import Problem
 from app.models.testcase import TestCase
+from app.models.exam import Exam
+from app.models.enums import ExamStatus
 from app.models.enums import UserRole, DifficultyLevel, JudgeStatus
 from app.api import deps
 from app.models.submission import Submission, SubmissionDetail
@@ -204,3 +206,32 @@ def create_test_user(db_session: Session):
         return db_user
 
     return _create_user
+
+@pytest.fixture
+def create_test_exam(db_session, interviewer_user, candidate_user):
+    """
+    Exam 測試工廠 Fixture。
+    """
+    def _create(
+        title: str = "預設測試考試場次",
+        status: ExamStatus = ExamStatus.Draft,
+        duration_minutes: int = 120,
+        **kwargs
+    ):
+        exam = Exam(
+            id=uuid.uuid4(),
+            title=title,
+            status=status,
+            duration_minutes=duration_minutes,
+            creator_id=kwargs.get("creator_id", interviewer_user.id),
+            candidate_id=kwargs.get("candidate_id", candidate_user.id),
+        )
+        for key, value in kwargs.items():
+            if not hasattr(exam, key):
+                setattr(exam, key, value)
+                
+        db_session.add(exam)
+        db_session.commit()
+        return exam
+        
+    return _create
