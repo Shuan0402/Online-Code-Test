@@ -483,3 +483,44 @@ def update_exam_session(
     db.commit()
     db.refresh(exam)
     return exam
+
+@router.delete("/{exam_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_exam_session(
+    exam_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    刪除考試場次 API。
+    - 限制只有 Interviewer 或 Admin 角色可以刪除考試。
+    - 僅允許刪除 Draft 或 Published 狀態的考試。
+    - 若考試正處於 Ongoing (進行中) 或 Finished (已結束)，禁止刪除以維護數據完整性。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以刪除考試場次。"
+        )
+
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定的考試項目。"
+        )
+
+    if exam.status == ExamStatus.Ongoing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="目前考試正在進行中，禁止清理操作。"
+        )
+    
+    if exam.status == ExamStatus.Finished:
+        exam.status = ExamStatus.Archived
+        db.commit()
+        return
+
+    db.delete(exam)
+    db.commit()
+    
+    return
