@@ -75,7 +75,7 @@ def test_exam_validator_zero_questions():
     }
     exam_schema = ExamCreate(**payload)
     
-    assert exam_schema.title == "Empty Exam Shell"
+    assert exam_schema.title == "Empty Exam"
     assert exam_schema.easy_count == 0
     assert exam_schema.medium_count == 0
     assert exam_schema.hard_count == 0
