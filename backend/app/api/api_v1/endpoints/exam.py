@@ -3,11 +3,14 @@ from typing import List
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 
 from app.api import deps
-from app.models.exam import Exam
-from app.models.enums import UserRole, ExamStatus
+from app.models.exam import Exam, ExamProblem
+from app.models.problem import Problem
+from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
+from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead
 
 router = APIRouter()
@@ -267,3 +270,77 @@ def create_exam_session(
     db.commit()
     db.refresh(new_exam)
     return new_exam
+
+@router.post("/{exam_id}/problems/generate", response_model=ExamRead)
+def generate_exam_problems(
+    exam_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    自動抽選題目 API。
+    - 依據考試當初建立時設定的難易度配比 (easy, medium, hard_count)，從題庫中隨機抽題。
+    - 抽完後自動編排題號順序 (sequence) 並計入 ExamProblem 表中。
+    - 只有 Draft 草稿狀態的考試允許重新抽選題目。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以為考試抽選題目。"
+        )
+
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+
+    if exam.status != ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"目前考試狀態為 {exam.status}，只有草稿 (Draft) 狀態能執行自動抽題。"
+        )
+
+    db.query(ExamProblem).filter(ExamProblem.exam_id == exam.id).delete()
+    
+    selected_problems = []
+    difficulty_map = [
+        (DifficultyLevel.Easy, exam.easy_count),
+        (DifficultyLevel.Medium, exam.medium_count),
+        (DifficultyLevel.Hard, exam.hard_count)
+    ]
+
+    for diff_level, count in difficulty_map:
+        if count > 0:
+            problems = (
+                db.query(Problem)
+                .filter(Problem.difficulty == diff_level)
+                .order_by(func.random())
+                .limit(count)
+                .all()
+            )
+            
+            if len(problems) < count:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"題庫中難度為 {diff_level} 的題目數量不足（需要 {count} 題，系統內僅存 {len(problems)} 題），無法生成考卷。"
+                )
+            selected_problems.extend(problems)
+
+    for index, prob in enumerate(selected_problems):
+        ep = ExamProblem(
+            exam_id=exam.id,
+            problem_id=prob.id,
+            sequence=index + 1,
+            points=100,
+            problem=prob
+        )
+            
+        db.add(ep)
+
+    db.commit()
+    
+    return (
+        db.query(Exam)
+        .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
+        .filter(Exam.id == exam_id)
+        .first()
+    )

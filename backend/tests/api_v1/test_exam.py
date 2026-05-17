@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from app.models.enums import ExamStatus
+from app.models.enums import ExamStatus, DifficultyLevel
 from app.models.submission import Submission
-from app.models.exam_problem import ExamProblem
+from app.models.exam import Exam, ExamProblem
 
 
 # --- GET /exams (考試列表查詢) ---
@@ -162,8 +162,7 @@ def test_get_exam_result_latest_submission_precedence(client, db_session, candid
     exam = create_test_exam(title="最新優先測試", status=ExamStatus.Ongoing)
     prob = create_test_problem(title="Two Sum")
     
-    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
-    if hasattr(ExamProblem, 'title'): ep.title = "Two Sum"
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100, problem=prob)
     db_session.add(ep)
     db_session.commit()
 
@@ -196,8 +195,7 @@ def test_get_exam_result_unsubmitted_fallback(client, db_session, candidate_user
     exam = create_test_exam(status=ExamStatus.Ongoing)
     prob = create_test_problem(title="Unsubmitted Problem")
     
-    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
-    if hasattr(ExamProblem, 'title'): ep.title = "Unsubmitted Problem"
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100, problem=prob)
     db_session.add(ep)
     db_session.commit()
 
@@ -347,3 +345,45 @@ def test_create_exam_validation_error_empty_questions(client, interviewer_user, 
     response = client.post("/api/v1/exams/", json=payload)
     
     assert response.status_code == 422
+
+# --- POST /exams/{id}/problems/generate (自動抽題) ---
+def test_generate_exam_problems_success(client, db_session, interviewer_user, override_auth, create_test_exam, create_test_problem):
+    """
+    驗證自動抽題功能是否能完美依照難易度配比隨機組裝考卷。
+    """
+    override_auth(interviewer_user)
+    
+    p1 = create_test_problem(title="Easy Prob 1", difficulty=DifficultyLevel.Easy)
+    p2 = create_test_problem(title="Easy Prob 2", difficulty=DifficultyLevel.Easy)
+    p3 = create_test_problem(title="Easy Prob 3", difficulty=DifficultyLevel.Easy)
+    
+    exam = create_test_exam(
+        title="自動組卷期末考",
+        status=ExamStatus.Draft,
+        easy_count=2,
+        medium_count=0,
+        hard_count=0
+    )
+
+    response = client.post(f"/api/v1/exams/{exam.id}/problems/generate")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert len(data["exam_problems"]) == 2
+    assert data["exam_problems"][0]["sequence"] == 1
+    assert data["exam_problems"][1]["sequence"] == 2
+
+
+def test_generate_exam_problems_insufficient_bank(client, interviewer_user, override_auth, create_test_exam, create_test_problem):
+    """
+    當面試主管要求抽 10 題，但題庫裡只有 1 題時，應回傳 400 Bad Request。
+    """
+    override_auth(interviewer_user)
+    
+    create_test_problem(difficulty=DifficultyLevel.Hard)
+    
+    exam = create_test_exam(status=ExamStatus.Draft, easy_count=0, medium_count=0, hard_count=10)
+
+    response = client.post(f"/api/v1/exams/{exam.id}/problems/generate")
+    assert response.status_code == 400
+    assert "題目數量不足" in response.json()["detail"]
