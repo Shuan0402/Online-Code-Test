@@ -57,6 +57,38 @@ class ExamUpdate(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
 
+class CandidateExamListRead(BaseModel):
+    """
+    考生看自己的考試清單時，每場考試的基本資訊。
+    - 封鎖 exam_problems，防止還沒開始考就被偷看題目。
+    - 只給最核心的狀態與時間中繼資料。
+    """
+    id: UUID
+    title: str
+    status: ExamStatus
+    duration_minutes: int
+    score: Optional[int] = Field(None, description="未結束前為 None，結束且公布後才秀出")
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CandidateExamDetailRead(CandidateExamListRead):
+    """
+    開始考試後，考生查看自己的考試詳情時，才會附帶題目清單與剩餘秒數。
+    - 只有在正式進入「考試中」狀態，才將題目清單（exam_problems）回傳給前端。
+    - 額外附加 remaining_seconds，由後端統一控時，前端直接拿去跑倒數計時。
+    """
+    exam_problems: List[ExamProblemRead] = []
+    remaining_seconds: Optional[int] = Field(
+        None, 
+        description="距離考試強迫收卷剩餘的精準秒數。若尚未開始或已結束則為 None"
+    )
+
+    model_config = ConfigDict(from_attributes=True)
+
 class ExamRead(ExamBase):
     """
     回傳完整的考試資訊給管理員或考生。
