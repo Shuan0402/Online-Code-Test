@@ -321,6 +321,24 @@ def test_get_exam_result_not_found(client, candidate_user, override_auth):
     assert response.status_code == 404
 
 # --- POST /exams (建立考試) ---
+def test_create_exam_with_zero_questions_allowed(client, interviewer_user, candidate_user, override_auth):
+    """
+    允許建立空考卷外殼，驗證當 easy/medium/hard_count 為 0 時，系統應允許建立成功（Draft 狀態）。
+    """
+    override_auth(interviewer_user)
+    payload = {
+        "title": "全新空白考卷外殼",
+        "duration_minutes": 60,
+        "candidate_id": str(candidate_user.id),
+        "easy_count": 0,
+        "medium_count": 0,
+        "hard_count": 0
+    }
+    response = client.post("/api/v1/exams/", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["status"] == ExamStatus.Draft
+
 def test_create_exam_session_success(client, interviewer_user, candidate_user, override_auth):
     """
     面試主管成功建立考試，且狀態預設為 Draft。
@@ -362,26 +380,6 @@ def test_create_exam_forbidden_for_candidate(client, candidate_user, override_au
     response = client.post("/api/v1/exams/", json=payload)
     assert response.status_code == 403
     assert "只有面試官或管理員可以建立" in response.json()["detail"]
-
-
-def test_create_exam_validation_error_empty_questions(client, interviewer_user, candidate_user, override_auth):
-    """
-    驗證當 easy/medium/hard 總和為 0 時，Pydantic model_validator 能否回傳 422。
-    """
-    override_auth(interviewer_user)
-    
-    payload = {
-        "title": "沒有題目的空虛考卷",
-        "duration_minutes": 60,
-        "easy_count": 0,
-        "medium_count": 0,
-        "hard_count": 0,
-        "candidate_id": str(candidate_user.id)
-    }
-
-    response = client.post("/api/v1/exams/", json=payload)
-    
-    assert response.status_code == 422
 
 # --- POST /exams/{id}/problems/generate (自動抽題) ---
 def test_generate_exam_problems_success(client, db_session, interviewer_user, override_auth, create_test_exam, create_test_problem):
@@ -470,7 +468,7 @@ def test_publish_exam_failed_empty_physical_problems(client, interviewer_user, o
     override_auth(interviewer_user)
     
     exam = create_test_exam(
-        title="忘記按自動抽題的草稿",
+        title="沒有題目的草稿",
         status=ExamStatus.Draft,
         easy_count=1
     )
@@ -719,3 +717,73 @@ def test_delete_exam_forbidden_for_candidate(client, candidate_user, interviewer
     response = client.delete(f"/api/v1/exams/{exam.id}")
 
     assert response.status_code == 403
+
+# --- POST /exams/{exam_id}/problems (手動指派加題) ---
+def test_add_exam_problem_manual_success(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    手動加題驗證。
+    - 驗證面試官可以在 Draft 考卷中手動加入指定題目。
+    - 驗證系統是否能「自動推算」正確的 sequence 序號（原本有 1 題，再加就是第 2 題）。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(title="手動加題測試卷", status=ExamStatus.Draft, easy_count=1)
+    
+    exist_prob = create_test_problem(title="原本就存在的第一題")
+    ep_first = ExamProblem(exam_id=exam.id, problem_id=exist_prob.id, sequence=1, points=50)
+    db_session.add(ep_first)
+    db_session.flush()
+    
+    new_prob = create_test_problem(title="手動追加的第二題")
+    payload = {
+        "problem_id": new_prob.id,
+        "points": 50
+    }
+
+    response = client.post(f"/api/v1/exams/{exam.id}/problems", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["exam_problems"]) == 2
+    added_problem_meta = next(p for p in data["exam_problems"] if p["problem_id"] == new_prob.id)
+    assert added_problem_meta["sequence"] == 2
+    assert added_problem_meta["points"] == 50
+
+
+def test_add_exam_problem_manual_duplicate_blocked(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    驗證當一筆題目已經存在於考卷中時，再次企圖手動加入同一題會被 400 阻斷。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(title="防重刷測試卷", status=ExamStatus.Draft, easy_count=1)
+
+    exist_prob = create_test_problem(title="已經在考卷裡的題目")
+    ep = ExamProblem(exam_id=exam.id, problem_id=exist_prob.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+
+    payload = {
+        "problem_id": exist_prob.id,
+        "points": 100
+    }
+    response = client.post(f"/api/v1/exams/{exam.id}/problems", json=payload)
+
+    assert response.status_code == 400
+    assert "該題目已存在於本張試卷中" in response.json()["detail"]
+
+
+def test_add_exam_problem_manual_not_in_draft_blocked(client, interviewer_user, override_auth, create_test_exam, create_test_problem):
+    """
+    驗證當試卷已經 Ongoing 時，面試官手動加題會被 400 阻斷。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(title="不容干擾的進行中筆試", status=ExamStatus.Ongoing, easy_count=1)
+    new_prob = create_test_problem(title="企圖偷渡進去的題目")
+
+    payload = {
+        "problem_id": new_prob.id,
+        "points": 100
+    }
+
+    response = client.post(f"/api/v1/exams/{exam.id}/problems", json=payload)
+    assert response.status_code == 400
+    assert "只有在 Draft (草稿) 狀態才允許修改題目清單" in response.json()["detail"]
