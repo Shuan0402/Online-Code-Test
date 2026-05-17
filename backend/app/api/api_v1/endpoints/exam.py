@@ -104,3 +104,42 @@ def start_exam(
 
     exam.remaining_seconds = remaining_seconds
     return exam
+
+@router.post("/{exam_id}/submit", response_model=CandidateExamListRead)
+def submit_exam(
+    exam_id: UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    考生主動正式交卷 API。
+    - 狀態由 Ongoing 變更為 Finished。
+    - 寫入 end_time，結束該場測驗。
+    - 阻斷非進行中（如 Published 或已 Finished）的惡意重複交卷。
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定的考試項目。"
+        )
+
+    if exam.candidate_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您無權對此場考試進行操作。"
+        )
+
+    if exam.status != ExamStatus.Ongoing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"目前考試狀態為 {exam.status}，非進行中狀態無法執行交卷。"
+        )
+
+    exam.status = ExamStatus.Finished
+    exam.end_time = datetime.now(timezone.utc)
+    
+    db.commit()
+    db.refresh(exam)
+    return exam

@@ -77,11 +77,7 @@ def test_start_exam_reentry_midway(client, candidate_user, override_auth, create
     測試斷線防線：若考試已在進行中（考生換電腦或重刷頁面），start_time 應維持原樣，但時間會減少。
     """
     override_auth(candidate_user)
-    
-    # 模擬 10 分鐘前就已經開始的考試
     ten_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
-    
-    # 🚀 使用工廠：動態塞入 start_time 覆蓋預設行為
     exam = create_test_exam(
         title="系統專案會考",
         status=ExamStatus.Ongoing,
@@ -94,20 +90,15 @@ def test_start_exam_reentry_midway(client, candidate_user, override_auth, create
     
     data = response.json()
     assert data["status"] == "Ongoing"
-    # 總長 60 分鐘，過了 10 分鐘，應該剩 50 分鐘 (約 3000 秒)
     assert 2995 <= data["remaining_seconds"] <= 3000
 
 
 def test_start_exam_auto_submit_when_timeout(client, db_session, candidate_user, override_auth, create_test_exam):
     """
-    測試超時防線：若考生試圖作弊卡著網頁，在超時後才觸發 API，系統應自動將狀態變更為 Finished 並拒絕進入。
+    若考生試圖作弊卡著網頁，在超時後才觸發 API，系統應自動將狀態變更為 Finished 並拒絕進入。
     """
     override_auth(candidate_user)
-    
-    # 模擬 2 小時前就開始、但時長只有 60 分鐘的考試（意即已超時 1 小時）
     two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
-    
-    # 🚀 使用工廠：輕鬆建立超時的考試狀態
     exam = create_test_exam(
         title="限時突擊測驗",
         status=ExamStatus.Ongoing,
@@ -116,11 +107,46 @@ def test_start_exam_auto_submit_when_timeout(client, db_session, candidate_user,
     )
 
     response = client.post(f"/api/v1/exams/{exam.id}/start")
-    # 觸發自動收卷機制，回傳 400 Bad Request
     assert response.status_code == 400
     assert "自動收卷" in response.json()["detail"]
 
-    # 驗證資料庫內部狀態確實已被強制變更（此處因需 refresh，仍保留 db_session）
     db_session.refresh(exam)
     assert exam.status == ExamStatus.Finished
     assert exam.end_time is not None
+
+# --- POST /exams/{exam_id}/submit (主動交卷) ---
+def test_submit_exam_success(client, db_session, candidate_user, override_auth, create_test_exam):
+    """
+    測試進行中的考試成功主動交卷：狀態應順利切為 Finished，並記錄 end_time。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(
+        title="資料庫系統實作考",
+        status=ExamStatus.Ongoing,
+        start_time=datetime.now(timezone.utc) - timedelta(minutes=30)
+    )
+
+    response = client.post(f"/api/v1/exams/{exam.id}/submit")
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "Finished"
+    assert data["end_time"] is not None
+    db_session.refresh(exam)
+    assert exam.status == ExamStatus.Finished
+
+
+def test_submit_exam_reject_if_not_ongoing(client, candidate_user, override_auth, create_test_exam):
+    """
+    如果考卷還只是 Published（尚未點擊開始），不能直接交卷。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(
+        title="編譯器大考",
+        status=ExamStatus.Published
+    )
+
+    response = client.post(f"/api/v1/exams/{exam.id}/submit")
+    
+    assert response.status_code == 400
+    assert "非進行中狀態無法執行交卷" in response.json()["detail"]
