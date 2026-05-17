@@ -311,12 +311,12 @@ def generate_exam_problems(
 
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")    
-
-    if exam.status != ExamStatus.Draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+    
+    if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"目前考試狀態為 {exam.status}，只有草稿 (Draft) 狀態能執行自動抽題。"
+            detail=f"目前考試狀態為 {exam.status}，不允許變更題目配置。"
         )
     
     current_counts = {
@@ -559,10 +559,10 @@ def add_exam_problem_manual(
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次")
     
-    if exam.status != ExamStatus.Draft:
+    if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不允許操作：目前考場狀態為 {exam.status}，只有在 Draft (草稿) 狀態才允許修改題目清單。"
+            detail=f"目前考場狀態為 {exam.status}，不允許變更題目配置。"
         )
     
     target_problem_id = obj_in.problem_id
