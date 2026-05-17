@@ -7,6 +7,12 @@ class TestCaseBase(BaseModel):
     score_weight: int = Field(default=10, ge=0, description="本筆測資的分數權重")
     is_sample: bool = Field(default=False, description="是否展示給考生作為範例測資")
 
+class TestCaseCreate(TestCaseBase):
+    """
+    建立新測資時前端傳入的 Request Body 規格
+    """
+    pass
+
 class TestCaseRead(TestCaseBase):
     """
     出題者後台讀取測資時的回傳格式 (包含實體 ID 與建立時間)

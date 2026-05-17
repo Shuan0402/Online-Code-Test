@@ -9,7 +9,7 @@ from app.models.problem import Problem
 from app.models.testcase import TestCase
 from app.models.enums import UserRole
 from app.schemas.problem import ProblemCreate, ProblemUpdate, ProblemRead, ProblemShortRead
-from app.schemas.testcase import TestCaseRead
+from app.schemas.testcase import TestCaseRead, TestCaseCreate
 from app.api.deps import get_questioner_user
 
 
@@ -160,3 +160,37 @@ def get_problem_testcases(
     testcases = db.query(TestCase).filter(TestCase.problem_id == id).order_by(TestCase.id.asc()).all()
 
     return testcases
+
+@router.post("/{id}/testcases", response_model=TestCaseRead, status_code=status.HTTP_201_CREATED)
+def create_problem_testcase(
+    id: int,
+    obj_in: TestCaseCreate,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    為指定題目新增一筆測試資料
+    - 僅限 Admin, Interviewer, Questioner
+    """
+    if current_user.role not in [UserRole.Admin, UserRole.Interviewer, UserRole.Questioner]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="權限不足，只有出題者或管理員可以新增測資。"
+        )
+    
+    problem = db.query(Problem).filter(Problem.id == id).first()
+    if not problem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的題目。")
+    
+    db_obj = TestCase(
+        problem_id=id,
+        input_data=obj_in.input_data,
+        expected_output=obj_in.expected_output,
+        score_weight=obj_in.score_weight,
+        is_sample=obj_in.is_sample
+    )
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    
+    return db_obj
