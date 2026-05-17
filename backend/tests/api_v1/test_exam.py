@@ -786,7 +786,7 @@ def test_add_exam_problem_manual_not_in_draft_blocked(client, interviewer_user, 
 
     response = client.post(f"/api/v1/exams/{exam.id}/problems", json=payload)
     assert response.status_code == 400
-    assert "只有在 Draft (草稿) 狀態才允許修改題目清單" in response.json()["detail"]
+    assert "不允許變更題目配置" in response.json()["detail"]
 
 # --- GET /exams/{exam_id}/problems (獲得指定考試題目列表) ----
 def test_get_exam_problems_success_by_staff(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
