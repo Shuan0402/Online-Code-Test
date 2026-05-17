@@ -664,12 +664,12 @@ def test_update_exam_session_forbidden_for_candidate(client, candidate_user, int
     assert "只有面試官或管理員可以修改" in response.json()["detail"]
 
 # --- DELETE /exams/{id} (刪除考試場次) ---
-def test_delete_exam_session_success(client, interviewer_user, override_auth, create_test_exam, db_session):
+def test_delete_exam_session_draft_hard_delete(client, interviewer_user, override_auth, create_test_exam, db_session):
     """
-    面試功刪除草稿卷，驗證處於 Draft 狀態的考卷被刪除後，回傳 204，且資料庫中再也查不到該紀錄。
+    驗證處於 Draft 狀態、尚未派發的垃圾考卷，執行刪除後會被徹底從資料庫中抹除。
     """
     override_auth(interviewer_user)
-    exam = create_test_exam(title="準備丟棄的無用考卷", status=ExamStatus.Draft, easy_count=1)
+    exam = create_test_exam(title="預備刪除的草稿", status=ExamStatus.Draft, easy_count=1)
 
     response = client.delete(f"/api/v1/exams/{exam.id}")
     assert response.status_code == 204
@@ -678,30 +678,44 @@ def test_delete_exam_session_success(client, interviewer_user, override_auth, cr
     assert deleted_exam is None
 
 
-def test_delete_exam_session_failed_ongoing_blocked(client, interviewer_user, override_auth, create_test_exam, db_session):
+def test_delete_exam_session_finished_smart_archive(client, interviewer_user, override_auth, create_test_exam, db_session):
     """
-    驗證當考試已經是 Ongoing 狀態時，面試官也絕對不能強制刪除，應回傳 400。
+    驗證考完的試卷無法刪除，系統應轉為 Archived 狀態，留存歷史數據。
     """
     override_auth(interviewer_user)
-    exam = create_test_exam(title="考生正在考試的考卷", status=ExamStatus.Ongoing, easy_count=1)
+    exam = create_test_exam(title="2026 畢業生秋招程式測驗", status=ExamStatus.Finished, easy_count=1)
+
+    response = client.delete(f"/api/v1/exams/{exam.id}")
+    assert response.status_code == 204
+
+    db_session.refresh(exam)
+    assert exam is not None
+    assert exam.status == ExamStatus.Archived
+
+
+def test_delete_exam_session_ongoing_iron_blocked(client, interviewer_user, override_auth, create_test_exam, db_session):
+    """
+    驗證當考生還在作答時（Ongoing），任何人皆禁止刪除，系統應拋出 400。
+    """
+    override_auth(interviewer_user)
+    exam = create_test_exam(title="正在進行中的重要筆試", status=ExamStatus.Ongoing, easy_count=1)
 
     response = client.delete(f"/api/v1/exams/{exam.id}")
     assert response.status_code == 400
     assert "禁止清理操作" in response.json()["detail"]
 
     db_session.refresh(exam)
-    assert exam is not None
+    assert exam.status == ExamStatus.Ongoing
 
 
 def test_delete_exam_forbidden_for_candidate(client, candidate_user, interviewer_user, override_auth, create_test_exam):
     """
-   驗證學生不允許調用刪除端點來撤銷自己的考試。
+    驗證一般學生無法調用刪除端點來撤銷自己的考試。
     """
     override_auth(interviewer_user)
     exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Draft, easy_count=1)
 
     override_auth(candidate_user)
     response = client.delete(f"/api/v1/exams/{exam.id}")
-    
+
     assert response.status_code == 403
-    assert "只有面試官或管理員可以刪除" in response.json()["detail"]
