@@ -23,6 +23,21 @@ class ExamProblemRead(ExamProblemBase):
     
     model_config = ConfigDict(from_attributes=True)
 
+class ExamProblemCreate(BaseModel):
+    """
+    面試官手動指派題目至考卷時的 Request Body。
+    - 題號順序 (sequence) 會由後端自動推算，因此前端不需要、也不應該傳入。
+    """
+    problem_id: int = Field(..., description="欲添加的題目 ID")
+    random_difficulty: Optional[DifficultyLevel] = Field(None, description="欲隨機抽取的難度（單題隨機模式填寫）")
+    points: int = Field(default=100, description="本題在這張考卷中的配分")
+
+    @model_validator(mode='after')
+    def validate_modes(self) -> 'ExamProblemCreate':
+        if self.problem_id is None and self.random_difficulty is None:
+            raise ValueError('problem_id 與 random_difficulty 不能同時為空')
+        return self
+
 # Exam
 class ExamBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "2026 後端實作測驗"})
@@ -31,13 +46,6 @@ class ExamBase(BaseModel):
     easy_count: int = Field(default=0, ge=0)
     medium_count: int = Field(default=0, ge=0)
     hard_count: int = Field(default=0, ge=0)
-
-    @model_validator(mode='after')
-    def check_total_questions(self) -> 'ExamBase':
-        """確保整份考卷至少有一題"""
-        if self.easy_count + self.medium_count + self.hard_count == 0:
-            raise ValueError('考試至少需要包含一題 (easy, medium, hard 總和不能為 0)')
-        return self
 
 class ExamCreate(ExamBase):
     """

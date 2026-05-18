@@ -11,7 +11,7 @@ from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.problem import Problem
-from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
 
 router = APIRouter()
 
@@ -298,6 +298,7 @@ def generate_exam_problems(
     - 依據考試當初建立時設定的難易度配比 (easy, medium, hard_count)，從題庫中隨機抽題。
     - 抽完後自動編排題號順序 (sequence) 並計入 ExamProblem 表中。
     - 只有 Draft 草稿狀態的考試允許重新抽選題目。
+    - 保留現有手動挑好的題目，僅針對「未補滿的差額」進行隨機抽題。
     """
     if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
         raise HTTPException(
@@ -307,49 +308,56 @@ def generate_exam_problems(
 
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")    
 
     if exam.status != ExamStatus.Draft:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"目前考試狀態為 {exam.status}，只有草稿 (Draft) 狀態能執行自動抽題。"
         )
-
-    db.query(ExamProblem).filter(ExamProblem.exam_id == exam.id).delete()
     
-    selected_problems = []
-    difficulty_map = [
-        (DifficultyLevel.Easy, exam.easy_count),
-        (DifficultyLevel.Medium, exam.medium_count),
-        (DifficultyLevel.Hard, exam.hard_count)
+    current_counts = {
+        DifficultyLevel.Easy: 0,
+        DifficultyLevel.Medium: 0,
+        DifficultyLevel.Hard: 0
+    }
+    for ep in exam.exam_problems:
+        if ep.problem and ep.problem.difficulty:
+            current_counts[ep.problem.difficulty] += 1
+
+    difficulty_gap = [
+        (DifficultyLevel.Easy, max(0, exam.easy_count - current_counts[DifficultyLevel.Easy])),
+        (DifficultyLevel.Medium, max(0, exam.medium_count - current_counts[DifficultyLevel.Medium])),
+        (DifficultyLevel.Hard, max(0, exam.hard_count - current_counts[DifficultyLevel.Hard]))
     ]
 
-    for diff_level, count in difficulty_map:
-        if count > 0:
+    allocated_ids = [ep.problem_id for ep in exam.exam_problems]
+    new_selected_problems = []
+
+    for diff_level, gap_count in difficulty_gap:
+        if gap_count > 0:
             problems = (
                 db.query(Problem)
                 .filter(Problem.difficulty == diff_level)
+                .filter(~Problem.id.in_(allocated_ids) if allocated_ids else True)
                 .order_by(func.random())
-                .limit(count)
+                .limit(gap_count)
                 .all()
             )
+            if len(problems) < gap_count:
+                raise HTTPException(status_code=400, detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。")
             
-            if len(problems) < count:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"題庫中難度為 {diff_level} 的題目數量不足（需要 {count} 題，系統內僅存 {len(problems)} 題），無法生成考卷。"
-                )
-            selected_problems.extend(problems)
+            new_selected_problems.extend(problems)
+            allocated_ids.extend([p.id for p in problems])
 
-    for index, prob in enumerate(selected_problems):
+    max_seq = db.query(func.max(ExamProblem.sequence)).filter(ExamProblem.exam_id == exam.id).scalar() or 0
+    for index, prob in enumerate(new_selected_problems):
         ep = ExamProblem(
             exam_id=exam.id,
             problem_id=prob.id,
-            sequence=index + 1,
-            points=100,
-            problem=prob
+            sequence=max_seq + index + 1,
+            points=100
         )
-            
         db.add(ep)
 
     db.commit()
@@ -369,6 +377,9 @@ def publish_exam_session(
 ):
     """
     發布考試場次 API。
+    - 只有面試官或管理員可以發布。
+    - 考卷必須為 Draft 狀態。
+    - 考卷內必須「實體包含至少一道題目」才允許發布。
     """
     if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
         raise HTTPException(
@@ -382,7 +393,6 @@ def publish_exam_session(
         .filter(Exam.id == exam_id)
         .first()
     )
-    
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
 
@@ -524,3 +534,68 @@ def delete_exam_session(
     db.commit()
     
     return
+
+@router.post("/{exam_id}/problems", response_model=ExamRead)
+def add_exam_problem_manual(
+    exam_id: uuid.UUID,
+    obj_in: ExamProblemCreate,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    面試主管手動指派加題 API
+    - 僅限管理員/面試官，且考卷必須處於 Draft 狀態才允許手動塞題。
+    """    
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以手動指派題目。"
+        )
+    
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次")
+    
+    if exam.status != ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不允許操作：目前考場狀態為 {exam.status}，只有在 Draft (草稿) 狀態才允許修改題目清單。"
+        )
+    
+    target_problem_id = obj_in.problem_id
+
+    if obj_in.random_difficulty and not target_problem_id:
+        exist_ids = [ep.problem_id for ep in exam.exam_problems]
+        random_prob = (
+            db.query(Problem)
+            .filter(Problem.difficulty == obj_in.random_difficulty)
+            .filter(~Problem.id.in_(exist_ids) if exist_ids else True)
+            .order_by(func.random())
+            .first()
+        )
+        if not random_prob:
+            raise HTTPException(status_code=400, detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選")
+        target_problem_id = random_prob.id
+
+    existing_ep = db.get(ExamProblem, (exam_id, target_problem_id))
+    if existing_ep:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="該題目已存在於本張試卷中，請勿重複添加。"
+        )
+
+    problem = db.query(Problem).filter(Problem.id == target_problem_id).first()
+    if not problem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"題庫中查無此題目 (ID: {target_problem_id})")
+
+    max_seq = db.query(func.max(ExamProblem.sequence)).filter(ExamProblem.exam_id == exam_id).scalar()
+    db_exam_problem = ExamProblem(
+        exam_id=exam_id,
+        problem_id=target_problem_id,
+        sequence=(max_seq or 0) + 1,
+        points=obj_in.points
+    )
+    db.add(db_exam_problem)
+    db.commit()
+    db.refresh(exam)
+    return exam

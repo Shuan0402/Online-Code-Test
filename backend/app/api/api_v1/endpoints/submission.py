@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session, joinedload
 from app.api import deps
 from app.models.submission import Submission
 from app.models.problem import Problem
+from app.models.exam import Exam, ExamProblem
 from app.schemas.submission import SubmissionCreate, SubmissionRead, JudgeTaskPayload
 from app.services.queue_manager import queue_manager
-from app.models.enums import UserRole
+from app.models.enums import UserRole, ExamStatus
 
 
 router = APIRouter()
@@ -22,18 +23,47 @@ def create_submission(
     storage_service = Depends(deps.get_storage) 
 ):
     """
+    建立程式碼提交並送入評測佇列。
+
     1. 驗證題目是否存在，取得時限與記憶體限制
     2. 建立 Pending 狀態的 Submission 紀錄
     3. 程式碼上傳 MinIO 取得永久 URI
     4. 生成 pre-signed URL 並與限制條件打包
     5. 送入 Redis Queue (submissions:pending) 觸發 Worker 判題
     """
+    if not payload.exam_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="交卷失敗：必須提供有效的考試場次編號 (exam_id)。"
+        )
+    
     problem = db.query(Problem).filter(Problem.id == payload.problem_id).first()
     if not problem:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到指定的題目 (ID: {payload.problem_id})"
         )
+    
+    exam = db.query(Exam).filter(Exam.id == payload.exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次。")
+    
+    if current_user.role == UserRole.Candidate:
+        if exam.candidate_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="越權存取：您並非本場考試的指定受測對象。")
+        
+        if exam.status != ExamStatus.Ongoing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=f"交卷失敗：目前考場狀態為 {exam.status}，只有在 Ongoing (進行中) 狀態才允許提交程式碼。"
+            )
+
+    ep = db.query(ExamProblem).filter(
+        ExamProblem.exam_id == payload.exam_id,
+        ExamProblem.problem_id == payload.problem_id
+    ).first()
+    if not ep:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="提交失敗：本題目不屬於該場考試的範疇。")
 
     target_lang = payload.language.lower()
 
@@ -57,10 +87,8 @@ def create_submission(
             source_code=payload.source_code,
             language=target_lang
         )
-        
         db_submission.code_s3_url = s3_uri
         db.commit()
-
         presigned_url = storage_service.sign_get_url(s3_uri)
 
     except Exception as storage_err:
@@ -86,7 +114,7 @@ def create_submission(
     )
 
     if not push_success:
-        db_submission.status = "CE" 
+        db_submission.status = "SE"
         db_submission.judge_log = "系統發送判題佇列失敗，請聯絡系統管理員。"
         db.commit()
         raise HTTPException(
@@ -171,6 +199,7 @@ def get_submission_by_id(
 @router.get("/", response_model=List[SubmissionRead])
 def get_submissions(
     problem_id: Optional[int] = None,
+    exam_id: Optional[UUID] = None,
     user_id: Optional[UUID] = None,
     skip: int = 0,
     limit: int = 50,
@@ -193,6 +222,9 @@ def get_submissions(
 
     if problem_id:
         query = query.filter(Submission.problem_id == problem_id)
+
+    if exam_id:
+        query = query.filter(Submission.exam_id == exam_id)
 
     return (
         query.order_by(Submission.created_at.desc())
