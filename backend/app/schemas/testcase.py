@@ -1,0 +1,43 @@
+from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime
+from typing import Optional
+
+
+class TestCaseBase(BaseModel):
+    input_data: str = Field(..., description="標準輸入資料 (Standard Input)")
+    expected_output: str = Field(..., description="預期輸出資料 (Expected Output)")
+    score_weight: int = Field(default=10, ge=0, description="本筆測資的分數權重")
+    is_sample: bool = Field(default=False, description="是否展示給考生作為範例測資")
+
+class TestCaseCreate(TestCaseBase):
+    """
+    建立新測資時前端傳入的 Request Body 規格
+    """
+    pass
+
+class TestCaseRead(TestCaseBase):
+    """
+    出題者後台讀取測資時的回傳格式 (包含實體 ID 與建立時間)
+    """
+    id: int
+    problem_id: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class TestCaseUpdate(BaseModel):
+    """
+    修改測資時前端傳入的 Request Body 規格
+    """
+    input_data: Optional[str] = Field(None, description="標準輸入資料 (Standard Input)")
+    expected_output: Optional[str] = Field(None, description="預期輸出資料 (Expected Output)")
+    score_weight: Optional[int] = Field(None, ge=0, description="本筆測資的分數權重")
+    is_sample: Optional[bool] = Field(None, description="是否展示給考生作為範例測資")
+
+class RejudgeResponse(BaseModel):
+    """
+    題目重測啟動後的回傳狀態
+    """
+    message: str = Field(..., description="提示訊息")
+    problem_id: int = Field(..., description="重測的題目 ID")
+    submissions_triggered: int = Field(..., description="本次觸發非同步重測的提交總筆數")

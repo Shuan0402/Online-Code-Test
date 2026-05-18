@@ -73,12 +73,13 @@ def test_exam_validator_zero_questions():
         "medium_count": 0,
         "hard_count": 0
     }
-    exam_create = ExamCreate(**payload)
+    exam_schema = ExamCreate(**payload)
     
-    assert exam_create.easy_count == 0
-    assert exam_create.medium_count == 0
-    assert exam_create.hard_count == 0
-    
+    assert exam_schema.title == "Empty Exam"
+    assert exam_schema.easy_count == 0
+    assert exam_schema.medium_count == 0
+    assert exam_schema.hard_count == 0
+
 def test_exam_valid_creation():
     payload = {
         "title": "Final Exam",
