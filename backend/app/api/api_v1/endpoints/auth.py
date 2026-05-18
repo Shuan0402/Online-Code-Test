@@ -10,7 +10,7 @@ from app.core.redis_client import redis_client
 
 router = APIRouter()
 
-@router.post("/login")
+@router.post("/login", response_model=Token)
 def login(
     db: Session = Depends(deps.get_db),
     form_data: OAuth2PasswordRequestForm = Depends()
@@ -26,7 +26,7 @@ def login(
     
     access_token = SecurityManager.create_access_token(subject=str(user.id))
     
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(access_token=access_token, token_type="bearer", role=user.role.value, user_id=str(user.id))
 
 @router.post("/logout")
 def logout(
