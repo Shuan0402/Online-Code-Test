@@ -1,5 +1,5 @@
 from uuid import UUID
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from datetime import datetime
 from typing import List, Optional
 from app.models.enums import JudgeStatus
@@ -15,9 +15,18 @@ class SubmissionCreate(BaseModel):
     """
     定義 SubmissionCreate 的欄位，考生提交程式碼時使用。
     """
-    exam_id: Optional[UUID] = None
     problem_id: int
-    source_code: str 
+    exam_id: Optional[UUID] = None
+    language: str = Field(..., json_schema_extra={"example": "python"})
+    source_code: str = Field(..., json_schema_extra={"example": "print('Hello World')"})
+    submission_type: str = Field("OFFICIAL", description="必須為 OFFICIAL")
+
+    @field_validator("submission_type")
+    @classmethod
+    def validate_submission_type(cls, v: str) -> str:
+        if v.upper() == "RUN_ONLY":
+            raise ValueError("此版本尚未支援 'RUN_ONLY' 運行模式，請使用 'OFFICIAL' 繳交。")
+        return v.upper()
 
 class JudgeTaskPayload(BaseModel):
     """
@@ -26,7 +35,7 @@ class JudgeTaskPayload(BaseModel):
     submission_id: UUID
     problem_id: int
     language: str
-    code_s3_url: str
+    presigned_url: str = Field(..., description="時效性高的 S3 預簽章下載連結")
     time_limit: int = Field(..., description="時間限制 (ms)")
     memory_limit: int = Field(..., description="記憶體限制 (MB)")
 
@@ -49,6 +58,19 @@ class JudgeCallbackPayload(BaseModel):
     memory_mb: Optional[int] = Field(default=None, description="step 9+ 才填")
     judge_log: str = ""
 
+class SubmissionDetailRead(BaseModel):
+    """
+    SubmissionDetail 的回傳格式。
+    """
+    id: int
+    testcase_id: int
+    status: JudgeStatus
+    execution_time: Optional[int] = None
+    memory_usage: Optional[int] = None
+    score: int
+    runtime_info: Optional[str] = None
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class SubmissionRead(SubmissionBase):
     """
@@ -58,13 +80,17 @@ class SubmissionRead(SubmissionBase):
     user_id: UUID
     problem_id: int
     exam_id: Optional[UUID] = None
-    
-    status: JudgeStatus
+    submission_type: str
+    language: str
     code_s3_url: str
+    status: JudgeStatus
+    score: int
     
     execution_time: Optional[int] = None
     memory_usage: Optional[int] = None
     judge_log: Optional[str] = None
     created_at: datetime
 
+    details: List[SubmissionDetailRead] = []
+    
     model_config = ConfigDict(from_attributes=True)

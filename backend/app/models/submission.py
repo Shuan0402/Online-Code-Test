@@ -30,16 +30,15 @@ class Submission(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     problem_id = Column(Integer, ForeignKey("problems.id", ondelete="CASCADE"), nullable=False)
-    
     exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id", ondelete="SET NULL"), nullable=True)
-    submission_type = Column(Enum("RUN_ONLY", "OFFICIAL", name="submission_type"), default="OFFICIAL", nullable=False)
 
+    submission_type = Column(Enum("RUN_ONLY", "OFFICIAL", name="submission_type"), default="OFFICIAL", nullable=False)
 
     language = Column(String(50), nullable=False)
     code_s3_url = Column(String(500), nullable=False)
-    
     status = Column(Enum(JudgeStatus), default=JudgeStatus.Pending, nullable=False)
     score = Column(Integer, default=0)
+
     execution_time = Column(Integer, nullable=True)
     memory_usage = Column(Integer, nullable=True)
     judge_log = Column(Text, nullable=True)
@@ -50,3 +49,34 @@ class Submission(Base):
     user = relationship("User", back_populates="submissions")
     problem = relationship("Problem", back_populates="submissions")
     exam = relationship("Exam", back_populates="submissions")
+    details = relationship("SubmissionDetail", back_populates="submission", cascade="all, delete-orphan")
+
+class SubmissionDetail(Base):
+    """
+    SubmissionDetail (提交明細)：紀錄該次提交中，每一筆測資 (TestCase) 的具體運行結果。
+
+    - id (PK): Integer，自動遞增。
+    - submission_id (FK): UUID，指向 Submission.id。
+    - testcase_id (FK): Integer，指向 TestCase.id。
+    - status: Enum (Pending / Judging / AC / WA / TLE / MLE / RE / CE)，該測資的評測結果。
+    - execution_time: Integer，該測資的實際執行耗時。
+    - memory_usage: Integer，該測資的實際記憶體消耗。
+    - score: Integer，該測資的得分。
+    - runtime_info: Text，該測資的詳細運行資訊 (如錯誤訊息、標準輸出等)。
+    """
+    __tablename__ = "submission_details"
+
+    # 定義欄位
+    id = Column(Integer, primary_key=True, index=True)
+    submission_id = Column(UUID(as_uuid=True), ForeignKey("submissions.id", ondelete="CASCADE"), nullable=False)
+    testcase_id = Column(Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False)
+    
+    status = Column(Enum(JudgeStatus), nullable=False)
+    execution_time = Column(Integer, nullable=True) # 單位: ms
+    memory_usage = Column(Integer, nullable=True)   # 單位: MB
+    score = Column(Integer, default=0)
+    runtime_info = Column(Text, nullable=True)
+
+    # 定義關聯
+    submission = relationship("Submission", back_populates="details")
+    test_case = relationship("TestCase")

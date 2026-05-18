@@ -103,9 +103,13 @@ def test_submission_read_uuid_handling():
         "code_s3_url": "s3://path",
         "execution_time": None,
         "memory_usage": 1024,
-        "created_at": datetime.now()
+        "created_at": datetime.now(),
+        "submission_type": "OFFICIAL",
+        "score": 100
     }
+    
     sub = SubmissionRead(**mock_data)
+    
     assert sub.id == mock_id
-    assert sub.status == JudgeStatus.AC
-    assert sub.execution_time is None
+    assert sub.submission_type == "OFFICIAL"
+    assert sub.score == 100

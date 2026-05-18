@@ -4,4 +4,4 @@ from .problem import Problem
 from .testcase import TestCase
 from .exam import Exam
 from .exam_problem import ExamProblem
-from .submission import Submission
+from .submission import Submission, SubmissionDetail
