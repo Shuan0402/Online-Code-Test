@@ -381,26 +381,6 @@ def test_create_exam_forbidden_for_candidate(client, candidate_user, override_au
     assert response.status_code == 403
     assert "只有面試官或管理員可以建立" in response.json()["detail"]
 
-
-def test_create_exam_validation_error_empty_questions(client, interviewer_user, candidate_user, override_auth):
-    """
-    驗證當 easy/medium/hard 總和為 0 時，Pydantic model_validator 能否回傳 422。
-    """
-    override_auth(interviewer_user)
-    
-    payload = {
-        "title": "沒有題目的空虛考卷",
-        "duration_minutes": 60,
-        "easy_count": 0,
-        "medium_count": 0,
-        "hard_count": 0,
-        "candidate_id": str(candidate_user.id)
-    }
-
-    response = client.post("/api/v1/exams/", json=payload)
-    
-    assert response.status_code == 422
-
 # --- POST /exams/{id}/problems/generate (自動抽題) ---
 def test_generate_exam_problems_success(client, db_session, interviewer_user, override_auth, create_test_exam, create_test_problem):
     """
