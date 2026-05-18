@@ -287,7 +287,6 @@ def create_exam_session(
     db.refresh(new_exam)
     return new_exam
 
-
 @router.post("/{exam_id}/problems/generate", response_model=ExamRead)
 def generate_exam_problems(
     exam_id: uuid.UUID,
@@ -309,8 +308,8 @@ def generate_exam_problems(
 
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
-    
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")    
+
     if exam.status != ExamStatus.Draft:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -369,7 +368,6 @@ def generate_exam_problems(
         .filter(Exam.id == exam_id)
         .first()
     )
-
 
 @router.post("/{exam_id}/publish", response_model=ExamRead)
 def publish_exam_session(

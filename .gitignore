@@ -3,3 +3,9 @@
 # vim swap files
 *.swp
 *.swo
+
+# Node / frontend build artifacts
+node_modules/
+dist/
+.vite/
+*.log
