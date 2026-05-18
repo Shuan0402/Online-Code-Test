@@ -290,7 +290,6 @@ def create_exam_session(
     db.refresh(new_exam)
     return new_exam
 
-
 @router.post("/{exam_id}/problems/generate", response_model=ExamRead)
 def generate_exam_problems(
     exam_id: uuid.UUID,
@@ -372,7 +371,6 @@ def generate_exam_problems(
         .filter(Exam.id == exam_id)
         .first()
     )
-
 
 @router.post("/{exam_id}/publish", response_model=ExamRead)
 def publish_exam_session(
