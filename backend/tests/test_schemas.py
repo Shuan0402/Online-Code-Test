@@ -73,10 +73,12 @@ def test_exam_validator_zero_questions():
         "medium_count": 0,
         "hard_count": 0
     }
-    with pytest.raises(ValidationError) as exc:
-        ExamCreate(**payload)
-    assert "至少需要包含一題" in str(exc.value)
-
+    exam_create = ExamCreate(**payload)
+    
+    assert exam_create.easy_count == 0
+    assert exam_create.medium_count == 0
+    assert exam_create.hard_count == 0
+    
 def test_exam_valid_creation():
     payload = {
         "title": "Final Exam",

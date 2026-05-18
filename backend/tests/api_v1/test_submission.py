@@ -53,15 +53,20 @@ def test_create_submission_exam_ongoing_success(mock_push, client, candidate_use
         "exam_id": str(exam.id)
     }
 
-    with patch("app.api.deps.get_storage") as mock_storage_deps:
-        mock_storage = MagicMock()
-        mock_storage.upload_source.return_value = "s3://bucket/test.cpp"
-        mock_storage_deps.return_value = mock_storage
+    mock_storage = MagicMock()
+    mock_storage.upload_source.return_value = "s3://bucket/test.cpp"
+    mock_storage.sign_get_url.return_value = "http://mock-minio/presigned-url"
 
+    client.app.dependency_overrides[deps.get_storage] = lambda: mock_storage
+
+    try:
         response = client.post("/api/v1/submissions/", json=payload)
-
-    assert response.status_code == 202
-    assert response.json()["exam_id"] == str(exam.id)
+        
+        assert response.status_code == 202
+        assert response.json()["exam_id"] == str(exam.id)
+        
+    finally:
+        client.app.dependency_overrides.clear()
 
 
 def test_create_submission_reject_run_only(client, candidate_user, override_auth, create_test_problem):
