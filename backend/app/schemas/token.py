@@ -5,6 +5,7 @@ from app.models.enums import UserRole
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    refresh_token: str
     role: str
     user_id: str
 
@@ -14,3 +15,16 @@ class TokenPayload(BaseModel):
     """
     sub: Optional[str] = None
     role: Optional[UserRole] = None
+
+class TokenRefreshInput(BaseModel):
+    """
+    前端拿來交換新 Access Token 的 Refresh Token
+    """
+    refresh_token: str
+
+class TokenRefreshResponse(BaseModel):
+    """
+    後端核發的新 Token 回傳格式
+    """
+    access_token: str
+    token_type: str = "bearer"
