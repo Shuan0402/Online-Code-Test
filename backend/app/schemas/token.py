@@ -34,3 +34,10 @@ class ForgotPasswordInput(BaseModel):
     忘記密碼請求：前端傳入使用者的帳號（Email）
     """
     username: str
+
+class ResetPasswordInput(BaseModel):
+    """
+    實體重設密碼：前端帶著 Token 與新密碼來改資料庫
+    """
+    token: str
+    new_password: str
