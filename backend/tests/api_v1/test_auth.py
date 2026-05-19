@@ -16,6 +16,7 @@ def test_login_success(client, create_test_user):
 
     assert response.status_code == 200
     assert "access_token" in response.json()
+    assert "refresh_token" in response.json()
     assert "token_type" in response.json()
     assert "role" in response.json()
     assert "user_id" in response.json()

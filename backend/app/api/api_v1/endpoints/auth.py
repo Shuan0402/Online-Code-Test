@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from jose import jwt, JWTError
 
+from app.core.config import settings
 from app.api import deps
 from app.core.security import SecurityManager
 from app.models.user import User
-from app.schemas.token import Token
+from app.schemas.token import Token, TokenRefreshInput, TokenRefreshResponse
 from app.core.redis_client import redis_client
 
 router = APIRouter()
@@ -25,8 +27,15 @@ def login(
         )
     
     access_token = SecurityManager.create_access_token(subject=str(user.id))
+    refresh_token = SecurityManager.create_refresh_token(subject=str(user.id))
     
-    return Token(access_token=access_token, token_type="bearer", role=user.role.value, user_id=str(user.id))
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        role=user.role.value,
+        user_id=str(user.id)
+    )
 
 @router.post("/logout")
 def logout(
