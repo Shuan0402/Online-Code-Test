@@ -1,7 +1,7 @@
 import json
 from uuid import UUID
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
@@ -18,6 +18,7 @@ router = APIRouter()
 @router.post("/", response_model=SubmissionRead, status_code=status.HTTP_202_ACCEPTED)
 def create_submission(
     payload: SubmissionCreate,
+    request: Request,
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user),
     storage_service = Depends(deps.get_storage) 
@@ -67,6 +68,13 @@ def create_submission(
 
     target_lang = payload.language.lower()
 
+    # 反向代理，未來上雲用到 load balance 時會用到
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        client_ip = x_forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = request.client.host if request.client else "0.0.0.0"
+
     db_submission = Submission(
         user_id=current_user.id,
         problem_id=payload.problem_id,
@@ -75,7 +83,8 @@ def create_submission(
         language=target_lang,
         code_s3_url="PENDING_UPLOAD",
         status="Pending",
-        score=0
+        score=0,
+        client_ip=client_ip
     )
     db.add(db_submission)
     db.commit()

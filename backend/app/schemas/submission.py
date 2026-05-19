@@ -91,6 +91,7 @@ class SubmissionRead(SubmissionBase):
     submission_type: str
     language: str
     code_s3_url: str
+    client_ip: Optional[str] = None
     status: JudgeStatus
     score: int
     
