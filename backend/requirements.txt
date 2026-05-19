@@ -12,3 +12,4 @@ python-jose[cryptography]
 python-multipart
 argon2-cffi
 boto3>=1.35
+psutil
