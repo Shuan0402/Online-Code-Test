@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 from app.models.enums import UserRole
 
@@ -28,3 +28,9 @@ class TokenRefreshResponse(BaseModel):
     """
     access_token: str
     token_type: str = "bearer"
+
+class ForgotPasswordInput(BaseModel):
+    """
+    忘記密碼請求：前端傳入使用者的帳號（Email）
+    """
+    username: str

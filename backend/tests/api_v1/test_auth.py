@@ -108,3 +108,29 @@ def test_refresh_token_rejected_if_in_blacklist(client, candidate_user):
     
     assert response.status_code == 401
     assert "已失效" in response.json()["detail"]
+
+# --- POST /forgot-password---
+def test_forgot_password_user_exists(client, candidate_user):
+    """
+    輸入真實存在的 username，應回傳 200 成功訊息
+    """
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"username": candidate_user.username}
+    )
+
+    assert response.status_code == 200
+    assert "郵件已成功發送" in response.json()["detail"]
+
+
+def test_forgot_password_user_not_exists_should_still_return_200(client):
+    """
+    輸入不存在的帳號，基於防枚舉安全原則，假裝發送成功、一樣回傳 200 OK
+    """
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"username": "im-hacker-hax@example.com"}
+    )
+    
+    assert response.status_code == 200
+    assert "郵件已成功發送" in response.json()["detail"]

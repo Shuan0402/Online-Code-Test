@@ -2,14 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
+import logging
 
 from app.core.config import settings
 from app.api import deps
 from app.core.security import SecurityManager
 from app.models.user import User
-from app.schemas.token import Token, TokenRefreshInput, TokenRefreshResponse
+from app.schemas.token import Token, TokenRefreshInput, TokenRefreshResponse, ForgotPasswordInput
 from app.core.redis_client import redis_client
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("/login", response_model=Token)
@@ -99,3 +101,27 @@ def refresh_token(
         access_token=new_access_token,
         token_type="bearer"
     )
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordInput,
+    db: Session = Depends(deps.get_db)
+):
+    """
+    忘記密碼請求
+    - User Enumeration Prevention (不論帳號是否存在，一律回傳 200 OK，防止駭客枚舉使用者)
+    - 生成 15 分鐘短效 reset token，並在本地 Console/Log 中模擬發送郵件
+    """
+    user = db.query(User).filter(User.username == payload.username).first()
+    
+    if not user or not user.is_active:
+        logger.warning(f"[Forgot Password] 偵測到嘗試探測不存在或已停用的帳號: {payload.username}")
+        return {"detail": "若此帳號存在於系統中，重設密碼的郵件已成功發送。"}
+
+    reset_token = SecurityManager.create_password_reset_token(subject=str(user.id))
+
+    reset_url = f"{settings.FRONTEND_HOST}/reset-password?token={reset_token}"
+    
+    logger.info("\n" + "="*80 + f"\n[SIMULATED EMAIL SERVICE] 發送重設密碼信件給: {user.username}\n" + f"請點擊以下連結重設密碼 (15分鐘內有效):\n{reset_url}\n" + "="*80)
+
+    return {"detail": "若此帳號存在於系統中，重設密碼的郵件已成功發送。"}

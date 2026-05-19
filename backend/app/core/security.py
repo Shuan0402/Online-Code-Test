@@ -42,7 +42,13 @@ class SecurityManager:
         """
         expire = datetime.now(timezone.utc) + timedelta(days=7)
         
-        # 🚀 注入 type: refresh 進行權限卡控
         to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}
         
+        return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
+    
+    @staticmethod
+    def create_password_reset_token(subject: str) -> str:
+        """產生忘記密碼重設 Token (極短效期：15 分鐘，帶有 reset 標籤)"""
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+        to_encode = {"exp": expire, "sub": str(subject), "type": "reset"}
         return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.ALGORITHM)
