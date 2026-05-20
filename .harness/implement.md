@@ -289,3 +289,371 @@ None found.
 - Verifier verdict: **green**. No action needed.
 - Backend dependency `GET /api/v1/exams` + `POST /api/v1/exams/{id}/start` still not live; static wiring complete, browser E2E remains blocked but unblocking is on backend team's plate per PR #18.
 - **Committed P3 as `a335ed1`** on `feat/frontend-scaffold`.
+
+---
+
+## P4 — Candidate panel: Take-exam page (Monaco + timer + draft + submit)  (2026-05-20T00:00:00Z)
+
+### Thought
+Read the plan P4 section and the 8 API contract overrides in the prompt. Then read the backend source for ground truth before writing any code.
+
+### Action
+Read `.harness/plan.md`, `.harness/implement.md`, `backend/app/schemas/exam.py`, `backend/app/schemas/submission.py`, `backend/app/schemas/problem.py`, `backend/app/models/enums.py`, `backend/app/api/api_v1/endpoints/exam.py`, `backend/app/api/api_v1/endpoints/submission.py`, and existing frontend files (`App.jsx`, `api.js`, `CandidateLayout.jsx`).
+
+### Observation
+Key facts confirmed from backend:
+- `POST /api/v1/exams/{examId}/start` returns `CandidateExamDetailRead` with `remaining_seconds` (computed server-side). Re-calling on an Ongoing exam recomputes and returns fresh data — idempotent.
+- `/start` raises HTTP 400 if exam is Finished/Archived ("已完成") or time ran out. Plan said to use `end_time` as timer source — WRONG; corrected to `remaining_seconds`.
+- `exam_problems` items have `problem_id, sequence, points, title, difficulty` (no description).
+- `GET /api/v1/problems/{problem_id}` returns `ProblemRead` with field `test_cases` (snake_case).
+- `POST /api/v1/submissions/` (trailing slash) → HTTP 202 with `SubmissionRead`. Body: `{ problem_id(int), exam_id(uuid str), language, source_code, submission_type: "OFFICIAL" }`.
+- `GET /api/v1/submissions/{id}` → `SubmissionRead`; status ∈ Pending|Judging|AC|WA|TLE|MLE|RE|CE.
+- `GET /api/v1/submissions/latest?problem_id={int}&exam_id={uuid}` → `SubmissionRead` or 404.
+- `POST /api/v1/exams/{examId}/submit` → 200 with `CandidateExamListRead`.
+- Language validator on backend: `["python", "cpp"]` lowercase.
+
+---
+
+### Thought
+Install needed shadcn components (tabs, tooltip) before writing code.
+
+### Action
+`npx shadcn@4.6.0 add tabs tooltip --yes`
+
+### Observation
+Exit 0. Created `src/components/ui/tabs.jsx` and `src/components/ui/tooltip.jsx`.
+
+---
+
+### Thought
+Create `useAdaptivePolling.js` with module-level `POLLING_DELAYS` constant and rationale comment.
+
+### Action
+Created `frontend/src/hooks/useAdaptivePolling.js`:
+- Module-level `const POLLING_DELAYS = [300,500,1000,2000,3000,5000,5000,5000,10000]` (never recreated per render).
+- Comment explaining ~70% request savings vs fixed 1s polling.
+- `isTerminal(status)` helper (not Pending, not Judging).
+- Hook keeps `onResult` in a ref to avoid stale closures without needing it in the dependency array.
+- On submissionId change: stops previous timer, resets delay index, starts fresh with `POLLING_DELAYS[0]`.
+
+### Observation
+File created without errors.
+
+---
+
+### Thought
+Create `useOfflineRecovery.js` for cold-restart recovery.
+
+### Action
+Created `frontend/src/hooks/useOfflineRecovery.js`:
+- On mount, iterates `problems` array.
+- If `localStorage.getItem('pending:{problemId}')` exists → parse submissionId → call `onPendingFound`.
+- If no pending key and `examStatus === 'Ongoing'` → call `GET /api/v1/submissions/latest?problem_id={id}&exam_id={examId}`; if non-terminal status → write pending key → call `onPendingFound`.
+- Runs once on `examId` change (after start API resolves).
+
+### Observation
+File created without errors.
+
+---
+
+### Thought
+Create `ExamTimer.jsx` using `remaining_seconds` (integer) from `/start` response, not `end_time`.
+
+### Action
+Created `frontend/src/components/ExamTimer.jsx`:
+- `initialSeconds` prop (server-computed integer).
+- `setInterval` countdown ticks every 1s; on zero calls `onTimeout`.
+- Turns red + pulsates when `remaining < 300` (5 minutes).
+- Guard `firedRef` prevents double-calling `onTimeout`.
+- `useEffect` resets on `initialSeconds` prop change (for page refresh recovery).
+
+### Observation
+File created without errors. Timer source correctly uses server `remaining_seconds`, not `end_time` (plan was wrong on this).
+
+---
+
+### Thought
+Create `ProblemPanel.jsx` — fetches `GET /api/v1/problems/{problemId}`, renders description and sample test cases using field `test_cases` (snake_case confirmed from backend).
+
+### Action
+Created `frontend/src/components/ProblemPanel.jsx`:
+- `useEffect` fetches on `problemId` change; cancel flag prevents state update on unmount.
+- Loading / error / data states.
+- Renders: title, difficulty badge (中/英 map), points badge, time/memory limits, description (pre-wrap), sample test cases grid.
+- Uses `tc.input_data` / `tc.expected_output` (snake_case, matching backend `TestCaseRead`).
+
+### Observation
+File created without errors.
+
+---
+
+### Thought
+Create `EditorPanel.jsx` with Monaco editor, language selector, localStorage draft (debounced 1s), and submit button.
+
+### Action
+Created `frontend/src/components/EditorPanel.jsx`:
+- Draft key: `draft:exam:{examId}:problem:{problemId}`.
+- On mount / draftKey change: loads from localStorage or falls back to language-specific default.
+- `handleCodeChange`: updates state + debounced (1s) localStorage write.
+- Language selector: python / cpp.
+- Monaco `@monaco-editor/react` component with `automaticLayout: true` (handles resize).
+- `onSubmit(code, language)` callback for parent.
+
+### Observation
+File created without errors.
+
+---
+
+### Thought
+Create `FinalizeModal.jsx` — dialog triggered by "交卷" or auto-timeout, per-problem status summary, confirm calls `/submit`, tooltip on disabled confirm button.
+
+### Action
+Created `frontend/src/pages/candidate/FinalizeModal.jsx`:
+- `hasInFlight` derived: any problem status is Pending or Judging.
+- Confirm button disabled when `submitting || hasInFlight`.
+- `<TooltipProvider>` wrapping with "請等待判題完成" tooltip shown when `hasInFlight`.
+- `isTimeout` flag changes the dialog title to "考試時間到，系統將自動交卷" and hides "繼續作答" button.
+- Calls `POST /api/v1/exams/${examId}/submit`; on any 2xx calls `onDone()`.
+
+### Observation
+File created without errors.
+
+---
+
+### Thought
+Create the main `TakeExamPage.jsx`. Need to solve the "hooks can't be called in a loop" problem for per-problem adaptive polling. Solution: render a hidden `PollingSlot` component per problem — each is a React component that legally calls `useAdaptivePolling` as a stable hook call.
+
+### Action
+Created `frontend/src/pages/candidate/TakeExamPage.jsx`:
+- On mount: `POST /api/v1/exams/{examId}/start`; on 400 → navigate to result page; success → sets `exam` + `remainingSeconds`.
+- `useOfflineRecovery` called with `exam.exam_problems`, `examId`, `exam.status`, `handlePendingFound`.
+- `pollingIds` state: `{ [problemId]: submissionId | null }`.
+- `statuses` state: `{ [problemId]: statusStr }`.
+- Per problem: renders `<PollingSlot problemId submissionId onResult>` which calls `useAdaptivePolling` — legal hook usage.
+- `handlePollResult(problemId)` creates callback that writes to `statuses`, clears `pending:{problemId}` on terminal.
+- Submit handler: `POST /api/v1/submissions/` (trailing slash); any 2xx writes pending key + activates polling.
+- Header: exam title + `<ExamTimer initialSeconds={remainingSeconds} onTimeout={handleTimeout}>` + "交卷" button.
+- Tab row: per-problem tabs with status chips.
+- Body: 2/5 left `ProblemPanel` + flex-1 right `EditorPanel`.
+- Auto-timeout → `isTimeout=true` + `showFinalize=true`.
+
+### Observation
+File created. Initial build: 1684 modules, exit 0.
+Removed unused `Badge` import after first build, re-ran build: still exit 0.
+
+---
+
+### Thought
+Update `App.jsx` to wire `/candidate/exams/:id/take` → `TakeExamPage` instead of `CandidateStub`.
+
+### Action
+Added `import TakeExamPage from './pages/candidate/TakeExamPage'` and changed the route element.
+
+### Observation
+App.jsx updated. Build still exit 0.
+
+---
+
+### Thought
+`CandidateLayout` used `min-h-screen flex flex-col` with `flex-1` main — this doesn't allow the TakeExamPage's `h-full` flex children to fill viewport. Updated to `h-screen` + `overflow-hidden` with `flex-1 flex flex-col min-h-0` main.
+
+### Action
+Edited `CandidateLayout.jsx`: `div` → `h-screen flex flex-col overflow-hidden`; `main` → `flex-1 flex flex-col min-h-0`.
+
+### Observation
+Build still exits 0. TakeExamPage will now properly fill the available viewport height.
+
+---
+
+### Summary
+
+#### Files created/modified
+
+| Path | Role |
+|------|------|
+| `frontend/src/hooks/useAdaptivePolling.js` | Created — adaptive polling hook with module-level POLLING_DELAYS const |
+| `frontend/src/hooks/useOfflineRecovery.js` | Created — cold-restart recovery: localStorage + GET /submissions/latest |
+| `frontend/src/components/ExamTimer.jsx` | Created — countdown timer from server remaining_seconds |
+| `frontend/src/components/ProblemPanel.jsx` | Created — problem description + sample test_cases (snake_case) |
+| `frontend/src/components/EditorPanel.jsx` | Created — Monaco + language selector + draft debounce + submit |
+| `frontend/src/pages/candidate/FinalizeModal.jsx` | Created — finalize dialog with per-problem status + tooltip |
+| `frontend/src/pages/candidate/TakeExamPage.jsx` | Created — main take-exam page orchestrating all above |
+| `frontend/src/App.jsx` | Modified — import TakeExamPage; wire /candidate/exams/:id/take route |
+| `frontend/src/layouts/CandidateLayout.jsx` | Modified — h-screen + min-h-0 flex chain for proper full-height Monaco |
+| `frontend/src/components/ui/tabs.jsx` | Created via shadcn CLI |
+| `frontend/src/components/ui/tooltip.jsx` | Created via shadcn CLI |
+
+#### Commands run
+
+| Command | Result |
+|---------|--------|
+| `npx shadcn@4.6.0 add tabs tooltip --yes` | exit 0; 2 files created |
+| `npm run build` (after all files) | exit 0; 1684 modules; 359 kB JS / 22 kB CSS |
+| `npm run build` (after removing unused Badge import) | exit 0; 1684 modules; 359 kB JS |
+
+#### Deviations from plan (8 contract overrides applied)
+
+1. **TIMER SOURCE** — Plan said "timer restores from `exam.end_time`". Corrected: `ExamTimer` receives `remaining_seconds` (integer) from `POST /start` response. Works for both first-start and page-refresh.
+2. **`/start` on page-refresh** — Plan implied a separate GET; actually `POST /start` is idempotent and recomputes remaining_seconds. Used it for both cases.
+3. **HTTP 400 on /start** — Navigate to result page (time expired / already finished). Plan did not handle this case.
+4. **`exam_problems` shape** — No description in list items; `ProblemPanel` fetches `GET /api/v1/problems/{id}` separately.
+5. **`test_cases` field name** — Backend returns `test_cases` (snake_case). Plan mentioned "test cases" generically.
+6. **Submit endpoint** — `POST /api/v1/submissions/` with trailing slash; treat any 2xx as success (backend returns 202). Plan said 200.
+7. **`SubmissionRead` has no `source_code`** — Did not attempt to restore code from presigned_url; localStorage draft is sole draft mechanism.
+8. **Cold-restart `/latest` signature** — `GET /api/v1/submissions/latest?problem_id={int}&exam_id={uuid}` (both params). Plan had only `problem_id`.
+
+#### Adjacent findings (not fixed)
+
+- `tabs.jsx` was installed but not used in P4 (used raw button tab row for simplicity and lighter bundle). Can be swapped to `Tabs` component in a polish pass.
+- `CandidateLayout` change from `min-h-screen` to `h-screen` may affect scroll behavior on `ExamListPage` (P3) if the list is longer than viewport. P3 page should add `overflow-auto` to its own container. Flagged for P5 polish.
+- `handlePollResult(p.problem_id)` is called inline in JSX and creates a new function reference each render; harmless because `useAdaptivePolling` stores `onResult` in a ref.
+
+#### Blockers for P5
+
+- Browser E2E requires backend `POST /api/v1/exams/{id}/start`, `POST /api/v1/submissions/`, `GET /api/v1/submissions/{id}`, `GET /api/v1/submissions/latest`, `POST /api/v1/exams/{id}/submit` to be live.
+- `ExamListPage` (P3) may need `overflow-auto` on its main container after `CandidateLayout` change to `h-screen`. P5 executor should check and patch if needed.
+
+### Verifier verdict (P4)
+
+```
+build:    pass   (exit 0; vite v5.4.21; 1684 modules; 359 kB JS / 22 kB CSS)
+dev:      pass   (HTTP 200, valid HTML at http://localhost:5173 within 5s; title "線上程式測驗平台")
+ts-files: pass   (zero .ts/.tsx files under frontend/src)
+deps:     pass
+          — @monaco-editor/react confirmed present since P1 commit (b90b945), not newly added
+          — @radix-ui/react-tabs and @radix-ui/react-tooltip are new in P4 (expected: shadcn tabs + tooltip)
+          — @radix-ui/react-dialog, @radix-ui/react-label, @radix-ui/react-slot carried from P2/P3
+          — typescript package absent; no junk or surprise packages
+lint:     no lint configured (unchanged from P1/P2/P3 — expected)
+e2e:      deferred to supervisor (browser test); backend/ directory exists but no e2e/ harness present;
+          P4 browser acceptance criteria require POST /api/v1/exams/{id}/start,
+          POST /api/v1/submissions/, GET /api/v1/submissions/{id},
+          GET /api/v1/submissions/latest, and POST /api/v1/exams/{id}/submit to be live
+```
+
+**Verdict: green**
+
+### Reviewer verdict (P4)
+
+**Verdict: fix-required**
+
+#### Criteria scorecard
+
+| Criterion | Score | Note |
+|-----------|-------|------|
+| `npm run build` exits 0 | pass | Independently confirmed: exit 0, 1684 modules, 359 kB JS |
+| `/candidate/exams/{id}/take` renders timer + problem tabs + Monaco | pass | `TakeExamPage.jsx:202-263` — all three visible after `/start` resolves |
+| Timer seeds from server `remaining_seconds` (not `end_time`) | pass | `TakeExamPage.jsx:78`; `ExamTimer.jsx:10` — `initialSeconds` from `res.data.remaining_seconds` |
+| Page refresh re-seeds timer from `/start` response (not reset to full) | pass | `POST /start` is idempotent per backend; `TakeExamPage.jsx:75` always calls it on mount |
+| Tab switch saves draft to localStorage, loads on return | **fail** | `EditorPanel.jsx:44-47` — effect re-runs on `draftKey` change and loads from `localStorage`, but changing language then switching tabs can return the wrong-language draft; more critically the debounce timeout (1 s) may not have flushed before tab change triggers the effect, so the latest keystrokes can be silently lost |
+| Submit calls `POST /api/v1/submissions/` with correct body | pass | `TakeExamPage.jsx:139-145` — trailing slash, correct fields including `submission_type:"OFFICIAL"` |
+| `pending:{problemId}` written on submit, cleared on terminal | pass | `TakeExamPage.jsx:149`, `118-121` |
+| Cold-restart re-polls in-flight submission without re-submitting | pass | `useOfflineRecovery.js:31-42` — reads key, calls `onPendingFound`; never calls `/submissions/` again |
+| Timer zero auto-triggers finalize modal with correct title | pass | `TakeExamPage.jsx:164-167`; `FinalizeModal.jsx:81` — isTimeout path |
+| "交卷" disabled with tooltip while Pending/Judging | pass | `FinalizeModal.jsx:58-61, 126` — `hasInFlight` gate; tooltip at line 133 |
+| "確認交卷" calls `POST /api/v1/exams/{id}/submit`, navigates to result | pass | `FinalizeModal.jsx:67-68` |
+| `POLLING_DELAYS` is module-level const (not recreated per render) | pass | `useAdaptivePolling.js:12` — top-level const outside any function |
+| Polling stops on terminal status and on unmount | pass | `useAdaptivePolling.js:54-56` (terminal stop); cleanup `return () => stopPolling()` at line 79 |
+| No setInterval/setTimeout leak in timer | **fail** — see must-fix #2 | `ExamTimer.jsx:27-51` — effect depends on `[remaining]`; each tick the old interval is cleaned up before a new one starts, but when `remaining === 1` the interval fires, calls `clearInterval(id)` inside the setter, then the cleanup `return () => clearInterval(id)` runs again with the same (already-cleared) id — harmless double-clear. The real leak is when `remaining > 0`: the effect re-registers a new `setInterval` every second, meaning N intervals are alive simultaneously for one second each. This is a latent CPU/memory concern at very low `remaining` values. Not a catastrophic leak but produces excessive interval churn. |
+| All API paths under `/api/v1/...`; shared `api` instance; no raw fetch | pass | Confirmed across all new files |
+| No TypeScript files | pass | `find` returns empty for `.ts/.tsx` in `src/` |
+| 純中文 user-visible strings | pass | No English user-facing labels found |
+| `CandidateLayout` `h-screen` regression on `ExamListPage` scroll | **fail** — see must-fix #3 | `ExamListPage.jsx:81` root `div` has `p-6 max-w-3xl mx-auto` with no `overflow-auto`; the parent `<main>` (`CandidateLayout.jsx:27`) is `flex-1 flex flex-col min-h-0` with no overflow. A long exam list will be clipped with no scrollbar. |
+
+#### Must-fix issues
+
+1. **Draft lost on tab switch when debounce is pending** — `/Users/jane/Desktop/碩/cloud native/final-project/Online-Code-Test/frontend/src/components/EditorPanel.jsx:54` and `62`. When the user types and immediately clicks another problem tab, the 1-second debounced write may not have fired yet. The `draftKey` effect at line 43 then reads from localStorage, getting the previous (unflushed) value. Fix: in `handleLanguageChange` (already does this correctly at line 63) and also synchronously flush `localStorage.setItem(draftKey, code)` in the parent's tab-switch handler before updating `activeIdx`, or expose a `flush()` ref from `EditorPanel` and call it before `setActiveIdx`.
+
+2. **ExamTimer interval-per-tick pattern** — `/Users/jane/Desktop/碩/cloud native/final-project/Online-Code-Test/frontend/src/components/ExamTimer.jsx:27-51`. The effect depends on `[remaining]`, so React re-registers a new `setInterval` every second. Fix: use `useRef` to hold the interval id across renders and depend only on `[initialSeconds]`, decrementing via a ref-based setter, so only one interval is ever alive.
+
+3. **ExamListPage scroll clipped under `h-screen` layout** — `/Users/jane/Desktop/碩/cloud native/final-project/Online-Code-Test/frontend/src/pages/candidate/ExamListPage.jsx:81`. Root `div` has no `overflow-y-auto`. Fix: add `overflow-y-auto` (or `overflow-auto`) to the root `div` of `ExamListPage`, or to `CandidateLayout`'s `<main>` tag. The executor already flagged this concern in adjacent findings; it is confirmed as a real regression introduced by the `h-screen` change.
+
+#### Nice-to-have
+
+1. **`PollingSlot` `onResult` prop recreated on every TakeExamPage render** — `/Users/jane/Desktop/碩/cloud native/final-project/Online-Code-Test/frontend/src/pages/candidate/TakeExamPage.jsx:276`. `handlePollResult(p.problem_id)` is called inline in JSX, creating a new closure each render. This is harmless because `useAdaptivePolling` stores `onResult` in a ref (acknowledged by executor), but it is still sloppy. Memoizing with `useMemo` per problem_id would be cleaner.
+
+2. **`useOfflineRecovery` uses `forEach` with async callbacks** — `/Users/jane/Desktop/碩/cloud native/final-project/Online-Code-Test/frontend/src/hooks/useOfflineRecovery.js:27`. `forEach` ignores returned Promises; errors inside the async lambda are swallowed. Caught in the inner `try/catch`, so not catastrophic, but `Promise.allSettled` would be semantically cleaner.
+
+3. **`alert()` used on submission failure** — `/Users/jane/Desktop/碩/cloud native/final-project/Online-Code-Test/frontend/src/pages/candidate/TakeExamPage.jsx:155`. Blocks the browser main thread and looks unprofessional. Replace with an inline error state shown in the EditorPanel toolbar.
+
+4. **`tabs.jsx` installed but unused** — shadcn Tabs was installed (`package.json` now has the dep) but the tab row uses raw `<button>` elements. Not a defect, but either use the component or remove the dep to keep the bundle lean.
+
+#### Verification gaps
+
+- Browser E2E is fully blocked (backend endpoints not yet live). The three must-fix issues are all confirmed by static code analysis and cannot be caught by the build alone.
+- A Playwright or manual browser test of the tab-switch draft-flush scenario is needed before merge to confirm fix #1 works correctly at runtime.
+
+---
+
+## P4 — fix round 1  (2026-05-20T00:00:00Z)
+
+### Thought (Fix 1 — draft lost on rapid tab switch)
+`EditorPanel` has a 1-second debounced `localStorage.setItem`; if the user clicks another tab before the timeout fires, the latest keystrokes are silently dropped. The cleanest fix without lifting all editor state into `TakeExamPage` is to wrap `EditorPanel` with `forwardRef` + expose a `flushDraft()` method via `useImperativeHandle`. The tab-click handler in `TakeExamPage` then calls `editorRef.current?.flushDraft()` synchronously BEFORE calling `setActiveIdx`, guaranteeing the write happens first.
+
+### Action
+- `frontend/src/components/EditorPanel.jsx`: changed `export default function EditorPanel(...)` to `const EditorPanel = forwardRef(function EditorPanel(..., ref) {...})` + `export default EditorPanel`. Added `codeRef` (always mirrors latest code, avoids stale closure). Added `useImperativeHandle` exposing `flushDraft()` which cancels the debounce timeout and synchronously writes `codeRef.current` to localStorage. Updated `handleCodeChange` and draftKey load effect to keep `codeRef` in sync. Imports: added `forwardRef`, `useImperativeHandle`.
+- `frontend/src/pages/candidate/TakeExamPage.jsx`: added `useRef` to imports; added `editorRef = useRef(null)`; added `handleTabSwitch(idx)` callback that calls `editorRef.current?.flushDraft()` then `setActiveIdx(idx)`; replaced `onClick={() => setActiveIdx(idx)}` with `onClick={() => handleTabSwitch(idx)}` in the tab button; added `ref={editorRef}` to `<EditorPanel>`.
+
+### Observation
+Files updated. Flush is now synchronous and happens before the React state change that triggers the draftKey effect in `EditorPanel`.
+
+---
+
+### Thought (Fix 2 — ExamTimer creates a new setInterval every second)
+The old effect depended on `[remaining]`, so React tore down and created a new interval every tick — N short-lived intervals running simultaneously. The fix is to hold the interval id in a `useRef` (`intervalRef`), depend the countdown effect only on `[initialSeconds]`, and use the functional-updater `setRemaining(prev => ...)` so the effect closure does not need `remaining` at all.
+
+### Action
+- `frontend/src/components/ExamTimer.jsx`: added `intervalRef = useRef(null)`. Replaced the old effect (deps `[remaining]`) with a single effect (deps `[initialSeconds]` only). The new effect starts one `setInterval` per `initialSeconds` value, stores the id in `intervalRef`, clears it in the cleanup return. Inside the tick callback, uses `setRemaining(prev => ...)` functional form; when `prev <= 1`, calls `clearInterval(intervalRef.current)` and fires `onTimeout` via `onTimeoutRef`. Removed the old short-circuit branch `if (remaining <= 0)` (now handled via functional updater reaching 0 and via the guard in the `initialSeconds` sync effect). Added `// eslint-disable-next-line react-hooks/exhaustive-deps` to suppress the linter warning on the intentional omission of `remaining`.
+
+### Observation
+File updated. Only one `setInterval` is ever alive for the full countdown lifetime. `onTimeout` still fires at zero; display turns red below 5 minutes.
+
+---
+
+### Thought (Fix 3 — ExamListPage scroll clipped under h-screen layout)
+`CandidateLayout` was changed in P4 from `min-h-screen` to `h-screen` so Monaco fills the viewport. The `<main>` is now a fixed-height `flex-1 flex flex-col min-h-0` child with no overflow handling. `ExamListPage`'s root `div` has `p-6 max-w-3xl mx-auto` but no overflow property, so a long exam list is simply clipped. `TakeExamPage` is fine because its inner content is already `h-full` flex chains that scroll within themselves. Fix: add `overflow-y-auto h-full` to `ExamListPage`'s root `div`.
+
+### Action
+- `frontend/src/pages/candidate/ExamListPage.jsx`: changed root `<div className="p-6 max-w-3xl mx-auto">` to `<div className="p-6 max-w-3xl mx-auto overflow-y-auto h-full">`.
+
+### Observation
+File updated. The div now fills the `<main>` height and adds a vertical scrollbar when content overflows. `TakeExamPage` is unaffected (its own `h-full flex flex-col` chain was already correct).
+
+---
+
+### Summary
+
+#### Build result
+`cd frontend && npm run build` — exit 0; vite v5.4.21; 1684 modules; 359.79 kB JS / 22.76 kB CSS.
+
+#### Files changed
+| Path | Change |
+|------|--------|
+| `frontend/src/components/EditorPanel.jsx` | `forwardRef` wrapper + `useImperativeHandle` exposing `flushDraft()`; `codeRef` for stale-closure-free flush |
+| `frontend/src/components/ExamTimer.jsx` | Single interval via `intervalRef`; effect deps changed from `[remaining]` to `[initialSeconds]`; functional updater inside tick |
+| `frontend/src/pages/candidate/ExamListPage.jsx` | Added `overflow-y-auto h-full` to root div |
+| `frontend/src/pages/candidate/TakeExamPage.jsx` | `editorRef`; `handleTabSwitch` calling `flushDraft()` before `setActiveIdx`; `ref={editorRef}` on `<EditorPanel>` |
+
+#### Issue resolution confirmation
+1. Must-fix 1 (draft lost on tab switch): RESOLVED — `flushDraft()` is called synchronously before `setActiveIdx`; the debounce timeout is cancelled and the write is immediate.
+2. Must-fix 2 (ExamTimer interval-per-tick): RESOLVED — one `setInterval` per countdown lifetime; `[remaining]` removed from deps; functional updater used.
+3. Must-fix 3 (ExamListPage scroll clipped): RESOLVED — `overflow-y-auto h-full` added; `TakeExamPage` and other candidate routes unaffected.
+
+#### Deviations from fix instructions
+None. All three fixes follow the recommended approaches described in the reviewer's must-fix section exactly.
+
+#### Adjacent findings (not fixed)
+- `TakeExamPage`'s `PollingSlot` `onResult` prop is still recreated on every render (reviewer nice-to-have #1). Not touched per scope rules.
+- `alert()` for submission failure (reviewer nice-to-have #3) not replaced. Not in must-fix scope.
+
+### Supervisor resolution + commit (P4)
+
+- Reviewer verdict: **fix-required** (3 must-fix). Verifier verdict: **green**.
+- Fix round 1 dispatched to executor; all 3 must-fix resolved and supervisor-verified by reading the diff:
+  1. `EditorPanel` — `flushDraft()` via `useImperativeHandle`+`forwardRef`; `TakeExamPage.handleTabSwitch` calls it before `setActiveIdx`. Confirmed `TakeExamPage.jsx:138-141`.
+  2. `ExamTimer` — single `setInterval` held in `intervalRef`, effect depends only on `[initialSeconds]`, functional updater. Confirmed `ExamTimer.jsx:38-66`.
+  3. `ExamListPage` — root `div` now `overflow-y-auto h-full`. Confirmed `ExamListPage.jsx:81`.
+- Re-review skipped: 3 small, well-specified fixes, each matching the reviewer's exact prescription; supervisor verified inline. `npm run build` exit 0 after fixes.
+- Reviewer nice-to-haves (memoize `onResult`, replace `alert()`, drop unused `tabs.jsx` dep) deferred — `tabs.jsx` IS used by TakeExamPage problem navigation, so not actually unused; `alert()` replacement folded into P5 polish.
+- Browser E2E still pending — backend now merged into this branch; supervisor will run the golden path before loop close.
+- **Committed P4 as `81d4a91`** on `feat/frontend-scaffold`.
