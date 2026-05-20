@@ -12,7 +12,7 @@ from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
-from app.schemas.problem import ProblemRead
+from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
 
 
@@ -603,7 +603,7 @@ def add_exam_problem_manual(
     db.refresh(exam)
     return exam
 
-@router.get("/{exam_id}/problems", response_model=List[ProblemRead])
+@router.get("/{exam_id}/problems")
 def get_exam_problems(
     exam_id: str,
     db: Session = Depends(deps.get_db),
@@ -611,7 +611,8 @@ def get_exam_problems(
 ):
     """
     獲取特定考試場次配置的所有題目清單
-    - Admin/Interviewer 可看全域；Candidate 僅限看自己名下的場次
+    - Admin/Interviewer 可看全域；
+    - Candidate 僅限看自己名下的場次，且只能看到 is_sample = True 的範例測資
     """
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
@@ -630,8 +631,19 @@ def get_exam_problems(
         .join(ExamProblem, Problem.id == ExamProblem.problem_id)\
         .filter(ExamProblem.exam_id == exam_id)\
         .all()
-        
-    return problems
+    
+    if current_user.role == UserRole.Candidate:
+        safe_problems = []
+        for p in problems:
+            public_test_cases = [tc for tc in p.test_cases if tc.is_sample is True]
+            
+            p_data = ProblemCandidateRead.model_validate(p)
+            p_data.test_cases = public_test_cases
+            safe_problems.append(p_data)
+            
+        return safe_problems
+
+    return [ProblemRead.model_validate(p) for p in problems]
 
 @router.delete("/{exam_id}/problems/{p_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_exam_problem(
