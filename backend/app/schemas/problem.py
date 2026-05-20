@@ -2,8 +2,7 @@ from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from app.models.enums import DifficultyLevel # 匯入我們定義好的 Enum
-
+from app.models.enums import DifficultyLevel
 # TestCase Schemas
 class TestCaseBase(BaseModel):
     __test__ = False
@@ -60,12 +59,22 @@ class ProblemUpdate(BaseModel):
 
 class ProblemRead(ProblemBase):
     """
-    讀取時包含資料庫自動產生的資訊，以及建立者資訊。
+    面試官/管理員視角：讀取時包含完全體資訊，包含所有內部測試案例。
     """
     id: int
     creator_id: UUID
     created_at: datetime
     
+    test_cases: List[TestCaseRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ProblemCandidateRead(ProblemBase):
+    """
+    專供考生調閱的安全格式：只允許包含公開的範例測資。
+    """
+    id: int
+    created_at: datetime
     test_cases: List[TestCaseRead] = []
 
     model_config = ConfigDict(from_attributes=True)
