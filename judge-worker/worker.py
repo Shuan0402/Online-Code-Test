@@ -22,12 +22,40 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime, timezone
 
 import redis
 import requests
 
 from spawner.base import CompletedRun, SandboxSpawner, SpawnerError
 from spawner.docker_spawner import DockerSpawner
+
+class WorkerJSONFormatter(logging.Formatter):
+    """評測機專用結構化 JSON 格式化器"""
+    def format(self, record: logging.LogRecord) -> str:
+        log_data = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
+        }
+        if record.exc_info:
+            log_data["exception"] = self.formatException(record.exc_info)
+
+        reserved_attrs = {
+            "args", "asctime", "created", "exc_info", "exc_text", "filename",
+            "funcName", "levelname", "levelno", "lineno", "module", "msecs",
+            "message", "msg", "name", "pathname", "process", "processName",
+            "relativeCreated", "stack_info", "thread", "threadName"
+        }
+        for key, value in record.__dict__.items():
+            if key not in reserved_attrs:
+                log_data[key] = value
+
+        return json.dumps(log_data, ensure_ascii=False)
 
 
 # ── config ─────────────────────────────────────────────────────────
@@ -211,25 +239,28 @@ def consume_once(
     except json.JSONDecodeError:
         log.error(f"bad payload, ACK to clear: {raw!r}")
     except NotImplementedError as e:
-        log.warning(f"sub={sub_id}: {e}, ACK (step 8 OFFICIAL only)")
+        log.warning(f"sub={sub_id}: {e}, ACK (step 8 OFFICIAL only)", extra={"submission_id": sub_id})
     except SpawnerError as e:
-        log.error(f"sub={sub_id}: spawner fail: {e}, ACK")
+        log.error(f"sub={sub_id}: spawner fail: {e}, ACK", extra={"submission_id": sub_id, "verdict": "SE"})
     except requests.HTTPError as e:
-        log.error(f"sub={sub_id}: callback fail: {e}, NOT ACK (sweep retry)")
+        log.error(f"sub={sub_id}: callback fail: {e}, NOT ACK (sweep retry)", extra={"submission_id": sub_id})
         return False
     except Exception as e:
-        log.exception(f"sub={sub_id}: unexpected: {e}, ACK")
+        log.exception(f"sub={sub_id}: unexpected: {e}, ACK", extra={"submission_id": sub_id})
 
     r.lrem(QUEUE_PROCESSING, 1, raw)
     return True
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        stream=sys.stdout,
-    )
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(WorkerJSONFormatter())
+    
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.handlers = []
+    root_logger.addHandler(stdout_handler)
+    
     if not WORKER_SECRET:
         log.error("WORKER_SECRET env var not set, exiting")
         sys.exit(1)

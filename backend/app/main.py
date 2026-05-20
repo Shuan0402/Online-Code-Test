@@ -19,10 +19,14 @@ from contextlib import asynccontextmanager
 import psycopg
 from fastapi import FastAPI
 
+from app.core.logging import setup_logging
+from app.core.config import settings
+
+setup_logging(log_level=getattr(settings, "LOG_LEVEL", "INFO"))
+
 from app.db.session import engine
 from app.db.base import Base
-from .models import user, problem, submission, exam, testcase
-
+from app.models import user, problem, submission, exam, testcase
 from app.api.api_v1.api import api_router
 
 
@@ -37,7 +41,6 @@ async def lifespan(app: FastAPI):
         # MINIO_USER / MINIO_PASSWORD env not set (e.g. some test envs).
         pass
     yield
-
 
 app = FastAPI(lifespan=lifespan)
 
