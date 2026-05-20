@@ -41,3 +41,16 @@ class UserLogin(BaseModel):
     """
     username: str
     password: str
+
+class UserUpdatePassword(BaseModel):
+    """
+    修改個人密碼請求。
+    """
+    old_password: str = Field(..., description="舊密碼明文")
+    new_password: str = Field(..., min_length=8, description="新密碼明文，至少 8 碼")
+
+class UserPasswordReset(BaseModel):
+    """
+    管理員強制重設他人密碼請求。
+    """
+    new_password: str = Field(..., min_length=8, description="管理員指定的新密碼明文，至少 8 碼")

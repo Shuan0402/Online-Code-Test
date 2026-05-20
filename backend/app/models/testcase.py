@@ -1,5 +1,7 @@
-from sqlalchemy import Column, Integer, Text, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, Text, ForeignKey, Boolean, DateTime, func
 from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+
 from app.db.base import Base
 
 
@@ -13,6 +15,7 @@ class TestCase(Base):
     - expected_output: Text，預期輸出的正確答案。
     - is_sample: Boolean，是否為公開給考生看的範例測資。
     - score_weight: Integer，該側資佔分。
+    - cre
     """
     __test__ = False
     __tablename__ = "test_cases"
@@ -28,6 +31,12 @@ class TestCase(Base):
     is_sample = Column(Boolean, default=False, nullable=False)
 
     score_weight = Column(Integer, default=10, nullable=False)
+
+    created_at = Column(
+        DateTime(timezone=True), 
+        server_default=func.now(),
+        default=lambda: datetime.now(timezone.utc)
+    )
 
     # 關聯定義
     problem = relationship("Problem", back_populates="test_cases")

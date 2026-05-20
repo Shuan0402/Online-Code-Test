@@ -1,17 +1,234 @@
-from fastapi import APIRouter, HTTPException
+import json
+from uuid import UUID
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session, joinedload
+
+from app.api import deps
+from app.models.submission import Submission
+from app.models.problem import Problem
+from app.models.exam import Exam, ExamProblem
+from app.schemas.submission import SubmissionCreate, SubmissionRead, JudgeTaskPayload
 from app.services.queue_manager import queue_manager
+from app.models.enums import UserRole, ExamStatus
+
 
 router = APIRouter()
 
-@router.post("/test-redis")
-def test_redis_connection(payload: dict):
+@router.post("/", response_model=SubmissionRead, status_code=status.HTTP_202_ACCEPTED)
+def create_submission(
+    payload: SubmissionCreate,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+    storage_service = Depends(deps.get_storage) 
+):
     """
-    最簡單的測試：
-    傳入任何 JSON，看它能不能進到 Redis
+    建立程式碼提交並送入評測佇列。
+
+    1. 驗證題目是否存在，取得時限與記憶體限制
+    2. 建立 Pending 狀態的 Submission 紀錄
+    3. 程式碼上傳 MinIO 取得永久 URI
+    4. 生成 pre-signed URL 並與限制條件打包
+    5. 送入 Redis Queue (submissions:pending) 觸發 Worker 判題
     """
-    success = queue_manager.push_task(payload)
+    if not payload.exam_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="交卷失敗：必須提供有效的考試場次編號 (exam_id)。"
+        )
     
-    if not success:
-        raise HTTPException(status_code=500, detail="無法連線至 Redis")
+    problem = db.query(Problem).filter(Problem.id == payload.problem_id).first()
+    if not problem:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到指定的題目 (ID: {payload.problem_id})"
+        )
+    
+    exam = db.query(Exam).filter(Exam.id == payload.exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次。")
+    
+    if current_user.role == UserRole.Candidate:
+        if exam.candidate_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="越權存取：您並非本場考試的指定受測對象。")
         
-    return {"status": "success", "message": "資料已成功推送到 Redis"}
+        if exam.status != ExamStatus.Ongoing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=f"交卷失敗：目前考場狀態為 {exam.status}，只有在 Ongoing (進行中) 狀態才允許提交程式碼。"
+            )
+
+    ep = db.query(ExamProblem).filter(
+        ExamProblem.exam_id == payload.exam_id,
+        ExamProblem.problem_id == payload.problem_id
+    ).first()
+    if not ep:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="提交失敗：本題目不屬於該場考試的範疇。")
+
+    target_lang = payload.language.lower()
+
+    db_submission = Submission(
+        user_id=current_user.id,
+        problem_id=payload.problem_id,
+        exam_id=payload.exam_id,
+        submission_type=payload.submission_type,
+        language=target_lang,
+        code_s3_url="PENDING_UPLOAD",
+        status="Pending",
+        score=0
+    )
+    db.add(db_submission)
+    db.commit()
+    db.refresh(db_submission)
+
+    try:
+        s3_uri = storage_service.upload_source(
+            submission_id=db_submission.id,
+            source_code=payload.source_code,
+            language=target_lang
+        )
+        db_submission.code_s3_url = s3_uri
+        db.commit()
+        presigned_url = storage_service.sign_get_url(s3_uri)
+
+    except Exception as storage_err:
+        db.delete(db_submission)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"物件儲存服務異常，交卷失敗: {str(storage_err)}"
+        )
+
+    task_payload = JudgeTaskPayload(
+        submission_id=db_submission.id,
+        problem_id=db_submission.problem_id,
+        language=db_submission.language,
+        presigned_url=presigned_url,
+        time_limit=problem.time_limit,
+        memory_limit=problem.memory_limit
+    )
+
+    push_success = queue_manager.push_to_queue(
+        queue_name=queue_manager.QUEUE_PENDING,
+        data=task_payload.model_dump()
+    )
+
+    if not push_success:
+        db_submission.status = "SE"
+        db_submission.judge_log = "系統發送判題佇列失敗，請聯絡系統管理員。"
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="評測佇列伺服器異常，請稍後再試。"
+        )
+
+    return db_submission
+
+@router.get("/latest", response_model=SubmissionRead)
+def get_latest_submission(
+    problem_id: int,
+    exam_id: Optional[UUID] = None,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+    storage_service = Depends(deps.get_storage)
+):
+    """
+    獲取特定題目最後一次提交 API
+    - 專供考生進入題目時，自動還原上一次寫到一半的程式碼。
+    - 僅鎖定當前登入使用者的最新一筆紀錄。
+    """
+    filters = [Submission.problem_id == problem_id, Submission.user_id == current_user.id]
+    if exam_id:
+        filters.append(Submission.exam_id == exam_id)
+        
+    submission = (
+        db.query(Submission)
+        .filter(*filters)
+        .order_by(Submission.created_at.desc())
+        .first()
+    )
+    
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="您針對該題目尚未有任何提交紀錄"
+        )
+    
+    if submission.code_s3_url and submission.code_s3_url != "PENDING_UPLOAD":
+        submission.presigned_url = storage_service.sign_get_url(submission.code_s3_url)
+        
+    return submission
+
+@router.get("/{submission_id}", response_model=SubmissionRead)
+def get_submission_by_id(
+    submission_id: UUID,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user),
+    storage_service = Depends(deps.get_storage)
+):
+    """
+    狀態查詢與明細 API
+    
+    - 考生（Candidate）只能查看「自己」的提交。
+    - 管理員（Admin）、出題者（Questioner）、面試官（Interviewer）等非考生角色擁有全局調閱權限。
+    """
+    submission = (
+        db.query(Submission)
+        .options(joinedload(Submission.details))
+        .filter(Submission.id == submission_id)
+        .first()
+    )
+    
+    if not submission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到該筆繳交紀錄"
+        )
+    
+    if submission.user_id != current_user.id and current_user.role == UserRole.Candidate:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您沒有權限查看此繳交紀錄"
+        )
+    
+    if submission.code_s3_url and submission.code_s3_url != "PENDING_UPLOAD":
+        submission.presigned_url = storage_service.sign_get_url(submission.code_s3_url)
+    
+    return submission
+
+@router.get("/", response_model=List[SubmissionRead])
+def get_submissions(
+    problem_id: Optional[int] = None,
+    exam_id: Optional[UUID] = None,
+    user_id: Optional[UUID] = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    獲取提交紀錄列表 API
+
+    - 考生（Candidate）只能看見自己的歷史紀錄。
+    - 管理員與面試官可以跨全局調閱，並透過 `user_id` 或 `problem_id` 進行篩選。
+    """
+    query = db.query(Submission)
+
+    if current_user.role == UserRole.Candidate:
+        query = query.filter(Submission.user_id == current_user.id)
+    else:
+        if user_id:
+            query = query.filter(Submission.user_id == user_id)
+
+    if problem_id:
+        query = query.filter(Submission.problem_id == problem_id)
+
+    if exam_id:
+        query = query.filter(Submission.exam_id == exam_id)
+
+    return (
+        query.order_by(Submission.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )

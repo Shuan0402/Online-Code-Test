@@ -21,7 +21,7 @@ from fastapi import FastAPI
 
 from app.db.session import engine
 from app.db.base import Base
-from .models import user, problem, submission, exam, exam_problem, testcase
+from .models import user, problem, submission, exam, testcase
 
 from app.api.api_v1.api import api_router
 

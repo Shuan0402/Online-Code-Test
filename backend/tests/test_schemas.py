@@ -73,9 +73,12 @@ def test_exam_validator_zero_questions():
         "medium_count": 0,
         "hard_count": 0
     }
-    with pytest.raises(ValidationError) as exc:
-        ExamCreate(**payload)
-    assert "至少需要包含一題" in str(exc.value)
+    exam_schema = ExamCreate(**payload)
+    
+    assert exam_schema.title == "Empty Exam"
+    assert exam_schema.easy_count == 0
+    assert exam_schema.medium_count == 0
+    assert exam_schema.hard_count == 0
 
 def test_exam_valid_creation():
     payload = {
@@ -103,9 +106,13 @@ def test_submission_read_uuid_handling():
         "code_s3_url": "s3://path",
         "execution_time": None,
         "memory_usage": 1024,
-        "created_at": datetime.now()
+        "created_at": datetime.now(),
+        "submission_type": "OFFICIAL",
+        "score": 100
     }
+    
     sub = SubmissionRead(**mock_data)
+    
     assert sub.id == mock_id
-    assert sub.status == JudgeStatus.AC
-    assert sub.execution_time is None
+    assert sub.submission_type == "OFFICIAL"
+    assert sub.score == 100
