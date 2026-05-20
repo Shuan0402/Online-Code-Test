@@ -12,8 +12,9 @@ import ExamListPage from './pages/candidate/ExamListPage'
 import QuestionerStubPage from './pages/stubs/QuestionerStubPage'
 import InterviewerStubPage from './pages/stubs/InterviewerStubPage'
 import AdminStubPage from './pages/stubs/AdminStubPage'
+import TakeExamPage from './pages/candidate/TakeExamPage'
 
-// Temporary stub for P4/P5 candidate pages.
+// Temporary stub for P5 result page (implemented in P5).
 function CandidateStub() {
   return (
     <div className="p-8 text-muted-foreground text-center text-lg">
@@ -44,7 +45,7 @@ export default function App() {
         >
           <Route index element={<Navigate to="/candidate/exams" replace />} />
           <Route path="exams" element={<ExamListPage />} />
-          <Route path="exams/:id/take" element={<CandidateStub />} />
+          <Route path="exams/:id/take" element={<TakeExamPage />} />
           <Route path="exams/:id/result" element={<CandidateStub />} />
         </Route>
 

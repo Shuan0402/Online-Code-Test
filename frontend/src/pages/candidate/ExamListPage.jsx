@@ -78,7 +78,7 @@ export default function ExamListPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-3xl mx-auto overflow-y-auto h-full">
       <h1 className="text-2xl font-semibold mb-6">我的考試</h1>
 
       {loading && (

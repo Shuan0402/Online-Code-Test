@@ -7,8 +7,8 @@ export default function CandidateLayout() {
   const { user, logout } = useAuth()
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b bg-white px-6 py-3 flex items-center justify-between shadow-sm">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      <header className="border-b bg-white px-6 py-3 flex items-center justify-between shadow-sm shrink-0">
         <Link to="/candidate/exams" className="text-lg font-semibold text-primary">
           線上程式測驗
         </Link>
@@ -24,7 +24,7 @@ export default function CandidateLayout() {
           </button>
         </div>
       </header>
-      <main className="flex-1">
+      <main className="flex-1 flex flex-col min-h-0">
         <Outlet />
       </main>
     </div>
