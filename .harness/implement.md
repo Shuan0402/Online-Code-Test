@@ -657,3 +657,146 @@ None. All three fixes follow the recommended approaches described in the reviewe
 - Reviewer nice-to-haves (memoize `onResult`, replace `alert()`, drop unused `tabs.jsx` dep) deferred — `tabs.jsx` IS used by TakeExamPage problem navigation, so not actually unused; `alert()` replacement folded into P5 polish.
 - Browser E2E still pending — backend now merged into this branch; supervisor will run the golden path before loop close.
 - **Committed P4 as `81d4a91`** on `feat/frontend-scaffold`.
+
+---
+
+## P4.5 — Test harness: Vitest + core hook/logic unit tests  (2026-05-20T17:59:33Z)
+
+### Files created/modified
+
+| Path | Role |
+|------|------|
+| `frontend/package.json` | Added `vitest ^1.6.0`, `jsdom ^24.1.1`, `@testing-library/react ^16.0.0`, `@testing-library/jest-dom ^6.4.6` to devDependencies; added `"test": "vitest run"` and `"test:watch": "vitest"` scripts |
+| `frontend/vite.config.js` | Added `test` block: `environment: 'jsdom'`, `globals: true`, `setupFiles: './src/test/setup.js'`, `environmentOptions.jsdom.url: 'http://localhost'` |
+| `frontend/src/test/setup.js` | Created — imports `@testing-library/jest-dom`; installs a Map-backed localStorage mock via `vi.stubGlobal` (see deviation note); resets mock between tests in `afterEach` |
+| `frontend/src/hooks/useAdaptivePolling.test.js` | Created — 7 tests: first poll at 300ms; delay array consumed in order then cycles on last value; stops on terminal (AC/WA/CE/TLE/MLE/RE); stops on unmount; onResult receives terminal submission; no-op when submissionId is null |
+| `frontend/src/components/ExamTimer.test.jsx` | Created — 7 tests: initial display; 1s countdown; MM:SS formatting; warning style at < 300s; onTimeout fires exactly once; displays 00:00 at zero; resets on initialSeconds prop change |
+| `frontend/src/components/EditorPanel.test.jsx` | Created — 5 tests: loads draft on mount; flushDraft() synchronously writes to correct key; debounced write lands after 1s; switching problemId reloads draft for new key; flushDraft() cancels pending debounce |
+| `frontend/src/hooks/useOfflineRecovery.test.js` | Created — 8 tests: pending key triggers onPendingFound; all problems with pending keys found; fallback to GET /submissions/latest when Ongoing + no key; no API call when not Ongoing; terminal /latest result → no onPendingFound; empty problems → no-op; null examId → no-op; 404 from /latest → graceful |
+
+### Commands run
+
+| Command | Result |
+|---------|--------|
+| `npm install` | exit 0; 125 packages added; 361 audited; 6 moderate (pre-existing) |
+| `npm run test` | exit 0; **27 tests passed** across 4 test files; 829ms |
+| `npm run build` | exit 0; vite v5.4.21; 1684 modules; 359.79 kB JS / 23.06 kB CSS |
+
+### Deviations from plan
+
+1. **localStorage mock required** — Node.js v25 ships a built-in `localStorage` global that is an object but has no `setItem`/`getItem`/`clear` methods (it requires `--localstorage-file` CLI arg). This Node-native shim shadows jsdom's proper Storage implementation in the vitest worker context. Fix: `vi.stubGlobal('localStorage', createLocalStorageMock())` in `setup.js` installs a Map-backed mock with all Storage API methods. No production source touched — purely in `setup.js`. This is the only deviation from the plan.
+
+2. **`environmentOptions.jsdom.url` added to vite.config.js** — Plan only said `environment: 'jsdom'`, `globals: true`, `setupFiles`. Added `environmentOptions.jsdom.url: 'http://localhost'` to explicitly set the jsdom origin (defense-in-depth; default is already `http://localhost:3000` in vitest's jsdom setup but explicit is better).
+
+3. **Delay-cycle test strategy** — Instead of one large `advanceTimersByTime` call covering all 9 delays, the test advances step-by-step with `await act()` between each step. This is required because `poll` is async (`await api.get(...)`) — Promises must be flushed between timer advances for the next `setTimeout` to be scheduled. Semantics of the test are identical to the plan's intent.
+
+4. **`calls onPendingFound when a pending key exists` test sets pending keys for ALL problems** — The test's `PROBLEMS` array has two entries (problem 10 and 20). To prevent the hook from falling through to `/submissions/latest` for problem 20 (which the test didn't expect), pending keys were set for both problems. The assertion `expect(api.get).not.toHaveBeenCalled()` then holds correctly.
+
+### Adjacent findings (not fixed)
+
+- The localStorage mock installed in `setup.js` uses `vi.clearAllMocks()` in `_reset()`. This clears ALL mocks globally (including `api.get` if it was already set up). Tests that rely on mock state surviving across `afterEach` must re-set their mocks in `beforeEach`. This is idiomatic vitest/jest behavior and is not a defect.
+- `vi.stubGlobal('localStorage', ...)` installs the mock globally for the vitest worker. Source modules (`EditorPanel.jsx`, `useOfflineRecovery.js`) call `localStorage.setItem/getItem/removeItem` directly — they all hit the mock correctly.
+
+### Blockers for P5
+
+None introduced by P4.5. P5 can proceed. Browser E2E for P4 acceptance criteria still depends on backend endpoints being live.
+
+### Verifier verdict (P4.5)
+
+```
+test:      pass   (27/27; 4 files — useAdaptivePolling 7, ExamTimer 7, useOfflineRecovery 8, EditorPanel 5; 794ms)
+build:     pass   (exit 0; vite v5.4.21; 1684 modules; 359.79 kB JS / 23.06 kB CSS — unchanged from P4)
+ts-files:  pass   (zero .ts/.tsx files under frontend/src; all test files are .js or .jsx)
+deps:      pass
+           — devDependencies: vitest ^1.6.0, jsdom ^24.1.1, @testing-library/react ^16.0.0,
+             @testing-library/jest-dom ^6.4.6 — all expected per plan
+           — No surprise packages; typescript package absent
+           — Production dependencies block clean: no test package leaked into dependencies
+           — @types/react + @types/react-dom remain in devDeps (carried from P1; IDE-only, not TypeScript)
+lint:      no lint configured (expected; unchanged from prior phases)
+e2e:       N/A (this phase IS the unit-test phase)
+```
+
+Checks confirmed:
+- `vi.mock('@/lib/api', ...)` present in both hook test files — no real network calls
+- `vi.useFakeTimers()` used in useAdaptivePolling, ExamTimer, and EditorPanel tests
+- `vite.config.js` test block: environment jsdom, globals true, setupFiles correct — does not affect production build path
+
+**Verdict: green**
+
+### Reviewer verdict (P4.5)
+
+**Verdict: fix-required**
+
+#### Criteria scorecard
+
+| Criterion | Score | Reason |
+|-----------|-------|--------|
+| `npm install` completes (new devDeps resolve) | pass | `package.json` shows correct devDeps; executor reports exit 0 |
+| `npm run test` exits 0, all tests pass | pass | Executor reports 27 tests passed; code analysis confirms |
+| `npm run build` still exits 0 | pass | Executor reports exit 0 after adding test config |
+| 4 target modules each have meaningful assertions (not just smoke tests) | pass | All four files assert specific values, delays, localStorage keys, call counts |
+| `@/lib/api` mocked in hook tests | pass | `useAdaptivePolling.test.js:18-22`, `useOfflineRecovery.test.js:17-21` both use `vi.mock('@/lib/api', ...)` |
+| Fake timers used for timer + polling + debounce tests | pass | `vi.useFakeTimers()` in `beforeEach` in all three timing-sensitive test files |
+| No TypeScript files introduced | pass | All test files are `.js` / `.jsx` |
+| `@monaco-editor/react` stubbed in EditorPanel test | pass | `EditorPanel.test.jsx:20-31` — lightweight textarea stub with `value`/`onChange` |
+| `flushDraft()` test asserts correct localStorage key | pass | `EditorPanel.test.jsx:73-99` — asserts exact key `draft:exam:exam-abc:problem:42` and value |
+| Adaptive polling delay order + cycle tested | pass | `useAdaptivePolling.test.js:59-109` — steps through all 9 delays, then verifies 10th call fires at last (10000 ms) delay |
+| Polling stops on terminal status | pass | `useAdaptivePolling.test.js:111-132` — AC returned, advance 60 s, still only 1 call |
+| Polling stops on unmount | pass | `useAdaptivePolling.test.js:134-155` — unmount before second tick, advance 60 s, still 1 call |
+| ExamTimer: onTimeout fires exactly once at zero | pass | `ExamTimer.test.jsx:61-74` — 3 ticks then 5 s more, `toHaveBeenCalledTimes(1)` |
+| ExamTimer: warning style applied below 300 s | pass | `ExamTimer.test.jsx:48-58` — queries `[aria-label]`, checks `text-red-600`/`animate-pulse` |
+| useOfflineRecovery: pending key re-polls | pass | `useOfflineRecovery.test.js:33-50` — `onPendingFound` called with correct problemId + submissionId |
+| useOfflineRecovery: cold-restart /latest fallback | pass | `useOfflineRecovery.test.js:70-100` — asserts correct API call params and writes pending key to localStorage |
+
+#### Must-fix issues
+
+1. **`onResult` called on every poll, not just terminal — but the "first poll" test asserts `onResult` called once on Pending, creating a false-confidence risk.** `useAdaptivePolling.test.js:55` asserts `expect(onResult).toHaveBeenCalledTimes(1)` and `expect(onResult).toHaveBeenCalledWith({ id: 'sub-1', status: 'Pending' })`. The source (`useAdaptivePolling.js:52`) calls `onResultRef.current(data)` unconditionally on every poll — including non-terminal ones. This is correct source behavior, but the test description at line 39 says "fires the first poll" and the caller of `useAdaptivePolling` in `TakeExamPage` uses `onResult` to update `statuses` state on every call, so calling it on Pending is intentional. The test passes and reflects real behavior — no bug. However, the "calls onResult with the terminal submission object" test at line 157 (`useAdaptivePolling.test.js`) does NOT verify that `onResult` is NOT called again after terminal. Combined with the "stops polling" test covering that, this is fine. Reclassify: not a must-fix.
+
+2. **`flushDraft()` cancels-debounce test uses `vi.spyOn(Storage.prototype, 'setItem')` AFTER the flush already ran** (`EditorPanel.test.jsx:183`). The spy is installed after `flushDraft()` was called and the localStorage write already occurred. The test then advances 2 s and asserts the spy was not called. This correctly verifies no second write happened, BUT the spy does not cover the flush call itself — meaning the test would still pass even if `flushDraft` silently did nothing (the `expect(localStorage.getItem(draftKey)).toBe('version 1')` at line 180 is the real guard). The spy placement is unnecessarily fragile: if the mock's `setItem` is already a `vi.fn()` (it is, from `setup.js`), then `vi.spyOn(Storage.prototype, 'setItem')` is actually spying on the prototype, not on the mock. Since `vi.stubGlobal('localStorage', ...)` replaces `window.localStorage` with the Map mock (not the native `Storage` prototype), this spy on `Storage.prototype.setItem` will never fire and the assertion `expect(setItemSpy).not.toHaveBeenCalled()` is vacuously true — the test passes for the wrong reason. Fix: replace the `Storage.prototype` spy with `vi.spyOn(localStorage, 'setItem')` to spy on the actual mock object, or simply count `localStorage.setItem.mock.calls.length` before and after advancing the timer.
+
+3. **`setup.js` `_reset()` calls `vi.clearAllMocks()` globally, but `useAdaptivePolling.test.js` also calls `vi.clearAllMocks()` in its own `beforeEach`** (`useAdaptivePolling.test.js:32`). The double-clear is harmless but means the intent of each is obscured. The real risk is that `_reset()` running in `afterEach` clears the `api.get` mock that the next test's `beforeEach` may set up — if test ordering changes, tests could see stale state. Currently all tests re-set mocks in `beforeEach`, so this doesn't manifest, but it is fragile. Nice-to-have, not must-fix.
+
+#### Must-fix (consolidated, actionable)
+
+1. **`EditorPanel.test.jsx:183` — `vi.spyOn(Storage.prototype, 'setItem')` is a vacuous assertion.** The global `localStorage` is the Map mock from `setup.js`, not the native `Storage` prototype. The spy on `Storage.prototype.setItem` is never triggered. Change `vi.spyOn(Storage.prototype, 'setItem')` to `vi.spyOn(localStorage, 'setItem')` to spy on the actual mock instance.
+
+#### Nice-to-have
+
+1. **`useAdaptivePolling.test.js:59-109` delay-cycle test does not assert the 10th poll fires at 10 000 ms (last-value cycle), only that `api.get` has been called 10 times.** Add an assertion that advancing only 9 999 ms after the 9th poll does NOT trigger the 10th call, then advancing 1 ms more does. This locks the cycling behavior more precisely.
+
+2. **`ExamTimer.test.jsx:51` queries `[aria-label]` to find the timer element.** If the `aria-label` format changes in `ExamTimer.jsx:79`, the test selector breaks silently. Consider `screen.getByRole('generic', { name: /剩餘時間/ })` or adding a `data-testid` to the div to decouple selector from content.
+
+3. **No test for `useAdaptivePolling` when `submissionId` changes mid-polling** (e.g., user submits a second time). The source resets `delayIndexRef` and restarts polling on `submissionId` change (`useAdaptivePolling.js:69-80`). This code path is untested.
+
+#### Verification gaps
+
+- `npm run test` exit 0 is reported by the executor but not independently verified. The vacuous spy issue (must-fix #1) means test 5 of `EditorPanel` passes for the wrong reason — it is a false-confidence test that would survive a broken `flushDraft` cancellation implementation.
+- No browser/Playwright check needed for this phase (tests are offline unit tests).
+
+---
+
+## P4.5 — fix round 1  (2026-05-20T18:05:25Z)
+
+### What changed
+
+`frontend/src/components/EditorPanel.test.jsx` line 183: replaced `vi.spyOn(Storage.prototype, 'setItem')` with `vi.spyOn(localStorage, 'setItem')`.
+
+`setup.js` replaces the global `localStorage` with a plain Map-backed object via `vi.stubGlobal('localStorage', ...)`. That object is NOT a native `Storage` instance, so `Storage.prototype.setItem` is never invoked by production code. The previous spy was vacuously true. The fix spies directly on the mock object — the same `setItem` function that `EditorPanel.jsx` calls — so any unexpected debounce fire would show up as a call on the spy.
+
+Sanity check confirmed: when `clearTimeout` was temporarily removed from `flushDraft()` in `EditorPanel.jsx`, the test failed with "expected spy to not be called at all, but been called 1 times". After restoring `clearTimeout`, all 27 tests pass.
+
+### Spy correctness confirmation
+
+The spy now watches `localStorage.setItem` — the `vi.fn()` installed by `createLocalStorageMock()` in `setup.js`. This is exactly the function that `EditorPanel.jsx:54` (`localStorage.setItem(draftKey, codeRef.current)`) calls inside the debounce timeout. The assertion `expect(setItemSpy).not.toHaveBeenCalled()` after advancing 2000 ms is no longer vacuous.
+
+### Test count
+
+27 / 27 passed (4 files: useAdaptivePolling 7, ExamTimer 7, useOfflineRecovery 8, EditorPanel 5).
+
+### Supervisor resolution + commit (P4.5)
+
+- Reviewer verdict: **fix-required** (1 must-fix: vacuous `Storage.prototype` spy). Verifier verdict: **green**.
+- Fix round 1: spy changed to `vi.spyOn(localStorage, 'setItem')` so it watches the Map-backed mock the code actually calls. Executor sanity-checked by temporarily removing `clearTimeout` from `flushDraft` → test FAILED as expected → spy confirmed to have teeth. Supervisor verified `EditorPanel.test.jsx:186` + 27/27 pass.
+- Reviewer nice-to-haves (tighten cycle-boundary assertion, replace fragile `aria-label` selector, add submissionId-change test) deferred — not regressions; can fold into a later test pass if desired.
+- **Committed P4.5 as `<SHA>`** on `feat/frontend-scaffold`.
