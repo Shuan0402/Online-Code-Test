@@ -5,6 +5,7 @@ from app.models.enums import ExamStatus, DifficultyLevel, UserRole
 from app.models.user import User
 from app.models.submission import Submission
 from app.models.exam import Exam, ExamProblem
+from app.models.testcase import TestCase
 
 
 # --- GET /exams (考試列表查詢) ---
@@ -823,6 +824,51 @@ def test_get_exam_problems_candidate_blocked_for_others(client, candidate_user, 
     assert response.status_code == 403
     assert "非本人名下" in response.json()["detail"]
 
+def test_get_exam_problems_candidate_only_sees_samples(client, candidate_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    洩題漏洞防禦測試：
+    考生調閱題目時，必須看得到 is_sample=True 的範例測資，但遮蔽 is_sample=False 的隱蔽測資答案。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(candidate_id=candidate_user.id)
+    prob = create_test_problem(title="機密防線大戰")
+    
+    sample_tc = TestCase(
+        problem_id=prob.id,
+        input_data="1 1",
+        expected_output="2",
+        is_sample=True,
+        score_weight=10
+    )
+    secret_tc = TestCase(
+        problem_id=prob.id,
+        input_data="9999 9999",
+        expected_output="19998",
+        is_sample=False,
+        score_weight=90
+    )
+    db_session.add_all([sample_tc, secret_tc])
+    db_session.commit()
+
+    db_session.add(ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100))
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/problems")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert len(data) == 1
+    
+    test_cases_received = data[0]["test_cases"]
+    assert len(test_cases_received) == 1
+    assert test_cases_received[0]["input_data"] == "1 1"
+    assert test_cases_received[0]["expected_output"] == "2"
+    assert test_cases_received[0]["is_sample"] is True
+    body_text = response.text
+    assert "9999" not in body_text
+    assert "19998" not in body_text
+
+# --- DELETE /exams/{exam_id}/problems (刪除考試題目) ---
 def test_delete_exam_problem_success(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
     """
     面試官成功將特定題目從考試中移除，且關係表同步抹除。
