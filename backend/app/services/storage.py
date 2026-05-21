@@ -17,6 +17,7 @@ and when the worker later GETs the signed URL.
 
 import logging
 import os
+import time
 from typing import Optional
 from uuid import UUID
 
@@ -25,7 +26,7 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("app")
 
 
 # language → file extension (對齊 judge-worker SOURCE_FILENAME_BY_LANGUAGE)
@@ -76,27 +77,82 @@ class StorageService:
             if code in ("404", "NoSuchBucket"):
                 try:
                     self._client.create_bucket(Bucket=self._bucket)
-                    log.info("storage: created bucket %s", self._bucket)
+                    log.info(
+                        f"儲存設施初始化：成功動態建立基礎儲存桶 -> {self._bucket}",
+                        extra={"bucket": self._bucket, "action": "storage_bucket_created"}
+                    )
                     return
                 except ClientError as ce:
-                    log.warning("storage: could not create bucket %s: %s", self._bucket, ce)
+                    log.warning(
+                        f"儲存設施警告：嘗試建立儲存桶 {self._bucket} 失敗！原因: {ce}",
+                        extra={"bucket": self._bucket, "action": "storage_bucket_create_failed"}
+                    )
                     return
-            log.warning("storage: could not check bucket %s: %s", self._bucket, e)
+            log.warning(
+                f"儲存設施警告：無法對儲存桶 {self._bucket} 執行頭部檢查。原因: {e}",
+                extra={"bucket": self._bucket, "action": "storage_bucket_head_failed"}
+            )
         except Exception as e:
             # ConnectionError, DNS failure, etc. — MinIO unreachable.
-            log.warning("storage: init skipped (MinIO unreachable: %s)", e)
+            log.warning(
+                f"儲存設施警告：開機 bootstrap 跳過（MinIO 目前無法連線: {e}）",
+                extra={"bucket": self._bucket, "action": "storage_bootstrap_skipped"}
+            )
 
     def upload_source(self, submission_id: UUID, source_code: str, language: str) -> str:
         """Put source under {bucket}/{submission_id}.{ext}. Returns s3://… URI."""
         ext = EXT_BY_LANGUAGE.get(language, "txt")
         key = f"{submission_id}.{ext}"
-        self._client.put_object(
-            Bucket=self._bucket,
-            Key=key,
-            Body=source_code.encode("utf-8"),
-            ContentType="text/plain; charset=utf-8",
-        )
-        return f"s3://{self._bucket}/{key}"
+
+        storage_extra = {
+            "submission_id": str(submission_id),
+            "bucket": self._bucket,
+            "s3_key": key,
+            "language": language,
+            "code_size_bytes": len(source_code.encode("utf-8")),
+            "action": "storage_upload_source"
+        }
+        
+        start_time = time.perf_counter()
+        try:
+            self._client.put_object(
+                Bucket=self._bucket,
+                Key=key,
+                Body=source_code.encode("utf-8"),
+                ContentType="text/plain; charset=utf-8",
+            )
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            storage_extra["duration_ms"] = duration_ms
+            
+            log.info(
+                f"原始碼成功寫入物體儲存 | ID: {submission_id} (耗時: {duration_ms}ms)",
+                extra=storage_extra
+            )
+            return f"s3://{self._bucket}/{key}"
+            
+        except ClientError as ce:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            aws_error_code = ce.response.get("Error", {}).get("Code", "UnknownClientError")
+            
+            storage_extra["duration_ms"] = duration_ms
+            storage_extra["aws_error_code"] = aws_error_code
+            storage_extra["action"] = "storage_upload_failed_client_error"
+            
+            log.error(
+                f"物件儲存 Boto3 拒絕請求！[SubmissionID: {submission_id}] Code: {aws_error_code}",
+                extra=storage_extra
+            )
+            raise ce
+        except Exception as e:
+            duration_ms = int((time.perf_counter() - start_time) * 1000)
+            storage_extra["duration_ms"] = duration_ms
+            storage_extra["action"] = "storage_upload_failed_unexpected"
+            
+            log.exception(
+                f"物件儲存突發未知網路崩潰！[SubmissionID: {submission_id}]",
+                extra=storage_extra
+            )
+            raise e
 
     def sign_get_url(self, s3_uri_or_key: str, expires_sec: Optional[int] = None) -> str:
         """Pre-signed HTTP GET URL. Accepts either `s3://bucket/key` or bare key."""
@@ -106,11 +162,32 @@ class StorageService:
         else:
             bucket = self._bucket
             key = s3_uri_or_key
-        return self._client.generate_presigned_url(
-            "get_object",
-            Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=expires_sec if expires_sec is not None else self._expires_sec,
-        )
+        
+        final_expires = expires_sec if expires_sec is not None else self._expires_sec
+
+        try:
+            presigned_url = self._client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": bucket, "Key": key},
+                ExpiresIn=final_expires,
+            )
+            
+            log.info(
+                f"成功為任務物件生成時效性 Pre-signed 安全下載權杖 (TTL: {final_expires}s)",
+                extra={
+                    "bucket": bucket,
+                    "s3_key": key,
+                    "expires_sec": final_expires,
+                    "action": "storage_presign_success"
+                }
+            )
+            return presigned_url
+        except Exception as e:
+            log.exception(
+                f"安全簽章失敗：無法為物件 {key} 產生 Pre-signed URL",
+                extra={"bucket": bucket, "s3_key": key, "action": "storage_presign_failed"}
+            )
+            raise e
 
 
 def build_storage_from_env() -> StorageService:
