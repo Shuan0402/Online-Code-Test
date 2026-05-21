@@ -115,6 +115,7 @@ def run_official(
     language: str,
     testcases: list,
     time_limit_ms: int,
+    submission_id: str,
 ) -> tuple[list, str, int]:
     """跑 OFFICIAL submission 的所有 testcases、fail-fast。
 
@@ -133,7 +134,17 @@ def run_official(
     judge_log_parts = []
     max_exec_ms = 0
 
-    for tc in testcases:
+    log.info(
+        f"評測機開始執行判題 | SubmissionID: {submission_id}, Lang: {language}, Testcases: {len(testcases)}",
+        extra={"submission_id": submission_id, "action": "judge_start"}
+    )
+
+    for idx, tc in enumerate(testcases, start=1):
+        log.info(
+            f"[TC {idx}/{len(testcases)}] 正在孵化沙盒容器執行測試... [SubmissionID: {submission_id}]",
+            extra={"submission_id": submission_id, "testcase_id": tc["testcase_id"]}
+        )
+
         result = spawner.run(
             image=image,
             source=source,
@@ -153,7 +164,22 @@ def run_official(
         if result.stderr:
             judge_log_parts.append(f"[tc {tc['testcase_id']}] {result.stderr.rstrip()}")
 
+        log.info(
+            f"[TC {idx}] 執行完畢 - Verdict: {case_verdict}, Duration: {exec_ms}ms [SubmissionID: {submission_id}]",
+            extra={
+                "submission_id": submission_id,
+                "testcase_id": tc["testcase_id"],
+                "case_verdict": case_verdict,
+                "exec_time_ms": exec_ms,
+                "exit_code": result.exit_code
+            }
+        )
+
         if case_verdict != "AC":
+            log.warning(
+                f"觸發 Fail-fast 機制：Testcase {tc['testcase_id']} 產生非 AC 結果 ({case_verdict})，中斷後續評測。[SubmissionID: {submission_id}]",
+                extra={"submission_id": submission_id, "final_verdict": case_verdict, "action": "fail_fast_break"}
+            )
             break
 
     return per_testcase, "\n".join(judge_log_parts), max_exec_ms
@@ -169,6 +195,7 @@ def post_callback(
     exec_time_ms: int,
     judge_log: str,
 ) -> None:
+    log.info(f"正在將評測結果回傳給 Backend... [SubmissionID: {sub_id}]", extra={"submission_id": sub_id})
     resp = http.post(
         f"{BACKEND_URL}/internal/judge-callback",
         json={
@@ -182,6 +209,7 @@ def post_callback(
         timeout=10,
     )
     resp.raise_for_status()   # 4xx/5xx propagate → main loop 不 ACK
+    log.info(f"評測結果回傳成功，合約確認。 [SubmissionID: {sub_id}]", extra={"submission_id": sub_id, "action": "callback_success"})
 
 
 # ── submission orchestration ───────────────────────────────────────
@@ -197,8 +225,10 @@ def process_submission(
         raise NotImplementedError(
             f"submission_type={msg['submission_type']!r} not supported in step 8"
         )
-
+    
+    log.info(f"成功從隊列中提取任務，正在從 MinIO 下載原始碼... [SubmissionID: {sub_id}]", extra={"submission_id": sub_id})
     source = fetch_source(http, msg["presigned_url"])
+
     per_testcase, judge_log, max_exec_ms = run_official(
         spawner=spawner,
         source=source,
@@ -237,17 +267,20 @@ def consume_once(
         sub_id = msg.get("submission_id", "?")
         process_submission(spawner, http, msg)
     except json.JSONDecodeError:
-        log.error(f"bad payload, ACK to clear: {raw!r}")
+        log.error(f"bad payload, ACK to clear: {raw!r}", extra={"action": "bad_payload_ack"})
     except NotImplementedError as e:
-        log.warning(f"sub={sub_id}: {e}, ACK (step 8 OFFICIAL only)", extra={"submission_id": sub_id})
+        log.warning(f"sub={sub_id}: {e}, ACK (step 8 OFFICIAL only)", extra={"submission_id": sub_id, "error_type": "NotImplementedError"})
     except SpawnerError as e:
-        log.error(f"sub={sub_id}: spawner fail: {e}, ACK", extra={"submission_id": sub_id, "verdict": "SE"})
+        log.error(f"sub={sub_id}: spawner fail: {e}, ACK", extra={"submission_id": sub_id, "verdict": "SE", "error_type": "SpawnerError"})
     except requests.HTTPError as e:
-        log.error(f"sub={sub_id}: callback fail: {e}, NOT ACK (sweep retry)", extra={"submission_id": sub_id})
+        log.critical(
+            f"嚴重錯誤：Callback 回傳給後端失敗！[SubmissionID: {sub_id}] 原因: {e} | 任務保留於 processing 隊列，等待 Sweep 重試。", 
+            extra={"submission_id": sub_id, "action": "callback_failed_nack"}
+        )
         return False
     except Exception as e:
-        log.exception(f"sub={sub_id}: unexpected: {e}, ACK", extra={"submission_id": sub_id})
-
+        log.exception(f"sub={sub_id}: unexpected: {e}, ACK", extra={"submission_id": sub_id, "error_type": "UnexpectedException"})
+    
     r.lrem(QUEUE_PROCESSING, 1, raw)
     return True
 
@@ -269,11 +302,14 @@ def main() -> None:
     http = requests.Session()
     spawner = DockerSpawner()
 
-    log.info(f"worker starting; redis={REDIS_URL} backend={BACKEND_URL}")
+    log.info(f"Worker 評測大腦正在啟動；redis={REDIS_URL} backend={BACKEND_URL}")
     swept = startup_sweep(r)
-    log.info(f"startup sweep moved {swept} orphans back to pending")
+    if swept > 0:
+        log.warning(f"偵測到上次異常關機！開機掃描（Startup Sweep）成功將 {swept} 筆孤兒任務移回 PENDING 頂部。", extra={"swept_count": swept, "action": "startup_sweep"})
+    else:
+        log.info("開機掃描完成，PROCESSING 隊列清空，無孤兒任務。")
 
-    log.info(f"entering main loop (BLMOVE {QUEUE_PENDING} → {QUEUE_PROCESSING})")
+    log.info(f"進入主循環傾聽隊列 (BLMOVE {QUEUE_PENDING} → {QUEUE_PROCESSING})...")
     while True:
         consume_once(r, spawner, http)
 
