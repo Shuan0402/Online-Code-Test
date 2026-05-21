@@ -10,7 +10,7 @@ import LoginPage from './pages/LoginPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
 import ExamListPage from './pages/candidate/ExamListPage'
 import { ProblemListPage, ProblemFormPage, ProblemSubmissionsPage } from './pages/questioner'
-import { ExamListPage as InterviewerExamListPage, ExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage } from './pages/interviewer'
+import { ExamListPage as InterviewerExamListPage, ExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage, ProfilePage } from './pages/interviewer'
 import AdminStubPage from './pages/stubs/AdminStubPage'
 import TakeExamPage from './pages/candidate/TakeExamPage'
 import ResultPage from './pages/candidate/ResultPage'
@@ -77,6 +77,7 @@ export default function App() {
           <Route path="candidates" element={<CandidateListPage />} />
           <Route path="candidates/new" element={<CandidateFormPage />} />
           <Route path="candidates/:id" element={<CandidateDetailPage />} />
+          <Route path="profile" element={<ProfilePage />} />
         </Route>
 
         {/* Admin panel */}

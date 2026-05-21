@@ -25,11 +25,13 @@ const NAV_BY_ROLE = {
   interviewer: [
     { to: '/interviewer', label: '面試管理' },
     { to: '/interviewer/candidates', label: '考生管理' },
+    { to: '/interviewer/profile', label: '個人資料' },
   ],
   admin: [
     { to: '/questioner', label: '出題管理' },
     { to: '/interviewer', label: '面試管理' },
     { to: '/interviewer/candidates', label: '考生管理' },
+    { to: '/interviewer/profile', label: '個人資料' },
     { to: '/admin', label: '系統管理' },
   ],
 }
@@ -43,6 +45,7 @@ export default function StaffLayout() {
     { to: '/questioner', label: '出題管理' },
     { to: '/interviewer', label: '面試管理' },
     { to: '/interviewer/candidates', label: '考生管理' },
+    { to: '/interviewer/profile', label: '個人資料' },
     { to: '/admin', label: '系統管理' },
   ]
 
