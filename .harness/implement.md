@@ -520,3 +520,14 @@ None found. All criteria pass; every borderline item inspected:
 
 - No new Vitest tests in P6 (deferred to P9 per plan — expected). The P9 test plan must cover: (a) empty exam list skips fan-out (assert `api.get` is called exactly once for the list, zero times for item routes); (b) `candidate_id === userId` filter is applied; (c) fan-out error shows "無法載入考試列表" but does not crash the profile section.
 - No browser/Playwright check required — the page is read-only (no mutations) and follows the same fetch/render pattern as prior pages.
+
+### Commit
+
+`bd0710d` — feat(frontend): P6 — candidate detail page
+
+### Supervisor note — carried to P8/P9
+
+Reviewer nice-to-have: `candidate.role` renders as the raw English enum (e.g.
+"Candidate"). The same raw-role display will appear on the P8 profile page. Decide in
+P8 whether to add a small Chinese role-label map and apply it to both pages — minor
+純中文-consistency polish, not a defect.
