@@ -360,3 +360,6 @@ e2e:       skipped
 - `DashboardPage.jsx:60` — `grafanaUrl` is a module-level `const` read at render time, so it is correctly reactive to `vi.stubEnv` in tests (Vite rewrites `import.meta.env.X` at build time, but in the Vitest jsdom environment the stub works because the expression is re-evaluated each render). No code change needed, but a comment explaining the env-var is read at render (not module load) would help future readers understand why `vi.stubEnv` before render works.
 
 **Verification gaps**: No browser/Playwright check. A manual smoke test with `VITE_GRAFANA_URL` set in `.env.local` should confirm the Grafana button appears and opens the URL in a new tab. The `rel="noopener noreferrer"` attribute (`DashboardPage.jsx:64`) is correctly present — no security gap.
+
+**Commit**: `98c3dd5` feat(frontend): P6 — admin dashboard page
+**Supervisor note**: both reviewer nice-to-haves re-triaged as cosmetic — the `getAllByText` assertion is unambiguous under the empty-submissions/users fixture, and the render-time env-var read is functionally correct. Deferred, not blocking. **All 6 phases complete.**
