@@ -141,3 +141,114 @@ None found.
 Reviewer's "raw `<select>` vs shadcn `<Select>`" nice-to-have is moot — there is no
 `select` component under `frontend/src/components/ui/` and the Questioner panel uses raw
 `<select>` too. Nothing to carry to P5.
+
+---
+
+## P3 — Exam detail / edit page  (2026-05-21T12:40:00Z)
+
+### Thought (pre-read)
+P3 is the highest-risk phase: one page handles view, edit (PATCH), auto-generate (POST .../generate), manual-add picker (Dialog + POST .../problems with int `problem_id`), publish (POST .../publish), and delete (DELETE → navigate). Key invariants: `exam_problems` rows keyed by `problem_id` (int, not array index); `problem_id` sent as `Number()` in add-problem body; all Draft-only actions gated on `exam.status === 'Draft'`; PATCH sends only `{ title, duration_minutes }` (no `status`/times); publish button disabled when `exam_problems.length === 0`. Plan was read fully before any edits. Studied `ExamListPage.jsx` (delete dialog pattern), `ExamFormPage.jsx` (numeric coercion pattern), `ProblemListPage.jsx` (bank fetch + dialog pattern), `ExamStatusBadge` (status values: Draft/Published/Ongoing/Finished/Archived).
+
+### Thought (design)
+`ExamDetailPage` will use `useParams()` for the exam UUID, `Promise.all` to fetch exam + users in parallel, a `usersMap` derived from the users response, inline state for each mutation (`saving`, `generating`, `publishing`, `deleteLoading`, `addingId`), and separate error states for each action. The manual-add picker fetches the problem bank only when the Dialog opens (lazy). Available problems are filtered client-side by excluding `problem_id`s already in `exam.exam_problems`. Every mutating endpoint returns the updated `ExamRead`; after success, `setExam(res.data)` refreshes all derived state (no re-fetch needed).
+
+### Action 1 — Create ExamDetailPage.jsx
+Created `frontend/src/pages/interviewer/ExamDetailPage.jsx` (~340 lines). Key implementation decisions:
+- `Promise.all([api.get('/api/v1/exams/${id}'), api.get('/api/v1/users/')])` on mount; `usersMap` is a plain `{}` built from the users response.
+- Candidate display name: `usersMap[exam.candidate_id] ?? exam.candidate_id ?? '—'` (falls back to raw UUID if user not found, not a crash).
+- `isDraft = exam?.status === 'Draft'` computed from exam state; all action buttons disabled when false.
+- `handleSave` — PATCH body is `{ title, duration_minutes }` only; guards non-draft with `setSaveError('非草稿狀態不可編輯')` before API call.
+- `handleAddProblem(problemId)` — sends `{ problem_id: Number(problemId), points: 100 }`; `Number()` ensures int even if browser gives string.
+- `addedIds = new Set(exam.exam_problems.map(p => p.problem_id))` — used to filter picker rows; recomputed from new exam state after each add.
+- `exam_problems` table uses `key={problem.problem_id}` explicitly (comment "L1 pre-emption").
+- Publish button has dual guard: `disabled={!isDraft || exam.exam_problems.length === 0 || publishing}`.
+- Delete: on 204 success → `navigate('/interviewer')`; on error → `deleteError` shown inline, dialog stays open.
+- Problem bank is fetched lazily inside `openPicker()` — no pre-load on mount.
+
+### Observation 1
+File created successfully. Code reviewed mentally: all six actions present, gated correctly, keys correct.
+
+### Action 2 — Update barrel index.js
+Added `export { default as ExamDetailPage } from './ExamDetailPage'` to `frontend/src/pages/interviewer/index.js`.
+
+### Observation 2
+File updated. Barrel now exports ExamListPage, ExamFormPage, ExamDetailPage.
+
+### Action 3 — Update App.jsx
+- Added `ExamDetailPage` to the barrel destructure import on line 13.
+- Added `<Route path="exams/:id" element={<ExamDetailPage />} />` under `/interviewer`.
+- No import collision: `ExamDetailPage` is a new name; `ExamListPage` is already aliased to `InterviewerExamListPage`.
+- Did NOT add `exams/:id/result` route — that is P4.
+
+### Observation 3
+App.jsx now has the correct three routes under `/interviewer`: `index`, `exams/new`, `exams/:id`.
+
+### Action 4 — Build + test
+- `npm run build` → exit 0, 1694 modules, 395.99 kB JS bundle (1 more module than P2's 1693).
+- `npm run test` → 45/45 tests green, 7 test files, all passing. React Router future-flag warnings in stderr are pre-existing and not failures.
+
+### Observation 4
+Both verification commands pass. No regressions.
+
+### Summary
+
+**Files touched:**
+- `frontend/src/pages/interviewer/ExamDetailPage.jsx` — **created** (new page: view + edit + auto-generate + manual-add + publish + delete)
+- `frontend/src/pages/interviewer/index.js` — **modified** (added ExamDetailPage export)
+- `frontend/src/App.jsx` — **modified** (added ExamDetailPage import + `exams/:id` route)
+
+**Commands run:**
+- `npm run build` → exit 0 (1694 modules, 395.99 kB)
+- `npm run test` → 45/45 green (7 files)
+
+**Deviations from plan:**
+- None. All six P3 features implemented exactly as specified.
+
+**Adjacent findings (not fixed):**
+- `ExamDetailPage.jsx` — the "查看結果" link navigates to `/interviewer/exams/${id}/result` which will 404 until P4 wires that route. This is expected mid-loop behaviour (mirrors the P1 "新增考試" dead-button during P1).
+
+**Blockers:** None.
+
+### Verifier verdict
+
+```
+build:     pass (exit 0, 1694 modules, 395.99 kB bundle)
+test:      pass (45/45, 7 files)
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+e2e:       skipped
+```
+
+React Router v7 future-flag warnings appear in test stderr — pre-existing advisory, not failures.
+
+**Verdict: green**
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (confirmed independently: 1694 modules, exit 0)
+2. Tests 100% green — pass (confirmed independently: 45/45)
+3. Golden path (Draft exam) — pass: all six actions present; `Promise.all` fetch at line 80; PATCH body `{title, duration_minutes}` only at line 121–125; generate at line 144; add-problem at line 181–183; publish at line 201; delete+navigate at lines 215–216.
+4. Non-Draft gating — pass: `isDraft` gates edit inputs (lines 291, 302), save button (line 308), generate button (line 324), add button (line 333), publish button (line 388); `handleSave` also checks `!isDraft` at line 114 and sets "非草稿狀態不可編輯" for keyboard-submit bypass.
+5. Publish zero-problem guard — pass: `disabled={!isDraft || exam.exam_problems.length === 0 || publishing}` at line 388.
+6. `problem_id` is int in add-problem body — pass: `Number(problemId)` explicit coerce at line 182; `p.id` from problem bank is already int per `ProblemShortRead` schema.
+7. `exam_problems` table key — pass: `key={problem.problem_id}` at line 361 with comment "L1 pre-emption".
+
+**Must-fix issues**
+
+None found. Every borderline item assessed below:
+
+- `openPicker` and `handleAddProblem` have no internal `isDraft` guard (`ExamDetailPage.jsx:154`, `176`). However: `openPicker` is only bound to a button that is `disabled={!isDraft}`, and `handleAddProblem` is only reachable from within that dialog. No keyboard path bypasses `disabled` on a `<button>`. Backend returns 400 for non-Draft as a second layer. Not must-fix.
+- `handleSave` silently falls back to `exam.title` when `editTitle.trim()` is empty (line 122) — design choice, not data corruption. Not must-fix.
+
+**Nice-to-have**
+
+- `ExamDetailPage.jsx:154`: add `if (!isDraft) return` guard at top of `openPicker` for defense-in-depth. Low priority.
+- `ExamDetailPage.jsx:122`: validate non-empty title client-side (like `ExamFormPage`) and show a Chinese error instead of silently keeping the old title. Minor UX polish for P5.
+
+**Verification gaps**
+
+- No browser/Playwright check required — all mutations follow the same axios patterns proven in prior pages; the picker dialog pattern mirrors ProblemListPage. The highest-risk logic (type coercions, gating, key correctness) is all source-verifiable and passes code inspection. Tests for these invariants are deferred to P5 per plan.
