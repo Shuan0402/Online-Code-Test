@@ -78,4 +78,4 @@ None found.
 
 - Reviewer verdict: **ship** (no must-fix). Verifier verdict: **green**.
 - Reviewer nice-to-haves all folded into P4 polish scope: (1) `alert()` on delete failure → inline error in the Dialog; (2) distinct "沒有符合條件的題目" message when a filter is active vs truly-empty list; (3) rejudge feedback string never auto-clears.
-- **Committed P1 as `<SHA>`** on `feat/questioner-panel`.
+- **Committed P1 as `0b45a49`** on `feat/questioner-panel`.
