@@ -782,3 +782,78 @@ None found. All critical invariants verified by direct code inspection.
 ### Commit
 
 `e082ba9` — feat(frontend): P8 — profile & change-password page
+
+---
+
+## P9 — Vitest unit tests for P4–P8 pages  (2026-05-21T16:10:00Z)
+
+### Files touched
+- `frontend/src/pages/interviewer/ExamResultPage.test.jsx` — **created**: 5 tests covering total-score render, null-score "—", empty results empty state, Unsubmitted → "未提交" via JudgeStatusBadge, exam title in header.
+- `frontend/src/pages/interviewer/ExamListPage.test.jsx` — **created**: 4 tests covering status filter (Draft hides non-Draft rows; 全部 restores without extra GET), score column (null → "—", 150 → "150 分"), delete success (exact UUID), delete 400 inline error + row stays.
+- `frontend/src/pages/interviewer/CandidateListPage.test.jsx` — **created**: 5 tests covering role filter (Candidate shown, Interviewer hidden from mixed-role response), empty-from-non-candidate-only, empty-list, no delete button, admin-note text present.
+- `frontend/src/pages/interviewer/CandidateFormPage.test.jsx` — **created**: 5 tests covering empty username (via `fireEvent.submit` on the form element to bypass jsdom required-field block), 2-char username, 7-char password, success POST with exact body, full_name: null when omitted.
+- `frontend/src/pages/interviewer/SubmissionDetailPage.test.jsx` — **created**: 7 tests covering the S3 footgun invariant (window.fetch called, api.get NOT called with presigned URL), null presigned_url → "程式碼暫無法顯示", empty submissions → "考生尚未提交此題" (api.get called only twice), details[] table rows, problem_id as Number, resolved username in header, UUID fallback when user fetch rejects.
+- `frontend/src/pages/interviewer/ProfilePage.test.jsx` — **created**: 5 tests covering GET /users/me pre-fill, PATCH body contains ONLY full_name (no username/role), new password too short, password mismatch, PUT success with exact body + "密碼已更新" + fields cleared.
+
+### Commands run
+- `npm run build` → exit 0 (1700 modules, 418.29 kB — same as P8, test files not bundled)
+- `npm run test` → 77/77 green (13 test files); prior count was 45 → 32 new test cases
+
+### Deviations from plan
+- `CandidateFormPage.test.jsx` test (a) "empty username → 請填寫帳號": `fireEvent.click` on the submit button was blocked by jsdom's HTML5 constraint validation (the `required` attribute on the username input prevented React's `handleSubmit` from running). Fixed by submitting via `fireEvent.submit(form)` on the `<form>` element directly — the React `onSubmit` handler is still exercised.
+- Plan said "≥20 new cases" — delivered 32.
+
+### Adjacent findings (not fixed)
+- `CandidateDetailPage.jsx` still renders `candidate.role` as raw English enum (P8 supervisor note: "CandidateDetailPage was NOT retroactively modified per P8 scope boundary") — still not fixed. Low priority.
+
+### Blockers
+- None. All 32 new test cases pass. All 45 prior tests still green (77 total).
+
+### Summary
+
+All 6 test files created. Build exits 0. 77/77 tests green (32 new). S3 footgun invariant tested mechanically via window.fetch spy. Role-filter invariant tested with mixed-role mock. Every gating/conditional test includes the "This test fails if..." comment. No console.error spying used anywhere.
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (executor confirmed; test files are not bundled so module count unchanged from P8)
+2. 77/77 tests green, ≥20 new cases — pass (32 new cases across 6 files)
+3. S3 footgun test: `window.fetch` called with presigned URL AND `api.get` NOT called with that URL — pass: `SubmissionDetailPage.test.jsx:156` asserts `fetchSpy` called with `PRESIGNED_URL`; lines 160–161 iterate all `api.get.mock.calls` and assert none equal `PRESIGNED_URL`. `window.fetch` is spied via `vi.spyOn(window, 'fetch')` separately from `api`. This is a genuine L3 test — removing `window.fetch(presigned_url)` and replacing with `api.get(presigned_url)` would fail the `fetchSpy` assertion.
+4. `toHaveBeenCalledWith` uses exact URL strings — pass: every assertion uses a literal URL string (e.g. `/api/v1/exams/${EXAM_UUID}`, `/api/v1/users/`, `/api/v1/submissions/`); no loose `.toEqual(expect.stringContaining(...))` matchers.
+5. Gating/conditional tests exercise the guard — pass: `CandidateListPage.test.jsx:84–109` mock returns one Candidate + one Interviewer; test (a) asserts `alice` present, test (b) asserts `bob` absent — removing the `filter(u => u.role === 'Candidate')` in the impl would cause test (b) to fail. All such tests carry the "This test fails if..." comment.
+6. `CandidateFormPage.test.jsx` empty-username test (fireEvent.submit deviation) — sound: `CandidateFormPage.jsx:16` has `const handleSubmit = async (e) => { e.preventDefault(); ... if (!username.trim()) { setFormError('請填寫帳號'); return }`. `fireEvent.submit(form)` calls this handler with a synthetic event; `e.preventDefault()` suppresses default form submission; the JS guard fires; the Chinese error is asserted; `api.post` is asserted not called. The `required` HTML attribute on the input is irrelevant to the React handler — the test correctly exercises the JS validation branch, not the browser constraint branch.
+7. No vacuous tests — pass: no `console.error` spy substitutions anywhere. All assertions target rendered text or `api.get/post/delete/patch/put` call arguments.
+
+**Must-fix issues**
+
+None found.
+
+**Nice-to-have**
+
+- `SubmissionDetailPage.test.jsx:204`: the empty-submissions test asserts `api.get` called exactly twice, then separately asserts the two exact URLs. This is thorough. However the assertion at line 206 uses `expect.any(Object)` as the second argument for the submissions call — a minor looseness, but since the exact-URL string is still checked as the first argument, this is acceptable.
+- `ExamResultPage.test.jsx:120`: test (a) asserts `screen.getByText('135')` separately from `/300 分/`. If the implementation ever renders `135 / 300 分` as a single text node, `getByText('135')` could fail (it would be a substring, not a full text match). Consider `screen.getByText(/135/)` or a `within()` scope. Low priority — the test passes now and the note is cosmetic.
+
+**Verification gaps**
+
+- No browser/Playwright check needed — these are pure test additions with no user-visible behavior change.
+- No test covers the `ExamListPage` "filter active + zero rows" shows "目前沒有考試" instead of a more informative "篩選結果為空" message (P4 supervisor nice-to-have). Acceptable per plan scope.
+
+### Verifier verdict
+
+```
+build:     pass (exit 0, 1700 modules, 418.29 kB bundle)
+test:      pass (77/77, 13 files — 45 pre-existing + 32 new; no regression)
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+e2e:       skipped
+```
+
+Baseline confirmation: all 7 pre-P9 test files (45 tests) appear green in the run
+output; no file shows a failure. New count 77 − 45 = 32 new cases across 6 new files,
+exceeding the plan's ≥20 requirement. React Router v7 future-flag warnings in stderr
+are pre-existing advisory output, not failures.
+
+**Verdict: green**
