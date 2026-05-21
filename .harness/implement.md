@@ -161,3 +161,86 @@ None found.
   - `score_weight` held as a string in state — clearing the field sends `NaN` → backend 422; needs a numeric default guard.
   - (cosmetic, also P4) empty `test_cases:[]` falls back to a blank row instead of letting validation fire; `ErrorMessage` missing `onRetry`.
 - **Committed P2 as `c230943`** on `feat/questioner-panel`.
+
+## P3 — 該題提交紀錄查看頁  (2026-05-21T10:57:00Z)
+
+### Files created / modified
+- `frontend/src/pages/questioner/ProblemSubmissionsPage.jsx` — new page; mounts at `/questioner/problems/:id/submissions`; fetches `GET /api/v1/submissions/?problem_id={id}` via `@/lib/api`; renders a table with columns 提交者 (user_id), 狀態 (JudgeStatusBadge), 分數, 執行時間 (null → "—"), 提交時間 (formatted via toLocaleString); each row has a 查看詳情 button that fetches `GET /api/v1/submissions/{submissionId}` and opens a shadcn Dialog showing status badge, judge_log in a `<pre>` block (null/empty → "無"), and the details array as a table; empty details → "無詳細測試資料"; presigned_url never rendered; loading/error/empty states all handled; 返回 button navigates to `/questioner/problems`
+- `frontend/src/pages/questioner/index.js` — added `ProblemSubmissionsPage` barrel export
+- `frontend/src/App.jsx` — replaced `problems/:id/submissions` route element from `QuestionerStubPage` to `ProblemSubmissionsPage`; removed now-unused `QuestionerStubPage` import (confirmed no other usage in the file)
+
+### Commands run
+- `npm run build` → exit 0 (1691 modules, 2.11 s)
+- `npm run test` → 27/27 passed (4 test files, 1.15 s)
+
+### Deviations from plan
+- None. All acceptance criteria met as stated.
+
+### Adjacent findings (not fixed)
+- `QuestionerStubPage` file still exists at `frontend/src/pages/stubs/QuestionerStubPage.jsx` — no longer imported anywhere in the `/questioner` block; the file itself is not deleted because other stub files (InterviewerStubPage, AdminStubPage) follow the same pattern and the plan does not call for deleting it.
+
+### Blockers / notes for P4
+- P4 needs to write `ProblemSubmissionsPage.test.jsx` targeting: (a) renders submission rows from mocked GET; (b) 查看詳情 opens dialog with judge_log; (c) empty details shows "無詳細測試資料". The `useCallback` + `fetchSubmissions` ref is exported via the component scope — tests will need to mock `@/lib/api` via `vi.mock`.
+- Two latent bugs from P2 reviewer (carried forward to P4 fix): `key={index}` on test-case rows; `score_weight` stored as string (NaN risk on clear).
+
+### Verifier verdict  (2026-05-21)
+
+```
+build:     pass  (1691 modules, exit 0, 2.13 s)
+test:      pass  (27/27, 4 files, exit 0 — no regressions)
+ts-files:  pass  (0 .ts/.tsx files under frontend/src)
+deps:      pass  (frontend/package.json unchanged vs HEAD — no new deps)
+lint:      skipped  (no lint script configured — expected)
+e2e:       deferred to supervisor (browser test, not run by verifier)
+```
+
+Verdict: green
+
+### Reviewer verdict  (2026-05-21)
+
+**Verdict: ship**
+
+#### Criteria scorecard
+
+| # | Criterion | Result | Note |
+|---|-----------|--------|------|
+| 1 | `GET /api/v1/submissions/?problem_id={id}` — correct path and query param | pass | ProblemSubmissionsPage.jsx:62 — exact string `/api/v1/submissions/?problem_id=${id}` via shared `@/lib/api` |
+| 2 | `GET /api/v1/submissions/{submissionId}` — correct path for detail fetch | pass | ProblemSubmissionsPage.jsx:82 — `/api/v1/submissions/${submissionId}` |
+| 3 | Table columns: 提交者/狀態/分數/執行時間/提交時間 | pass | ProblemSubmissionsPage.jsx:126-131 — all five columns present |
+| 4 | 狀態 column uses `JudgeStatusBadge` | pass | ProblemSubmissionsPage.jsx:139 |
+| 5 | null `execution_time` shows "—" (list row) | pass | ProblemSubmissionsPage.jsx:145 — `!= null` guard |
+| 6 | "查看詳情" opens Dialog with judge_log in `<pre>` | pass | ProblemSubmissionsPage.jsx:202-207 |
+| 7 | null/empty `judge_log` handled — no crash, no literal "null" | pass | ProblemSubmissionsPage.jsx:201 — falsy guard; renders "無" instead |
+| 8 | `details` array rendered in Dialog | pass | ProblemSubmissionsPage.jsx:213-248 |
+| 9 | Empty `details` → "無詳細測試資料" | pass | ProblemSubmissionsPage.jsx:213-214 — `!details || details.length === 0` |
+| 10 | `presigned_url` NOT rendered anywhere | pass | No reference to `presigned_url` in the file |
+| 11 | LoadingSpinner on list fetch | pass | ProblemSubmissionsPage.jsx:104-108 |
+| 12 | ErrorMessage with onRetry on list fetch | pass | ProblemSubmissionsPage.jsx:112 — `onRetry={fetchSubmissions}` |
+| 13 | Empty list → "尚無提交紀錄" | pass | ProblemSubmissionsPage.jsx:117 |
+| 14 | App.jsx submissions route now renders ProblemSubmissionsPage | pass | App.jsx:60 |
+| 15 | QuestionerStubPage import cleanly removed from App.jsx | pass | App.jsx grep confirms zero references; only the stub file itself remains at stubs/QuestionerStubPage.jsx (unreferenced) |
+| 16 | Barrel export clean — 3 named exports | pass | index.js:4 — `ProblemSubmissionsPage` added |
+| 17 | No TypeScript; 純中文 strings | pass | Pure JSX; all user-visible strings Chinese |
+| 18 | 27 prior tests still green | pass | executor reports 27/27 |
+| 19 | `npm run build` exits 0 | pass | executor reports 1691 modules |
+
+#### Must-fix issues
+
+None found.
+
+#### Nice-to-have
+
+- `ProblemSubmissionsPage.jsx:180` — the dialog-internal `ErrorMessage` has no `onRetry` prop. If the detail fetch fails the user can only close the dialog and click "查看詳情" again. Adding `onRetry={() => handleViewDetail(submissionId)}` would require threading the ID into state, which is slightly more involved; acceptable to defer to P4 polish.
+- `ProblemSubmissionsPage.jsx:97` — the "返回" button navigates to `/questioner/problems` (hardcoded). If the list page is ever reachable from a different ancestor path, `useNavigate(-1)` or `navigate(-1)` would be more robust. Not a plan criterion.
+- `ProblemSubmissionsPage.jsx:229` — detail table uses `key={detail.id ?? idx}`. `SubmissionDetailRead` always has an `id` per the backend contract, so `idx` fallback is only triggered if the backend omits it unexpectedly; this is acceptable defensive coding.
+
+#### Verification gaps
+
+- No Playwright / browser check was run. The plan does not require one for P3, but a quick manual check of the dialog open/close cycle and the null `judge_log` rendering path is recommended before merge.
+- The Dialog error branch (line 180) has no retry affordance; user must close and re-click "查看詳情". Functional, but worth noting for P4 polish.
+
+### Supervisor resolution + commit (P3)
+
+- Reviewer verdict: **ship** (no must-fix). Verifier verdict: **green**.
+- Reviewer nice-to-haves: Dialog-internal ErrorMessage lacks `onRetry` → fold into P4 polish; "返回" hardcoded path is acceptable (page only reached from the problem list) → no action.
+- **Committed P3 as `<SHA>`** on `feat/questioner-panel`.
