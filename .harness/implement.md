@@ -857,3 +857,7 @@ exceeding the plan's ≥20 requirement. React Router v7 future-flag warnings in 
 are pre-existing advisory output, not failures.
 
 **Verdict: green**
+
+### Commit
+
+`096e0f1` — test(frontend): P9 — Vitest tests for interviewer panel pages
