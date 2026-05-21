@@ -1,0 +1,55 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+
+jobs:
+  build-and-test:
+    name: Lint, Build & Test
+    runs-on: ubuntu-latest
+
+    # 讓每個 run: 步驟都在 frontend/ 目錄下執行
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      # 把 repo 程式碼抓到 CI 機器上
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # 安裝 Node.js,並依 package-lock.json 快取 npm
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # 依 package-lock.json 乾淨安裝依賴
+      - name: Install dependencies
+        run: npm ci
+
+      # ESLint:抓語法與潛在 bug
+      - name: Lint
+        run: npm run lint
+
+      # Prettier:確認排版一致
+      - name: Check formatting
+        run: npm run format:check
+
+      # 確認可成功建置
+      - name: Build
+        run: npm run build
+
+      # 跑 Vitest 單元測試
+      - name: Run tests
+        run: npm run test
