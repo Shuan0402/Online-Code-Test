@@ -10,7 +10,7 @@ import LoginPage from './pages/LoginPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
 import ExamListPage from './pages/candidate/ExamListPage'
 import { ProblemListPage, ProblemFormPage, ProblemSubmissionsPage } from './pages/questioner'
-import InterviewerStubPage from './pages/stubs/InterviewerStubPage'
+import { ExamListPage as InterviewerExamListPage } from './pages/interviewer'
 import AdminStubPage from './pages/stubs/AdminStubPage'
 import TakeExamPage from './pages/candidate/TakeExamPage'
 import ResultPage from './pages/candidate/ResultPage'
@@ -69,8 +69,7 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<InterviewerStubPage />} />
-          <Route path="*" element={<InterviewerStubPage />} />
+          <Route index element={<InterviewerExamListPage />} />
         </Route>
 
         {/* Admin panel */}
