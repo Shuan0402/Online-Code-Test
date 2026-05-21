@@ -188,3 +188,62 @@ the P4 plan section was already amended to specify it).
   established in P2's `MemberListPage.test.jsx`).
 - Verifier must judge `npm run test` by the `Test Files … passed` summary + exit code,
   not by a post-green Node ESM-teardown stack trace (lesson L1).
+
+---
+
+## P4 — Admin Exam List + Exam Detail Pages + Tests  (2026-05-21T17:58:00Z)
+
+**Files touched**:
+- `frontend/src/pages/admin/AdminExamListPage.jsx` — created; on mount fetches `GET /api/v1/exams/` (sparse list), then fan-out `Promise.all` of `GET /api/v1/exams/{id}` per exam + `GET /api/v1/users/` to build usersMap; table columns: 考試名稱 (`title`), 考生 (resolved via `usersMap[candidate_id] ?? '—'` — NOT raw UUID, lesson L2), 狀態 (`ExamStatusBadge`), 分數 (`score`, null → '—'); client-side status filter via native `<select>` (Draft/Published/Ongoing/Finished/Archived/全部); delete button per row opens confirm Dialog → `DELETE /api/v1/exams/{id}` (204, no body, `await api.delete(...)` result unused to avoid empty-body throw); row click navigates to `/admin/exams/{id}`; no 新增考試 button per plan
+- `frontend/src/pages/admin/AdminExamDetailPage.jsx` — created; on mount `Promise.all([GET /api/v1/exams/{id}, GET /api/v1/users/])`; renders read-only: title, status badge, 應試者 resolved via `usersMap[exam.candidate_id] ?? exam.candidate_id ?? '—'`, score (null → '—'), duration, start_time, end_time, easy/medium/hard_count; exam_problems table with 題號/題目名稱/難度/配分; delete button → Dialog → `DELETE /api/v1/exams/{id}` → `navigate('/admin/exams')` on success; back button → `/admin/exams`; no edit controls
+- `frontend/src/pages/admin/AdminExamListPage.test.jsx` — created; 4 tests: (a) status filter Draft/全部, (b) 考生 renders resolved name (愛麗絲/bob) not raw UUID, 分數 null→'—' + numeric displayed, (c) delete confirm → DELETE called + row removed, (d) delete 400 → inline error shown, row stays; mocks `api.get` via `mockImplementation` keyed on URL; no `@/contexts/AuthContext` mock needed (P4 pages do not call `useAuth()`)
+- `frontend/src/pages/admin/index.js` — updated; replaced `AdminExamListPage` and `AdminExamDetailPage` stub exports with real file imports; left DashboardPage, AdminProblemListPage, AdminProblemDetailPage stubs untouched
+
+**Commands run**:
+- `npm run build` → exit 0, 1705 modules transformed, dist built in 1.46s
+- `npm run test` → Test Files 17 passed (17), Tests 97 passed (97), exit 0
+
+**Deviations from plan**: none
+
+**Blockers / open questions**: none
+
+**Adjacent findings (not fixed)**: none
+
+### Verifier verdict (P4)
+
+typecheck: skipped (JS-only project, no tsc step)
+lint:      skipped (no lint script)
+test:      pass (17/17 files, 97/97 tests — summary: "Test Files 17 passed (17), Tests 97 passed (97)", exit 0; AdminExamListPage.test.jsx 4/4, all prior 93 tests still green)
+build:     pass (vite build exit 0, 1705 modules, dist built in 1.58s)
+e2e:       skipped
+
+**Verdict: green**
+
+### Reviewer verdict (P4)
+
+**Verdict: ship**
+
+**Criteria scorecard**:
+
+1. Build exits 0 — PASS. Executor reports 1705 modules, exit 0.
+2. Tests pass (AdminExamListPage.test.jsx + all prior) — PASS. 17 files / 97 tests, exit 0.
+3. N+2 fan-out correct — PASS. `AdminExamListPage.jsx:57-59` does `Promise.all([Promise.all(sparseList.map(e => api.get(\`/api/v1/exams/${e.id}\`))), api.get('/api/v1/users/')])` — exactly the specified shape.
+4. 考生 renders resolved name, NOT raw UUID (L2) — PASS. `AdminExamListPage.jsx:184` renders `usersMap[exam.candidate_id] ?? '—'`. Test (b) at `AdminExamListPage.test.jsx:158-159` explicitly asserts `queryByText('user-uuid-1')` and `queryByText('user-uuid-2')` are absent.
+5. 分數 nullable → '—' — PASS. `AdminExamListPage.jsx:190` uses `exam.score != null ? exam.score : '—'`. Test (b) at line 162 asserts `screen.getByText('—')`.
+6. DELETE 204 no-body safe — PASS. `AdminExamListPage.jsx:106` calls `await api.delete(...)` with result unused; no `.then(r => r.data)` chain that would throw on empty body.
+7. Status filter is client-side — PASS. `AdminExamListPage.jsx:86-88` filters the `exams` state; test (a) at line 142 asserts `api.get` was called exactly once with `/api/v1/exams/` (no re-fetch).
+8. Delete 400 → inline error, row stays — PASS. `AdminExamListPage.jsx:110` sets `deleteError`; test (d) at `AdminExamListPage.test.jsx:217-222` asserts the error text is shown and `進行中考試` row remains.
+9. 應試者 on detail page resolves via usersMap — PASS. `AdminExamDetailPage.jsx:100` computes `usersMap[exam.candidate_id] ?? exam.candidate_id ?? '—'`.
+10. exam_problems table renders sequence/title/difficulty/points — PASS. `AdminExamDetailPage.jsx:187-190` renders `ep.sequence`, `ep.title`, `ep.difficulty`, `ep.points`.
+11. Detail page delete navigates to `/admin/exams` on success — PASS. `AdminExamDetailPage.jsx:76` calls `navigate('/admin/exams')` inside the try block.
+12. No edit controls on detail page — PASS. `AdminExamDetailPage.jsx` contains no `<input>`, `<textarea>`, or `<form>` elements; only a delete Button and read-only `<p>` elements.
+13. No 新增考試 button on list page — PASS. `AdminExamListPage.jsx` header (lines 135-137) renders only the `<h1>` — no create button.
+14. Barrel updated, no scope creep — PASS. `index.js` diff shows only the two exam-page stub→real swaps; P1–P3 and P5–P6 stubs untouched.
+
+**Must-fix issues**: none
+
+**Nice-to-have**:
+- `AdminExamDetailPage.jsx:100` — the fallback chain `usersMap[...] ?? exam.candidate_id ?? '—'` exposes the raw UUID to the admin UI when the user is not in the usersMap (e.g. deleted user). The plan specifies `usersMap[exam.candidate_id] ?? exam.candidate_id` (with raw-UUID fallback), so this is plan-compliant. A human-friendlier fallback like `'（已刪除使用者）'` would be a nicer UX, but is not required.
+- `AdminExamListPage.test.jsx:162` — test (b) asserts `screen.getByText('—')` which is satisfied by any single '—' in the DOM. Because exam-uuid-1 has `score: null` there is exactly one '—' cell, so this is correct in the current fixture. If a second nullable field were added, the assertion could silently pass for the wrong reason. `getAllByText` or a more targeted query would be more robust, but the current fixture makes it unambiguous.
+
+**Verification gaps**: No browser/Playwright check. The fan-out triggers N+2 HTTP calls on every mount — manually verify with live backend that the admin exam list renders promptly (no silent failures when candidate users have been deleted and are absent from usersMap).
