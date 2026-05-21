@@ -68,3 +68,66 @@ None found.
 ### Commit
 
 `620b068` — feat(frontend): P1 — Interviewer panel scaffold + exam list page
+
+---
+
+## P2 — Create exam form  (2026-05-21T12:21:00Z)
+
+### Files touched
+- `frontend/src/pages/interviewer/ExamFormPage.jsx` — **created**: create-only form; fetches `GET /api/v1/users/` on mount, filters to `role === 'Candidate'` for dropdown; fields: 考試標題 (text), 考試時長 (number, min=1, default 120), 簡單/中等/困難題數 (number, min=0, default 0), 應試者 (select with UUID values); submit handler validates non-empty title and selected candidate (Chinese error messages, no API call on fail); coerces all numeric fields via `Number()` with NaN guards (duration falls back to 120, counts to 0); `candidate_id` sent as raw UUID string; 201 → navigate to `/interviewer/exams/${res.data.id}`; inline error on API failure; zero-candidates message instead of empty select.
+- `frontend/src/pages/interviewer/index.js` — **modified**: added `ExamFormPage` export.
+- `frontend/src/App.jsx` — **modified**: added `ExamFormPage` to barrel import; added `<Route path="exams/new" element={<ExamFormPage />} />` under `/interviewer`.
+
+### Commands run
+- `npm run build` → exit 0 (1693 modules, 386 kB JS bundle)
+- `npm run test` → 45/45 green (7 test files, no new tests in P2)
+
+### Deviations from plan
+- Submit button is additionally disabled when `candidates.length === 0` (no candidates in system) — prevents a confusing submit attempt with no candidate selected and nothing in the dropdown. Consistent with the plan's "helpful Chinese message" guidance.
+
+### Adjacent findings (not fixed)
+- None.
+
+### Blockers
+- None. The navigate target `/interviewer/exams/${id}` will 404 until P3 wires that route — expected mid-loop behaviour per plan.
+
+### Verifier verdict
+
+```
+build:     pass (exit 0, 1693 modules, 386.99 kB bundle)
+test:      pass (45/45, 7 files — React Router future-flag warnings in stderr, not errors)
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+e2e:       skipped
+```
+
+**Verdict: green**
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (executor confirmed 1693 modules, 386 kB, no errors)
+2. Tests 100% green — pass (45/45, no regression)
+3. Golden path POST body shape — pass: `ExamFormPage.jsx:84-92` sends `{ title, duration_minutes, easy_count, medium_count, hard_count, candidate_id }` to `POST /api/v1/exams/` with trailing slash at line 96
+4. Numeric coercion non-vacuous — pass: `line 79` runs `Number(durationMinutes)` on the raw string state (not already-a-number), then `line 86` guards `Number.isFinite(...) && > 0`; clearing the field produces `Number("") === 0`, which fails the `> 0` check, so duration correctly falls back to 120. Same pattern for counts at lines 87-89.
+5. `candidate_id` is UUID string — pass: `line 91` uses `candidateId` directly from select `value`, which is `u.id` (UUID) at `line 217`; no `Number()` call applied.
+6. Validation — pass: empty title blocked at `line 67-70` ("請填寫考試標題"); no candidate blocked at `line 71-74` ("請選擇應試者"); both return before `api.post`.
+7. `GET /api/v1/users/` filtered client-side to `role === 'Candidate'` — pass: `line 42-44`.
+8. Barrel and route wiring — pass: `index.js` exports `ExamFormPage`; `App.jsx` adds `<Route path="exams/new">`.
+
+**Must-fix issues**
+
+None found.
+
+**Nice-to-have**
+
+- `ExamFormPage.jsx:237`: submit button is disabled when `candidates.length === 0`, which means the "請選擇應試者" validation path (line 71-74) is unreachable when no candidates exist. This is a UX improvement (not a data-corruption risk), but if the button-disabled guard is ever removed, the validation remains correct as a fallback. Fine for P2.
+- `ExamFormPage.jsx:209`: uses a raw `<select>` instead of shadcn `<Select>` — visually inconsistent with the rest of the form. Not a functionality defect; cosmetic polish for P5.
+
+**Verification gaps**
+
+- No browser/Playwright check needed — the form is additive and follows the proven `ProblemFormPage` pattern. No user-visible behavior was regressed.
+- P2 adds no new tests (plan defers tests to P5) — that is expected per plan and not a defect here.
