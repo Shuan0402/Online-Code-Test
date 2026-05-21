@@ -160,4 +160,4 @@ None found.
   - `ProblemFormPage.jsx` test-case map uses `key={index}` — removing a middle row shifts field values; needs a stable key.
   - `score_weight` held as a string in state — clearing the field sends `NaN` → backend 422; needs a numeric default guard.
   - (cosmetic, also P4) empty `test_cases:[]` falls back to a blank row instead of letting validation fire; `ErrorMessage` missing `onRetry`.
-- **Committed P2 as `<SHA>`** on `feat/questioner-panel`.
+- **Committed P2 as `c230943`** on `feat/questioner-panel`.
