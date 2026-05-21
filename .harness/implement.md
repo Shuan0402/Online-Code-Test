@@ -307,3 +307,56 @@ e2e:       skipped
 
 **Commit**: `ee2a274` feat(frontend): P5 — admin problem list & detail pages
 **Supervisor note**: both reviewer nice-to-haves re-triaged as cosmetic — the string-vs-int `id` provenance is functionally correct (backend parses the path segment as int either way; not a malformed request) and the missing Medium/Hard filter assertion covers a one-line equality check. Deferred, not blocking.
+
+## P6 — Dashboard Page + Dashboard Tests  (2026-05-21T18:07:00Z)
+
+**Files touched**:
+- `frontend/src/pages/admin/DashboardPage.jsx` — created; on mount fires `Promise.all([GET /api/v1/exams/, GET /api/v1/submissions/, GET /api/v1/users/])`; renders 3 stat cards (考試統計/提交統計/成員統計) using `Card` from `@/components/ui/card`; each card shows total count + per-enum breakdown cells (ExamStatus/JudgeStatus/UserRole); Grafana link `<a target="_blank">` rendered only when `import.meta.env.VITE_GRAFANA_URL` is a non-empty string; includes code comment noting `?limit=` could be added to submissions call; LoadingSpinner while loading, ErrorMessage on error
+- `frontend/src/pages/admin/DashboardPage.test.jsx` — created; 5 tests: (a) exam count aggregation (2 Draft/1 Ongoing → total 3), (b) submission verdict breakdown (3 AC/2 WA → total 5), (c) member role breakdown (2 Admin/1 Candidate/1 Interviewer), (d) Grafana button visible + correct href when `vi.stubEnv('VITE_GRAFANA_URL', 'http://grafana:3000')`, (e) Grafana button absent when `vi.stubEnv('VITE_GRAFANA_URL', '')`; each test cleans up with `vi.unstubAllEnvs()` in `afterEach`; does not mock `@/contexts/AuthContext` (DashboardPage does not call `useAuth()`)
+- `frontend/src/pages/admin/index.js` — updated; replaced `export const DashboardPage = () => null` stub with `export { default as DashboardPage } from './DashboardPage'`; all 8 exports are now real file imports
+- `frontend/.env.example` — created (did not exist); documents `VITE_GRAFANA_URL=` with one-line comment explaining it enables the Grafana link button on the admin dashboard
+
+**Commands run**:
+- `npm run build` → exit 0, 1708 modules transformed, dist built in 1.55s
+- `npm run test` → Test Files 19 passed (19), Tests 105 passed (105), exit 0
+
+**Deviations from plan**: Test (a) set `submissions` and `users` to empty arrays via a custom `api.get` mock to isolate exam counts — avoiding false failures from shared `getAllByText('1')` matches across all three stat cards. Logic under test is identical; only the fixture isolation was tightened.
+
+**Blockers / open questions**: none
+
+**Adjacent findings (not fixed)**: All 8 DashboardPage stat-card cells for statuses with count 0 still render "0" — this is correct (the spec does not say hide zero-count cells). DashboardPage is the last stub; `index.js` is now fully real — no more stubs in the barrel.
+
+### Verifier verdict (P6)
+
+typecheck: skipped (JS-only project, no tsc step)
+lint:      skipped (no lint script)
+test:      pass (19/19 files, 105/105 tests — summary: "Test Files 19 passed (19), Tests 105 passed (105)", exit 0; DashboardPage.test.jsx 5/5, all prior 100 tests still green)
+build:     pass (vite build exit 0, 1708 modules, dist built in 1.37s)
+e2e:       skipped
+
+**Verdict: green**
+
+### Reviewer verdict (P6)
+
+**Verdict: ship**
+
+**Criteria scorecard**:
+
+1. Build exits 0 — PASS. Independently verified: vite 1708 modules, exit 0.
+2. Tests pass (DashboardPage.test.jsx 5/5 + all prior 100) — PASS. Independently verified: 19 files / 105 tests, exit 0.
+3. `Promise.all([GET /exams/, GET /submissions/, GET /users/])` on mount — PASS. `DashboardPage.jsx:29-33` fires all three calls in a single `Promise.all` inside a single `useEffect([])`.
+4. Enum values capitalized exactly (ExamStatus/JudgeStatus/UserRole) — PASS. `DashboardPage.jsx:8-12` constants match the authoritative contract in `prompt.md` verbatim: `['Draft','Published','Ongoing','Finished','Archived']`, `['Pending','Judging','AC','WA','TLE','MLE','RE','CE']`, `['Admin','Candidate','Interviewer','Questioner']`.
+5. Grafana button: `<a target="_blank">` only when env var is non-empty string — PASS. `DashboardPage.jsx:46` reads `import.meta.env.VITE_GRAFANA_URL`; line 60 gates on `{grafanaUrl && …}`; line 63 sets `target="_blank"`. Test (d) asserts link present + correct href; test (e) asserts `queryByRole('link')` returns null.
+6. Renders without crash on empty arrays — PASS. `DashboardPage.jsx:49-51` `countBy` filter over empty arrays returns 0 safely; `exams.length` etc. on `[]` is 0. All three state values initialise to `[]` (lines 18-22). No optional-chaining gap.
+7. `frontend/.env.example` documents `VITE_GRAFANA_URL=` with explanatory comment — PASS. File line 1 is the comment; line 2 is the key with empty value.
+8. Barrel `index.js` has all 8 real imports, no stubs remaining — PASS. The diff shows the only remaining stub (`DashboardPage`) replaced by a real import; `git grep '() => null' frontend/src/pages/admin/index.js` would return nothing.
+9. Tests genuinely assert aggregation + both Grafana branches — PASS. Test (a) uses isolated fixtures and `getAllByText` to confirm numeric counts. Test (d)/(e) both use `getByRole`/`queryByRole` for the Grafana link directly.
+10. No scope creep into P1–P5 files — PASS. `git status` shows only `DashboardPage.jsx`, `DashboardPage.test.jsx`, `index.js` (single line diff), and `.env.example` — no other files modified.
+
+**Must-fix issues**: none
+
+**Nice-to-have**:
+- `DashboardPage.test.jsx:110-111` — test (a) asserts `getAllByText('2').length >= 1` and `getAllByText('1').length >= 1` rather than asserting exact counts for Draft and Ongoing specifically. Because submissions and users are empty arrays in this fixture, all other breakdown cells show "0", so the only "2" is Draft-count and the only "1" is Ongoing-count — the assertion is unambiguous in practice. A more targeted `within(examCard)` query would be more self-documenting but is not required.
+- `DashboardPage.jsx:60` — `grafanaUrl` is a module-level `const` read at render time, so it is correctly reactive to `vi.stubEnv` in tests (Vite rewrites `import.meta.env.X` at build time, but in the Vitest jsdom environment the stub works because the expression is re-evaluated each render). No code change needed, but a comment explaining the env-var is read at render (not module load) would help future readers understand why `vi.stubEnv` before render works.
+
+**Verification gaps**: No browser/Playwright check. A manual smoke test with `VITE_GRAFANA_URL` set in `.env.local` should confirm the Grafana button appears and opens the URL in a new tab. The `rel="noopener noreferrer"` attribute (`DashboardPage.jsx:64`) is correctly present — no security gap.
