@@ -4,6 +4,17 @@ import os
 import sys
 from datetime import datetime, timezone
 
+
+class HealthCheckFilter(logging.Filter):
+    """
+    攔截 Uvicorn 存取日誌中包含 /health 的點擊紀錄，避免 Grafana 被 health check 洗版
+    """
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.args and len(record.args) >= 3:
+            if "/health" in str(record.args[2]):
+                return False
+        return "/health" not in record.getMessage()
+    
 class JSONFormatter(logging.Formatter):
     """
     工業級標準 JSON 日誌格式化器
@@ -49,9 +60,11 @@ def setup_logging(log_level: str = "INFO") -> None:
         root_logger.handlers.clear()
 
     json_formatter = JSONFormatter()
+    health_filter = HealthCheckFilter()
 
     stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setFormatter(json_formatter)
+    stdout_handler.addFilter(health_filter)
     root_logger.addHandler(stdout_handler)
 
     log_dir = "/app/logs"
@@ -61,6 +74,7 @@ def setup_logging(log_level: str = "INFO") -> None:
         
         file_handler = logging.FileHandler(file_path, encoding="utf-8")
         file_handler.setFormatter(json_formatter)
+        file_handler.addFilter(health_filter)
         root_logger.addHandler(file_handler)
         
         print(f"[Logging Infra] Success! Global JSON FileHandler attached to {file_path}", flush=True)
@@ -77,3 +91,4 @@ def setup_logging(log_level: str = "INFO") -> None:
         tgt_logger = logging.getLogger(logger_name)
         tgt_logger.handlers.clear()
         tgt_logger.propagate = True
+        tgt_logger.addFilter(health_filter)
