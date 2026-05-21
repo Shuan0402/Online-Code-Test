@@ -116,6 +116,8 @@ services:
     user: "root"
     volumes:
       - ./infrastructure/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      # 先不要掛載，開發階段掛載會讓硬碟爆掉
+      # - loki_data:/var/loki
     command: -config.file=/etc/loki/local-config.yaml
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready | grep -q 'ready' || exit 1"]
@@ -147,3 +149,4 @@ volumes:
   pg_data:
   minio_data:
   app_logs:
+  # loki_data:
