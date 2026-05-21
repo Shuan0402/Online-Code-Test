@@ -103,3 +103,52 @@ e2e:       skipped
 
 **Commit**: `3bfc933` feat(frontend): P2 — admin member list & create pages
 **Supervisor note**: both reviewer nice-to-haves (username upper-bound relies on `maxLength`; `isSelf` null-flash during auth hydration) re-triaged — neither corrupts data nor sends a malformed request. Genuinely cosmetic; deferred, not blocking.
+
+## P3 — Member Detail (User Info) Page + Tests  (2026-05-21T17:34:00Z)
+
+**Files touched**:
+- `frontend/src/pages/admin/MemberDetailPage.jsx` — created; on mount fetches `GET /api/v1/users/{id}` (UUID from useParams); renders read-only section (姓名=`full_name??'—'`, 帳號=`username` in bg-muted `<p>` (immutable), 角色=`role`, 密碼=always `••••••••`); "編輯使用者資訊" section: form with editable `full_name` text input + `role` native `<select>` (Admin/Candidate/Interviewer/Questioner), PATCH body is `{full_name, role}` only — no username; "修改密碼" section: single `new_password` field (≥8 chars client-side validated), PUT `/api/v1/users/{id}/password-reset` with `{new_password}`; success/error inline messages per section; back button → `/admin/members`; 404 → renders ErrorMessage
+- `frontend/src/pages/admin/MemberDetailPage.test.jsx` — created; 5 tests: (a) page loads, displays username read-only + masked password; (b) edit submit PATCH body is `{full_name, role}`, no `username` property; (c) password <8 chars → "密碼至少需要 8 個字元", PUT not called; (d) valid password → PUT `/api/v1/users/{id}/password-reset` called with `{new_password}`; (e) 404 on GET → error-message shown; uses `MemoryRouter`+`Routes`+`Route` so `useParams()` resolves the `:id` segment
+- `frontend/src/pages/admin/index.js` — updated; replaced `MemberDetailPage` stub export with `export { default as MemberDetailPage } from './MemberDetailPage'`; left 5 remaining stubs untouched
+
+**Commands run**:
+- `npm run build` → exit 0, 1703 modules transformed, dist built in 1.41s
+- `npm run test` → Test Files 16 passed (16), Tests 93 passed (93), exit 0
+
+**Deviations from plan**: none
+
+**Blockers / open questions**: none
+
+**Adjacent findings (not fixed)**: none
+
+### Verifier verdict (P3)
+
+typecheck: skipped (JS-only project, no tsc step)
+lint:      skipped (no lint script in plan commands)
+test:      pass (16/16 files, 93/93 tests — summary: "Test Files 16 passed (16), Tests 93 passed (93)", exit 0; MemberDetailPage.test.jsx 5/5)
+build:     pass (vite build exit 0, 1703 modules, dist built in 1.40s)
+e2e:       skipped
+
+**Verdict: green**
+
+### Reviewer verdict (P3)
+
+**Verdict: ship**
+
+**Criteria scorecard**:
+1. `GET /api/v1/users/{id}` on mount with UUID URL param; 404 -> ErrorMessage — PASS. `MemberDetailPage.jsx:36` calls `api.get('/api/v1/users/${id}')` inside `useEffect([id])`; lines 42-45 catch 404 and set `loadError`; lines 109-115 render `<ErrorMessage message={loadError} />`.
+2. PATCH body is exactly `{full_name, role}` — no `username` — PASS. `MemberDetailPage.jsx:61-64` constructs `{ full_name: editFullName.trim() || null, role: editRole }`. No `username` key anywhere in the patch handler. Test at `MemberDetailPage.test.jsx:133-134` explicitly asserts `not.toHaveProperty('username')`.
+3. 帳號/username rendered read-only (immutable) — PASS. `MemberDetailPage.jsx:140` renders `member.username` in a `<p>` element with `bg-muted`; there is no `<input>` for username anywhere in the file.
+4. 密碼 rendered as `••••••••` — PASS. `MemberDetailPage.jsx:152` hardcodes the masked string; no password field exists in `UserRead` and none is fetched. Test at `MemberDetailPage.test.jsx:95` asserts it.
+5. Password reset uses `PUT /api/v1/users/{id}/password-reset` with `{new_password}`; <8 chars -> inline error, API not called — PASS. `MemberDetailPage.jsx:82-85` guards with `if (newPassword.length < 8)` and returns early. Line 90 calls `api.put('/api/v1/users/${id}/password-reset', { new_password: newPassword })`. Test (c) at line 161 asserts `api.put` not called; test (d) at line 181 asserts correct PUT call.
+6. Native `<select>` for role; UI strings Traditional Chinese — PASS. `MemberDetailPage.jsx:181` uses a plain `<select>` element. All visible strings are Traditional Chinese.
+7. All 5 test cases genuinely asserted — PASS. Test (b) at `MemberDetailPage.test.jsx:133-134` explicitly checks `not.toHaveProperty('username')` on the actual call argument (not just the `toHaveBeenCalledWith` matcher). Test (c) at line 161 asserts `api.put.not.toHaveBeenCalled()`.
+8. No scope creep into P4-P6 — PASS. Only `MemberDetailPage.jsx`, `MemberDetailPage.test.jsx`, and the `MemberDetailPage` line in `index.js` changed.
+
+**Must-fix issues**: none
+
+**Nice-to-have**:
+- `MemberDetailPage.jsx:62` — `editFullName.trim() || null` sends `null` when the user clears the name field, which is correct per the `UserUpdate` schema. However, if the backend's `full_name` is optional-not-nullable and it rejects `null` on PATCH (i.e., treats `null` as an explicit set-to-null vs. omit-field), a backend validation error could surface. The contract in `prompt.md` says `full_name (optional)` which typically means omit-to-keep, not null-to-clear. This is an API contract ambiguity, not a frontend bug — and the Questioner/Interviewer panels use the same pattern. Cosmetic concern; confirm with a live smoke test.
+- `MemberDetailPage.jsx:162-174` — The edit form's `<label htmlFor="edit-full-name">姓名</label>` coexists with an unassociated `<label>姓名</label>` in the read-only section (line 132). `getByLabelText('姓名')` resolves correctly to the input because only the `htmlFor` version is associated — but a screen-reader user will encounter two "姓名" labels, one of which is orphaned (no `for`/`id` link). Cosmetic accessibility issue.
+
+**Verification gaps**: No browser/Playwright check. The PATCH body contract (null vs. omit for cleared `full_name`) should be verified with a live Admin session before merge.
