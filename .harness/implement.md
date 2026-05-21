@@ -247,3 +247,6 @@ e2e:       skipped
 - `AdminExamListPage.test.jsx:162` — test (b) asserts `screen.getByText('—')` which is satisfied by any single '—' in the DOM. Because exam-uuid-1 has `score: null` there is exactly one '—' cell, so this is correct in the current fixture. If a second nullable field were added, the assertion could silently pass for the wrong reason. `getAllByText` or a more targeted query would be more robust, but the current fixture makes it unambiguous.
 
 **Verification gaps**: No browser/Playwright check. The fan-out triggers N+2 HTTP calls on every mount — manually verify with live backend that the admin exam list renders promptly (no silent failures when candidate users have been deleted and are absent from usersMap).
+
+**Commit**: `072b57f` feat(frontend): P4 — admin exam list & detail pages
+**Supervisor note**: both reviewer nice-to-haves re-triaged as cosmetic — the detail-page `?? exam.candidate_id` fallback is explicitly plan-compliant (a deleted-user UUID is shown rather than a friendlier string; not data corruption), and the `getByText('—')` test query is unambiguous under the current single-null fixture. Deferred, not blocking.
