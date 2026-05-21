@@ -447,3 +447,76 @@ None found.
 ### Commit
 
 `91ab6d2` — feat(frontend): P5 — candidate account list & create form
+
+---
+
+## P6 — Candidate detail page  (2026-05-21T14:20:00Z)
+
+### Files touched
+- `frontend/src/pages/interviewer/CandidateDetailPage.jsx` — **created**: two-section page; section 1 fetches `GET /api/v1/users/{id}` → renders 考生資料 card (姓名, 帳號, 角色, 建立時間); section 2 fans out via `GET /api/v1/exams/` → `Promise.all(GET /api/v1/exams/{id})` → filters `candidate_id === userId` → renders sub-table (考試標題, ExamStatusBadge, 時長, "查看考試" link); empty state "尚無考試紀錄"; fan-out guarded against empty list; exams-error shows "無法載入考試列表" without crashing profile; 404 from `GET /users/{id}` → `ErrorMessage`; back link "← 返回考生列表".
+- `frontend/src/pages/interviewer/index.js` — **modified**: added `CandidateDetailPage` export.
+- `frontend/src/App.jsx` — **modified**: added `CandidateDetailPage` to barrel import; added `<Route path="candidates/:id" element={<CandidateDetailPage />} />` under `/interviewer`.
+
+### Commands run
+- `npm run build` → exit 0 (1698 modules, 408.06 kB JS bundle)
+- `npm run test` → 45/45 green (7 test files)
+
+### Deviations from plan
+- None. Fan-out pattern, guards, empty states, and back link all implemented exactly as specified.
+
+### Adjacent findings (not fixed)
+- None.
+
+### Blockers
+- None.
+
+### Verifier verdict
+
+```
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+build:     pass (exit 0, 1698 modules, 408.06 kB bundle)
+test:      pass (45/45, 7 files)
+e2e:       skipped
+```
+
+React Router v7 future-flag warnings in test stderr — pre-existing advisory, not failures.
+
+**Verdict: green**
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (independently confirmed: exit 0, 1698 modules, 408.06 kB)
+2. Tests 100% green — pass (independently confirmed: 45/45, no regressions)
+3. Section 1 — 考生資料 card from `GET /api/v1/users/{id}` — pass: `CandidateDetailPage.jsx:38` calls item route (no trailing slash); card renders 姓名 (`full_name ?? '—'`), 帳號, 角色, 建立時間 at lines 97–104; `UserRead` fields all present.
+4. Section 2 — fan-out sub-table — pass: `line 60` `GET /api/v1/exams/` with trailing slash (collection); `line 70` `GET /api/v1/exams/${id}` without trailing slash (item); filter `e.candidate_id === userId` at line 71 compares UUID string to UUID string — both come from the backend as strings, no type mismatch.
+5. Empty-list guard skips fan-out — pass: `lines 64–67` guard on `ids.length === 0` returns before `Promise.all`; `finally` still runs and sets `examsLoading(false)` (verified: JS `finally` executes even after early `return` in `try`).
+6. Fan-out error isolation — pass: `lines 73–74` catch sets "無法載入考試列表" without touching `userError`; profile section renders independently.
+7. 404 on `GET /users/{id}` → `ErrorMessage` — pass: `lines 42–43` branch on `status === 404`; `ErrorMessage` rendered at line 92.
+8. Empty exams state "尚無考試紀錄" — pass: `line 122–126`.
+9. Back link "← 返回考生列表" → `/interviewer/candidates` — pass: `lines 162–167`.
+10. Route ordering — pass: `candidates/new` is listed before `candidates/:id` in `App.jsx` (lines 77–78); React Router v6 best-match handles this correctly regardless.
+11. Barrel export — pass: `index.js` adds `CandidateDetailPage`.
+12. JS only, Traditional Chinese strings, shared components reused — pass: no TypeScript; all strings are 繁體中文; uses `LoadingSpinner`, `ErrorMessage`, `ExamStatusBadge`.
+
+**Must-fix issues**
+
+None found. All criteria pass; every borderline item inspected:
+
+- The `return` inside the `try` block at `CandidateDetailPage.jsx:66` correctly triggers `finally` → `setExamsLoading(false)` is called. Verified via Node.js evaluation. Not a bug.
+- `candidate_id === userId` at line 71: both are UUID strings from the backend (`ExamRead.candidate_id` is UUID, `useParams()` id is a string). Type comparison is correct.
+- Stale-closure risk on `:id` change: both `useEffect`s depend on `[userId]`, so navigation from `/interviewer/candidates/A` to `/interviewer/candidates/B` re-runs both effects. No stale closure.
+
+**Nice-to-have**
+
+- `CandidateDetailPage.jsx:29`: `examsLoading` starts as `true` and the exams spinner shows immediately even while the user section is still loading. A minor UX tweak would be to start `examsLoading` as `false` and set it `true` only when the user profile has loaded (sequential approach) — but the plan explicitly says the two sections fetch independently, so this is by design.
+- `CandidateDetailPage.jsx:102`: `candidate.role` is rendered as a raw English enum string (e.g. "Candidate"). A Chinese label map (as used by `ExamStatusBadge`) would be more consistent. Low-priority polish for P9 if wanted.
+
+**Verification gaps**
+
+- No new Vitest tests in P6 (deferred to P9 per plan — expected). The P9 test plan must cover: (a) empty exam list skips fan-out (assert `api.get` is called exactly once for the list, zero times for item routes); (b) `candidate_id === userId` filter is applied; (c) fan-out error shows "無法載入考試列表" but does not crash the profile section.
+- No browser/Playwright check required — the page is read-only (no mutations) and follows the same fetch/render pattern as prior pages.
