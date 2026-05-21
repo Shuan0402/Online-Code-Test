@@ -47,3 +47,6 @@ e2e:       skipped
 - `StaffLayout.jsx:46-55` — The unknown-role fallback array (never reached under `ProtectedRoute`) now lists 8 mixed entries that could confuse a future developer; a comment explaining it is an unreachable safety-net would help.
 
 **Verification gaps**: No browser/Playwright check was done, but P1 renders `null` stubs — the nav rendering and `end` prop correctness cannot be confirmed until a real browser session. Manual smoke recommended before P2.
+
+**Commit**: `1091a8a` feat(frontend): P1 — admin panel routing scaffold + nav
+**Supervisor note**: nice-to-have (fallback-array comment) re-triaged as cosmetic, not a bug — deferred, not blocking.
