@@ -531,3 +531,45 @@ Reviewer nice-to-have: `candidate.role` renders as the raw English enum (e.g.
 "Candidate"). The same raw-role display will appear on the P8 profile page. Decide in
 P8 whether to add a small Chinese role-label map and apply it to both pages — minor
 純中文-consistency polish, not a defect.
+
+---
+
+## Mid-loop handoff — 2026-05-21 (after P6)
+
+**Trigger**: harness Phase 2.5 context-pressure check fired — 3 phases shipped this
+session (P4, P5, P6) + supervisor context heavy from repeated full `implement.md`
+reloads. User accepted the handoff.
+
+**State at handoff**:
+- This is the SECOND handoff of the interviewer-panel loop (first was after P3).
+- P1–P6 all shipped + committed, each followed by a `chore(harness): record P# commit
+  SHA` commit:
+  - `620b068` P1, `a730e6e` P2, `07f8efb` P3 (prior session)
+  - `f429190` chore — replan of remaining scope into P4–P9 (this session)
+  - `837dcd7` P4 — exam result page + exam-list score column & filter
+  - `91ab6d2` P5 — candidate account list & create form
+  - `bd0710d` P6 — candidate detail page
+- `cd frontend && npm run build` → exit 0 (1698 modules); `npm run test` → 45/45 green
+  as of P6.
+- Working tree clean apart from this `.harness/implement.md` handoff update.
+- Branch `feat/interviewer-panel`, stacked on `feat/questioner-panel`. No PR opened yet.
+- The plan (`.harness/plan.md`) is current and accurate — P4–P9 were freshly planned
+  this session and P4/P5/P6 executed exactly as written. **P7, P8, P9 still pending.**
+  The plan's "Open questions" section is fully resolved (all three closed).
+
+**What the new session must do**:
+1. Read `.harness/prompt.md` (full backend contract incl. the verified submission
+   contract), `.harness/plan.md` (P7/P8/P9 phase blocks — all accurate, no re-planning
+   needed), and this file.
+2. Resume the execute → review → verify → commit cycle at **P7** — the highest-risk
+   phase (full ReAct). P7 = candidate problem-solving detail page; the critical footgun
+   is that the S3 `presigned_url` must be fetched with plain `window.fetch()`, NOT the
+   shared axios `api` instance. The plan's P7 block and `prompt.md`'s "Verified
+   submission contract" cover this in detail.
+3. Then P8 (profile / change-password — note `PATCH /me` cannot change `username`;
+   password body is `{ old_password, new_password }`) and P9 (Vitest tests for P4–P8).
+4. After P9, run Phase 6 (lessons + loop close): write `.harness/lessons.md`, commit
+   `chore(harness): close loop interviewer-panel`, propose memory updates, then the
+   loop is done — open the PR (base = `feat/questioner-panel`); never `gh pr merge`.
+
+**Kickoff**: `/harness resume`
