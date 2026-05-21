@@ -11,7 +11,7 @@ import UnauthorizedPage from './pages/UnauthorizedPage'
 import ExamListPage from './pages/candidate/ExamListPage'
 import { ProblemListPage, ProblemFormPage, ProblemSubmissionsPage } from './pages/questioner'
 import { ExamListPage as InterviewerExamListPage, ExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage, ProfilePage } from './pages/interviewer'
-import AdminStubPage from './pages/stubs/AdminStubPage'
+import { DashboardPage, MemberListPage, MemberCreatePage, MemberDetailPage, AdminExamListPage, AdminExamDetailPage, AdminProblemListPage, AdminProblemDetailPage } from '@/pages/admin'
 import TakeExamPage from './pages/candidate/TakeExamPage'
 import ResultPage from './pages/candidate/ResultPage'
 
@@ -89,8 +89,14 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<AdminStubPage />} />
-          <Route path="*" element={<AdminStubPage />} />
+          <Route index element={<DashboardPage />} />
+          <Route path="members" element={<MemberListPage />} />
+          <Route path="members/new" element={<MemberCreatePage />} />
+          <Route path="members/:id" element={<MemberDetailPage />} />
+          <Route path="exams" element={<AdminExamListPage />} />
+          <Route path="exams/:id" element={<AdminExamDetailPage />} />
+          <Route path="problems" element={<AdminProblemListPage />} />
+          <Route path="problems/:id" element={<AdminProblemDetailPage />} />
         </Route>
 
         {/* 404 catch-all */}
