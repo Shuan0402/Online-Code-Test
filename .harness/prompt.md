@@ -189,16 +189,49 @@ void. The new session must re-plan the remaining scope.
 - `DELETE /api/v1/users/{user_id}` — **Admin ONLY** (`get_admin_user`). The spec's
   "delete candidate" button is NOT doable for an Interviewer — it 403s. Flag this to the
   user when planning the candidate list page (hide the button, or note the limitation).
-- `GET /api/v1/users/me` + `PATCH /api/v1/users/me` + `PUT /api/v1/users/me/password` —
-  exist; back the profile page. (`PATCH /me` blocks self role-change for non-Admins.)
+- `GET /api/v1/users/me` → `UserRead`. `PATCH /api/v1/users/me` body `UserUpdate` =
+  `{ full_name, role }` — **no `username` field**, so the profile page CANNOT rename the
+  account (`username` is read-only); non-Admin sending `role` gets `403`. `PUT
+  /api/v1/users/me/password` body `UserUpdatePassword` = `{ old_password, new_password }`
+  (`new_password` min 8 chars), returns `200`. These back the profile page.
 - Candidate detail page wants "that candidate's exam list", but `GET /api/v1/exams/`
-  returns the sparse `CandidateExamListRead` with **no `candidate_id`** — cannot filter
-  client-side. The new session must check whether the backend offers a per-candidate
-  exam query, or accept a `GET /exams/{id}` fan-out, or descope that sub-list.
-- Candidate problem-solving detail page needs **submission endpoints** — per-submission
-  source code lives behind an S3 `presigned_url` (prior-loop lesson). **NOT yet
-  verified.** The new session MUST read `backend/app/api/api_v1/endpoints/submission.py`
-  before planning that page.
+  returns the sparse `CandidateExamListRead` with **no `candidate_id`** — and **verified
+  2026-05-21: there is NO per-candidate exam query** (`GET /exams/` takes zero query
+  params; Interviewers always get every exam). Filtering a candidate's exams therefore
+  requires a `GET /exams/{id}` fan-out over every exam id (each `ExamRead` carries
+  `candidate_id`). The planner should either accept the fan-out (small system, fine) or
+  descope the candidate-detail exam sub-list — flag the tradeoff to the user.
+
+### Verified submission contract (read from `submission.py` + `schemas/submission.py` 2026-05-21)
+
+Router prefix **`/api/v1/submissions`**. Backs the candidate problem-solving detail page.
+Non-Candidate roles (incl. **Interviewer**) have **global read access** — no ownership
+check. **Treat as authoritative.**
+
+| Method & path | Query / body | Returns | Notes |
+|---|---|---|---|
+| `GET /api/v1/submissions/` | `?problem_id=<int>&exam_id=<uuid>&user_id=<uuid>&skip=&limit=` (all optional) | `200` `SubmissionRead[]`, newest-first | Interviewer may filter by any combo. **`presigned_url` is NULL here** and `details[]` is not eagerly loaded — this endpoint is for *finding* a submission id, not for the full view. |
+| `GET /api/v1/submissions/{submission_id}` | — | `200` `SubmissionRead` | Interviewer global read. **This call populates `details[]` AND `presigned_url`.** Use it for the detail page. |
+
+- **`SubmissionRead`**: `id` (UUID), `user_id` (UUID), `problem_id` (int), `exam_id`
+  (UUID, nullable), `submission_type`, `language` (`"python"|"cpp"`), `code_s3_url`,
+  `status` (`JudgeStatus`), `score` (int), `execution_time` (int, nullable),
+  `memory_usage` (int, nullable), `judge_log` (str, nullable), `created_at`,
+  `details[]` (`SubmissionDetailRead`), `presigned_url` (str, nullable).
+- **`SubmissionDetailRead`** (per-testcase): `id` (int), `testcase_id` (int), `status`
+  (`JudgeStatus`), `execution_time` (int, nullable), `memory_usage` (int, nullable),
+  `score` (int), `runtime_info` (str, nullable).
+- **`JudgeStatus`** enum: `Pending | Judging | AC | WA | TLE | MLE | RE | CE`. The shared
+  `JudgeStatusBadge` already renders these.
+- **Source-code footgun**: the submitted source lives in object storage. `presigned_url`
+  is a time-limited **MinIO/S3 GET URL** — fetch it with **plain `fetch()`**, NOT the
+  shared axios `api` instance (`api` prepends the `/api` base and attaches the Bearer
+  token, both wrong for an S3 URL). The response body is the raw source text.
+- Candidate-solving page data flow: from the exam detail page, drill in with `examId`
+  (UUID) + `problemId` (int). The exam's `candidate_id` comes from `GET /exams/{examId}`.
+  Then `GET /submissions/?exam_id=&problem_id=&user_id=<candidate>` → take the newest →
+  `GET /submissions/{id}` for `details[]` + `presigned_url`. Problem description / 難度
+  come from `GET /api/v1/problems/{problemId}` (the Questioner panel already consumes it).
 
 ---
 
