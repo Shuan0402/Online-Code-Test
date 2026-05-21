@@ -708,3 +708,7 @@ the UUID rather than failing the whole page). `candidateDisplay` now resolves to
 Carry to P9: the `SubmissionDetailPage` test must mock `GET /api/v1/users/{id}` and
 assert the header shows the resolved `username`, plus the fallback-to-UUID path when
 that call rejects.
+
+### Commit
+
+`89cb707` — feat(frontend): P7 — candidate submission detail page
