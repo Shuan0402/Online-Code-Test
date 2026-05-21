@@ -243,4 +243,4 @@ None found.
 
 - Reviewer verdict: **ship** (no must-fix). Verifier verdict: **green**.
 - Reviewer nice-to-haves: Dialog-internal ErrorMessage lacks `onRetry` → fold into P4 polish; "返回" hardcoded path is acceptable (page only reached from the problem list) → no action.
-- **Committed P3 as `<SHA>`** on `feat/questioner-panel`.
+- **Committed P3 as `bddb5a6`** on `feat/questioner-panel`.
