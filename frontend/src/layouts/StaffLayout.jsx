@@ -22,10 +22,14 @@ function SidebarLink({ to, label }) {
 // Nav links visible per role.
 const NAV_BY_ROLE = {
   questioner: [{ to: '/questioner', label: '出題管理' }],
-  interviewer: [{ to: '/interviewer', label: '面試管理' }],
+  interviewer: [
+    { to: '/interviewer', label: '面試管理' },
+    { to: '/interviewer/candidates', label: '考生管理' },
+  ],
   admin: [
     { to: '/questioner', label: '出題管理' },
     { to: '/interviewer', label: '面試管理' },
+    { to: '/interviewer/candidates', label: '考生管理' },
     { to: '/admin', label: '系統管理' },
   ],
 }
@@ -38,6 +42,7 @@ export default function StaffLayout() {
   const navLinks = NAV_BY_ROLE[role] ?? [
     { to: '/questioner', label: '出題管理' },
     { to: '/interviewer', label: '面試管理' },
+    { to: '/interviewer/candidates', label: '考生管理' },
     { to: '/admin', label: '系統管理' },
   ]
 
