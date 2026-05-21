@@ -335,4 +335,4 @@ None found.
 - Reviewer verdict: **ship** (no must-fix). Verifier verdict: **green** (45/45 tests: 27 prior + 18 new).
 - All 7 polish items confirmed fixed, incl. the two real latent bugs from the P2 review (stable test-case row keys; `score_weight`/`time_limit`/`memory_limit` NaN guards). Test quality confirmed meaningful (real spy-arg assertions, `vi.mock` for api, no false-confidence tests).
 - Reviewer nice-to-haves (module-level `_clientKeyCounter` not reset between test runs; `onRetry`/Dialog-close paths untested) left as-is — benign, no action.
-- **Committed P4 as `<SHA>`** on `feat/questioner-panel`.
+- **Committed P4 as `200a22f`** on `feat/questioner-panel`.
