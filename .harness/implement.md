@@ -250,3 +250,57 @@ e2e:       skipped
 
 **Commit**: `072b57f` feat(frontend): P4 — admin exam list & detail pages
 **Supervisor note**: both reviewer nice-to-haves re-triaged as cosmetic — the detail-page `?? exam.candidate_id` fallback is explicitly plan-compliant (a deleted-user UUID is shown rather than a friendlier string; not data corruption), and the `getByText('—')` test query is unambiguous under the current single-null fixture. Deferred, not blocking.
+
+## P5 — Admin Problem List + Problem Detail Pages + Tests  (2026-05-21T18:05:00Z)
+
+**Files touched**:
+- `frontend/src/pages/admin/AdminProblemListPage.jsx` — created; fetches `GET /api/v1/problems/` returning `ProblemShortRead[]` (`{id (int), title, difficulty}`); table columns: 題目名稱 (`title`), 難度 (colored badge using same `DIFFICULTY_COLORS`/`DIFFICULTY_LABELS` constants as Questioner panel); client-side difficulty filter via native `<select>` (Easy/Medium/Hard/全部); delete button per row → Dialog → `DELETE /api/v1/problems/{id}` (204, `await api.delete(...)` result unused — no empty-body throw risk); row click navigates to `/admin/problems/{id}`; no 新增題目 button per plan (oversight only)
+- `frontend/src/pages/admin/AdminProblemDetailPage.jsx` — created; on mount fetches `GET /api/v1/problems/{id}` (id is int from URL param); renders all ProblemRead fields read-only: title, description (pre-wrapped), difficulty (colored badge), time_limit (ms), memory_limit (MB), creator_id (UUID displayed as-is), created_at; test_cases table: input_data, expected_output, score_weight, is_sample (boolean → 是/否); no edit controls, no rejudge button; delete button → Dialog → `DELETE /api/v1/problems/{id}` → `navigate('/admin/problems')` on success; back button → `/admin/problems`
+- `frontend/src/pages/admin/AdminProblemListPage.test.jsx` — created; 3 tests: (a) difficulty filter Easy/全部 — case-sensitive match against `Easy|Medium|Hard` enum, no re-fetch on change; (b) delete confirm → `DELETE /api/v1/problems/1` called (204, mock resolves `{status:204, data:''}`), row removed from state; (c) delete error → inline error shown, row stays; does not mock `@/contexts/AuthContext` (P5 pages do not call `useAuth()`)
+- `frontend/src/pages/admin/index.js` — updated; replaced `AdminProblemListPage` and `AdminProblemDetailPage` stub exports (`() => null`) with real file imports; DashboardPage stub left untouched
+
+**Commands run**:
+- `npm run build` → exit 0, 1707 modules transformed, dist built in 1.51s
+- `npm run test` → Test Files 18 passed (18), Tests 100 passed (100), exit 0
+
+**Deviations from plan**: none
+
+**Blockers / open questions**: none
+
+**Adjacent findings (not fixed)**: none
+
+### Verifier verdict (P5)
+
+typecheck: skipped (JS-only project, no tsc step)
+lint:      skipped (no lint script)
+test:      pass (18/18 files, 100/100 tests — summary: "Test Files 18 passed (18), Tests 100 passed (100)", exit 0; AdminProblemListPage.test.jsx 3/3, all prior 97 tests still green)
+build:     pass (vite build exit 0, 1707 modules, dist built in 1.48s)
+e2e:       skipped
+
+**Verdict: green**
+
+### Reviewer verdict (P5)
+
+**Verdict: ship**
+
+**Criteria scorecard**:
+
+1. Build exits 0 — PASS. Verified independently: vite exit 0, 1707 modules.
+2. Tests pass (AdminProblemListPage.test.jsx + all prior) — PASS. Verified independently: 18 files / 100 tests, exit 0.
+3. `problem_id` used as int in URL — PASS. `AdminProblemListPage.jsx:86` interpolates `deleteTarget.id` (an integer from the API response) directly into the path `/api/v1/problems/${deleteTarget.id}`. `AdminProblemDetailPage.jsx:62,78` similarly use the raw `id` string from `useParams()` — the backend accepts it as an int; no UUID formatting applied.
+4. DELETE 204 no-body safe — PASS. Both pages call `await api.delete(...)` with the result unused (`AdminProblemListPage.jsx:86`, `AdminProblemDetailPage.jsx:78`); no `.then(r => r.data)` that would throw on empty body.
+5. Difficulty filter case-sensitive (Easy|Medium|Hard) — PASS. `AdminProblemListPage.jsx:72` compares `p.difficulty === difficultyFilter`; filter values are exactly `'Easy'`, `'Medium'`, `'Hard'`, `''`. Test (a) at `AdminProblemListPage.test.jsx:82-110` asserts this.
+6. DIFFICULTY_COLORS/DIFFICULTY_LABELS match Questioner panel — PASS. Constants at `AdminProblemListPage.jsx:18-29` and `AdminProblemDetailPage.jsx:18-29` are byte-for-byte identical to `questioner/ProblemListPage.jsx:26-37`.
+7. AdminProblemDetailPage read-only, no edit controls, no rejudge button — PASS. `AdminProblemDetailPage.jsx` contains no `<input>`, `<textarea>`, `<form>`, or `<select>` elements (grep returned no output).
+8. No 新增題目 button on list page — PASS. `AdminProblemListPage.jsx:114-117` header renders only `<h1>` with no create/add button.
+9. test_cases table renders all 4 fields — PASS. `AdminProblemDetailPage.jsx:192-198` renders `tc.input_data`, `tc.expected_output`, `tc.score_weight`, `tc.is_sample` (boolean → 是/否).
+10. Tests assert logic genuinely (filter, delete success, delete error) — PASS. Test (a) asserts Medium and Hard rows absent after Easy filter and that `api.get` was called exactly once (no re-fetch). Test (b) asserts DELETE called with `/api/v1/problems/1` and row absent. Test (c) asserts inline error text present and row stays.
+11. No scope creep — PASS. index.js diff touches only the two AdminProblem* lines. No P1–P4 or P6 files modified. No grep hits for these component names outside the admin folder.
+
+**Must-fix issues**: none
+
+**Nice-to-have**:
+- `AdminProblemDetailPage.jsx:62` — `id` from `useParams()` is a string; it is interpolated directly into the URL path which is correct (the backend parses the path segment as int). However, `api.delete(\`/api/v1/problems/${id}\`)` at line 78 uses the same string `id` while the list page's delete uses the integer `deleteTarget.id`. Both are functionally equivalent for URL construction, but a comment noting `id` is a string-from-params (not a numeric variable) would clarify intent.
+- `AdminProblemListPage.test.jsx` — no test for Medium or Hard filter (only Easy is tested). The filter logic is a one-liner equality check so omitting Medium/Hard is low risk, but adding one assertion for a second difficulty would be more robust.
+
+**Verification gaps**: No browser/Playwright check. The detail page delete navigates to `/admin/problems` — verify in a live session that pressing delete on the detail page (not the list) also correctly removes the problem (the list page refetches on mount, so this should be fine, but is untested at the Playwright level).
