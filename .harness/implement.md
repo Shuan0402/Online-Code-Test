@@ -443,3 +443,7 @@ None found.
 
 - No new tests in P5 (deferred to P9 per plan — expected).
 - No browser/Playwright check required: both pages are additive, no existing page behavior was altered. `candidates/:id` "查看" link will 404 until P6 — expected mid-loop behavior per plan.
+
+### Commit
+
+`91ab6d2` — feat(frontend): P5 — candidate account list & create form
