@@ -352,6 +352,9 @@ export default function ExamDetailPage() {
                 <th className="px-4 py-3 text-left font-medium">題目名稱</th>
                 <th className="px-4 py-3 text-left font-medium w-24">難度</th>
                 <th className="px-4 py-3 text-left font-medium w-20">配分</th>
+                {!isDraft && (
+                  <th className="px-4 py-3 text-left font-medium w-24">操作</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -373,6 +376,15 @@ export default function ExamDetailPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">{problem.points}</td>
+                  {!isDraft && (
+                    <td className="px-4 py-3">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link to={`/interviewer/exams/${id}/problems/${problem.problem_id}`}>
+                          查看提交
+                        </Link>
+                      </Button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
