@@ -938,4 +938,4 @@ None.
 - Reviewer verdict: **fix-required** (1 must-fix: `ProblemPanel` plain-text loading state). Verifier verdict: **green**.
 - Fix round 1: `ProblemPanel.jsx` now imports and renders `<LoadingSpinner />`. Supervisor verified `ProblemPanel.jsx:55` + build exit 0 + 27/27 tests pass.
 - Reviewer nice-to-haves (dedup STATUS constants between `JudgeStatusBadge` and `TakeExamPage`, empty-results table header, memoize per-problem poll callback) deferred — no functional defect; safe to leave for a future cleanup pass.
-- **Committed P5 as `<SHA>`** on `feat/frontend-scaffold`.
+- **Committed P5 as `dbb235c`** on `feat/frontend-scaffold`.
