@@ -5,6 +5,15 @@
 **Intent**: see `.harness/prompt.md`
 **Planner**: harness-planner (Sonnet)
 
+> ⚠️ **STALE FROM P4 ONWARD — 2026-05-21.** P1–P3 below were executed and shipped
+> (commits `620b068`, `a730e6e`, `07f8efb`). After P3 the loop scope was expanded — see
+> `.harness/prompt.md` "Scope change log": the Interviewer panel must now match the full
+> HackMD spec, adding candidate-account management, a candidate problem-solving detail
+> page, and a profile/password page. **P4 and P5 below are SUPERSEDED.** A new session
+> must re-run the harness planner over the remaining scope (exam result page + the three
+> new spec areas + exam-list enrichments + tests), then execute. P1–P3 phase blocks
+> below remain accurate as a record of completed work.
+
 ---
 
 ## Summary

@@ -264,3 +264,36 @@ data-corruption / malformed-request / misrender bug, so not must-fix):
 1. `ExamDetailPage.jsx` `openPicker` — add `if (!isDraft) return` for defense-in-depth.
 2. `ExamDetailPage.jsx` `handleSave` — show a Chinese empty-title validation error
    instead of silently falling back to `exam.title` (consistency with `ExamFormPage`).
+
+---
+
+## Mid-loop handoff — 2026-05-21 (after P3)
+
+**Trigger**: harness Phase 2.5 context-pressure check fired (3 phases shipped +
+supervisor context heavy). User accepted handoff.
+
+**Scope change (concurrent with handoff)**: after P3 the user shared the panel spec
+doc (https://hackmd.io/@st980155/rJvy4aORWg) and chose "對照規格全部補齊" — the
+Interviewer panel scope expanded well beyond the original 5-phase plan. The intake
+"no user creation" answer is void. Full detail in `.harness/prompt.md` → "Scope change
+log" (includes the backend reality check for the new pages).
+
+**State at handoff**:
+- P1–P3 shipped + committed: `620b068` (P1), `a730e6e` (P2), `07f8efb` (P3), each
+  followed by a `chore(harness): record P# commit SHA` commit.
+- `cd frontend && npm run build` → exit 0; `npm run test` → 45/45 green as of P3.
+- Working tree clean apart from this `.harness/` handoff update.
+- Branch `feat/interviewer-panel`, stacked on `feat/questioner-panel`. No PR opened yet.
+
+**What the new session must do**:
+1. Read `.harness/prompt.md` (esp. "Scope change log") + `.harness/plan.md` (P1–P3
+   blocks valid; P4/P5 superseded) + this file.
+2. Verify backend submission endpoints by reading
+   `backend/app/api/api_v1/endpoints/submission.py` BEFORE planning the candidate
+   problem-solving detail page (per-submission source code is behind an S3 presigned
+   URL — confirm the exact contract).
+3. Re-run the harness planner over the remaining scope: exam result page, candidate
+   account management (list + create + detail), candidate problem-solving detail page,
+   profile / change-password page, exam-list enrichments (score column + filter),
+   Vitest tests. The planner should overwrite `plan.md` from P4 onward (or renumber).
+4. Resume the execute → review → verify → commit cycle, one phase at a time.

@@ -16,19 +16,25 @@ results after an exam finishes.
 
 ## Scope boundary
 
-- **In scope**:
-  - Exam list page (all exams system-wide, including Draft) — mounted at `/interviewer`.
-  - Create exam session (title, duration, easy/medium/hard difficulty quota, assign to a candidate).
-  - Exam detail / edit page — view full exam, edit settings (Draft only), auto-generate
-    problems by quota, manually add a problem from the problem bank, publish.
-  - Delete exam (Draft/Published hard-delete, Finished soft-archives — handled by backend).
-  - Exam result page — per-candidate result: total score + per-problem score/status.
+> **SCOPE EXPANDED — 2026-05-21, mid-loop after P3.** The intake answer was overridden
+> once the user shared the panel spec. The Interviewer panel must now match the full
+> HackMD spec (https://hackmd.io/@st980155/rJvy4aORWg), including candidate-account
+> management. See "Scope change log" near the end of this file.
+
+- **In scope** (full HackMD Interviewer spec):
+  - Exam list / create / detail-edit pages — **DONE in P1–P3** (committed).
+  - Exam result / per-problem scoring page — planned (was P4).
+  - **Candidate account management** — candidate list page, create-candidate page
+    (name + username + password → `POST /api/v1/users/`), candidate detail page.
+  - **Candidate problem-solving detail page** — drill from an exam into one candidate's
+    submission for one problem: description, test-case results, submitted source code,
+    execution result. (Needs submission endpoints — VERIFY backend first.)
+  - **Profile page** — view username / role / full_name, edit profile, change password.
+  - Exam list enrichments per spec — score column, filter control.
+  - Vitest unit tests for the logic-dense pieces.
 - **Out of scope**:
-  - **User creation / user management** — exams assign to *pre-existing* candidate users
-    chosen from a dropdown. No `POST /users`. All user management is deferred to the
-    Admin panel (the next and final loop).
   - Backend, judge-worker, docker-compose — frontend-only loop.
-  - The Admin panel.
+  - The Admin panel (the final loop).
 
 ## Constraints
 
@@ -150,8 +156,49 @@ gracefully if a stale action slips through.
 ## Open questions resolved at intake
 
 - Q: How broad is the Interviewer panel — does it include candidate-user management?
-  → A: **Exam lifecycle + results, no user creation.** Assign exams from a dropdown of
-  pre-existing candidates; defer all user management to the Admin panel.
+  → A (intake): Exam lifecycle + results, no user creation.
+  → **A (OVERRIDDEN 2026-05-21, mid-loop)**: full HackMD spec INCLUDING candidate-account
+  management. See "Scope change log" below.
+
+## Scope change log
+
+**2026-05-21, after P3 shipped** — the user shared the panel spec
+(https://hackmd.io/@st980155/rJvy4aORWg) and confirmed the Interviewer panel must match
+it fully, including creating candidate accounts. The intake "no user creation" answer is
+void. The new session must re-plan the remaining scope.
+
+### HackMD spec — Interviewer panel (what is still missing after P1–P3)
+
+- **Candidate account management**: candidate list page (table: 考生姓名 / 考生帳號; row →
+  candidate detail; "新增考生" button; per-spec a delete button — see backend caveat),
+  create-candidate page (姓名 + 帳號 + 密碼 inputs, submit/cancel), candidate detail page
+  (考生資料 + that candidate's exam list).
+- **Candidate problem-solving detail page**: reachable from the exam detail page — shows
+  one candidate's work on one problem: 題目描述, 測資與結果, 難度, 考生提交的程式碼,
+  執行結果, 考生帳號.
+- **Profile page**: 帳號 / 角色 / 姓名 display, 修改密碼, 編輯使用者資訊.
+- **Exam list enrichments**: spec wants a 分數 column and a 篩選 control. (`score` IS in
+  the list schema; the 考生姓名 column is NOT doable — see caveat.)
+
+### Backend reality check (verified from source / to verify)
+
+- `POST /api/v1/users/` — create user; **Interviewer allowed** (`get_interviewer_user`).
+  Body `UserCreate`: `username` (3–50 chars), `full_name` (optional, ≤100), `password`
+  (≥8 chars), `role` (enum, default `Candidate`). Returns `201` `UserRead`.
+- `GET /api/v1/users/` and `GET /api/v1/users/{user_id}` — Interviewer allowed.
+- `DELETE /api/v1/users/{user_id}` — **Admin ONLY** (`get_admin_user`). The spec's
+  "delete candidate" button is NOT doable for an Interviewer — it 403s. Flag this to the
+  user when planning the candidate list page (hide the button, or note the limitation).
+- `GET /api/v1/users/me` + `PATCH /api/v1/users/me` + `PUT /api/v1/users/me/password` —
+  exist; back the profile page. (`PATCH /me` blocks self role-change for non-Admins.)
+- Candidate detail page wants "that candidate's exam list", but `GET /api/v1/exams/`
+  returns the sparse `CandidateExamListRead` with **no `candidate_id`** — cannot filter
+  client-side. The new session must check whether the backend offers a per-candidate
+  exam query, or accept a `GET /exams/{id}` fan-out, or descope that sub-list.
+- Candidate problem-solving detail page needs **submission endpoints** — per-submission
+  source code lives behind an S3 `presigned_url` (prior-loop lesson). **NOT yet
+  verified.** The new session MUST read `backend/app/api/api_v1/endpoints/submission.py`
+  before planning that page.
 
 ---
 
