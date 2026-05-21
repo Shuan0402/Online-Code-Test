@@ -27,12 +27,25 @@ function formatDatetime(isoStr) {
   })
 }
 
+// 狀態篩選選項（與 ExamStatusBadge 的 enum 值一致）
+const STATUS_OPTIONS = [
+  { value: '', label: '全部' },
+  { value: 'Draft', label: '草稿' },
+  { value: 'Published', label: '已發佈' },
+  { value: 'Ongoing', label: '進行中' },
+  { value: 'Finished', label: '已結束' },
+  { value: 'Archived', label: '已封存' },
+]
+
 export default function ExamListPage() {
   const navigate = useNavigate()
 
   const [exams, setExams] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // 狀態篩選（client-side，不發新 API 請求）
+  const [statusFilter, setStatusFilter] = useState('')
 
   // 刪除確認 Dialog 狀態
   const [deleteTarget, setDeleteTarget] = useState(null) // { id, title }
@@ -79,6 +92,11 @@ export default function ExamListPage() {
     }
   }
 
+  // 依狀態篩選（client-side）：statusFilter 為空字串時顯示全部
+  const filteredExams = statusFilter
+    ? exams.filter((e) => e.status === statusFilter)
+    : exams
+
   // --- 渲染 ---
   if (loading) {
     return (
@@ -106,8 +124,27 @@ export default function ExamListPage() {
         </Button>
       </div>
 
+      {/* 狀態篩選 */}
+      <div className="flex items-center gap-2">
+        <label htmlFor="status-filter" className="text-sm font-medium">
+          篩選狀態：
+        </label>
+        <select
+          id="status-filter"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          {STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* 考試列表 */}
-      {exams.length === 0 ? (
+      {filteredExams.length === 0 ? (
         <p className="text-center text-muted-foreground py-16">目前沒有考試</p>
       ) : (
         <div className="rounded-lg border overflow-hidden">
@@ -117,12 +154,13 @@ export default function ExamListPage() {
                 <th className="px-4 py-3 text-left font-medium">考試標題</th>
                 <th className="px-4 py-3 text-left font-medium w-28">狀態</th>
                 <th className="px-4 py-3 text-left font-medium w-28">時長</th>
+                <th className="px-4 py-3 text-left font-medium w-24">分數</th>
                 <th className="px-4 py-3 text-left font-medium w-44">建立時間</th>
                 <th className="px-4 py-3 text-left font-medium">操作</th>
               </tr>
             </thead>
             <tbody>
-              {exams.map((exam) => (
+              {filteredExams.map((exam) => (
                 <tr
                   key={exam.id}
                   className="border-t hover:bg-muted/30 transition-colors"
@@ -132,6 +170,9 @@ export default function ExamListPage() {
                     <ExamStatusBadge status={exam.status} />
                   </td>
                   <td className="px-4 py-3">{exam.duration_minutes} 分鐘</td>
+                  <td className="px-4 py-3">
+                    {exam.score != null ? `${exam.score} 分` : '—'}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {formatDatetime(exam.created_at)}
                   </td>
