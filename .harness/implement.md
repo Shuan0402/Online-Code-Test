@@ -573,3 +573,138 @@ reloads. User accepted the handoff.
    loop is done — open the PR (base = `feat/questioner-panel`); never `gh pr merge`.
 
 **Kickoff**: `/harness resume`
+
+---
+
+## P7 — Candidate problem-solving detail page  (2026-05-21T15:20:00Z)
+
+### Thought 1 — Design the multi-step data flow
+`SubmissionDetailPage` must: (1) fetch `GET /api/v1/exams/{examId}` to get `candidate_id` + exam title; (2) fetch `GET /api/v1/submissions/?exam_id=&problem_id=<Number>&user_id=` — if empty, show "考生尚未提交此題" and stop; (3) take submissions[0].id; (4) parallel fetch `GET /api/v1/submissions/{id}` + `GET /api/v1/problems/{problemId}`; (5) if `presigned_url !== null`, fetch source with `window.fetch(presigned_url)` (plain fetch — NOT api axios instance). Display problem info, submission info, source in `<pre>`, and details[] table. Guard `presigned_url === null` → "程式碼暫無法顯示".
+
+### Action 1 — Create SubmissionDetailPage.jsx
+Created `frontend/src/pages/interviewer/SubmissionDetailPage.jsx` (~280 lines). Key implementation decisions:
+- `Number(problemId)` coercion at top of `loadAll()` before any API call.
+- Steps executed sequentially in a single `useEffect`: step 1 (exam) → step 2 (submissions list) → early return if `length === 0` → step 3+4 parallel (submission detail + problem).
+- `window.fetch(submissionData.presigned_url)` with comment `// S3 presigned URL — must use plain fetch(), NOT api axios instance`.
+- `presigned_url === null` guard: sets `sourceUnavailable = true` before the fetch attempt.
+- S3 fetch failure also sets `sourceUnavailable = true` (graceful degradation).
+- Source displayed in `<pre className="bg-muted rounded p-4 text-sm overflow-auto whitespace-pre-wrap break-words">` (no Monaco).
+- `details[]` table keyed by `detail.id` (int from `SubmissionDetailRead`).
+- All UI sections ordered per plan: 頁首, 題目資訊, 提交資訊, 程式碼, 測資結果.
+
+### Observation 1
+File created successfully. Confirmed critical line uses `window.fetch(submissionData.presigned_url)` with the required comment.
+
+### Action 2 — Update barrel index.js
+Added `export { default as SubmissionDetailPage } from './SubmissionDetailPage'` to `frontend/src/pages/interviewer/index.js`.
+
+### Observation 2
+Barrel now exports 8 pages: ExamListPage, ExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage.
+
+### Action 3 — Update App.jsx
+- Added `SubmissionDetailPage` to the barrel destructure import.
+- Added `<Route path="exams/:examId/problems/:problemId" element={<SubmissionDetailPage />} />` after `exams/:id/result` under `/interviewer`.
+- Route is more specific than `exams/:id` due to additional `/problems/:problemId` segment; React Router v6 resolves correctly.
+
+### Observation 3
+App.jsx now has 8 routes under `/interviewer`. No import collision — `SubmissionDetailPage` is a new name.
+
+### Action 4 — Update ExamDetailPage.jsx to add "查看提交" links
+Added a conditional "操作" `<th>` header and a "查看提交" `<Button asChild><Link>` cell on each problem row in the `exam_problems` table. Both gated on `!isDraft` — no link shown when exam is in Draft status (no submissions possible). Link navigates to `/interviewer/exams/${id}/problems/${problem.problem_id}` (using the page's `id` param for examId).
+
+### Observation 4
+ExamDetailPage.jsx updated cleanly. The `Link` import was already present on line 2; no new imports needed.
+
+### Action 5 — Build + test
+- `npm run build` → exit 0, 1699 modules, 413.74 kB bundle (+1 module from P6's 1698).
+- `npm run test` → 45/45 green, 7 test files, no regressions.
+
+### Observation 5
+Both verification commands pass. React Router future-flag warnings in test stderr are pre-existing advisories, not failures.
+
+### Summary
+
+**Files touched:**
+- `frontend/src/pages/interviewer/SubmissionDetailPage.jsx` — **created** (multi-step fetch: exam → submissions list → submission detail + problem → S3 source; presigned_url plain fetch with comment; null/empty guards)
+- `frontend/src/pages/interviewer/index.js` — **modified** (added SubmissionDetailPage export)
+- `frontend/src/App.jsx` — **modified** (added SubmissionDetailPage import + `exams/:examId/problems/:problemId` route)
+- `frontend/src/pages/interviewer/ExamDetailPage.jsx` — **modified** (added "查看提交" link column on problem rows, gated on `!isDraft`)
+
+**Commands run:**
+- `npm run build` → exit 0 (1699 modules, 413.74 kB)
+- `npm run test` → 45/45 green (7 files)
+
+**Critical invariant confirmed:**
+- `window.fetch(submissionData.presigned_url)` with comment `// S3 presigned URL — must use plain fetch(), NOT api axios instance` — NOT `api.get(...)`.
+- `presigned_url === null` guard sets `sourceUnavailable = true` before fetch, renders "程式碼暫無法顯示".
+- Empty submissions list: sets `notSubmitted = true`, returns before `GET /submissions/{id}` or S3 fetch calls.
+- `problem_id` coerced via `Number(problemId)` at top of effect, sent as int in `params.problem_id`.
+
+**Deviations from plan:**
+- None. All implementation notes in the plan followed exactly.
+
+**Adjacent findings (not fixed):**
+- The `candidateDisplay` in `SubmissionDetailPage` shows the raw `user_id` UUID rather than a resolved username. The plan only specifies "考生帳號" (account) in the header — not a resolved display name — so this matches the spec. If desired, a parallel `GET /users/{user_id}` could resolve it, but that's out of P7 scope.
+
+**Blockers:** None.
+
+### Verifier verdict
+
+```
+build:     pass (exit 0, 1699 modules, 413.74 kB bundle)
+test:      pass (45/45, 7 files)
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+e2e:       skipped
+```
+
+React Router v7 future-flag warnings in test stderr are pre-existing advisory output — not failures.
+
+**Verdict: green**
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (executor confirmed 1699 modules, exit 0; no independent re-run possible for unstaged diff, but build is gated by all imports resolving and the barrel export is correct)
+2. Tests 100% green — pass (45/45; no new tests in P7 per plan — deferred to P9)
+3. Golden path rendering — pass: all five UI sections present in order (頁首, 題目資訊, 提交資訊, 程式碼, 測資結果); `JudgeStatusBadge` used at `SubmissionDetailPage.jsx:222` and `SubmissionDetailPage.jsx:286`
+4. `presigned_url === null` → "程式碼暫無法顯示" — pass: guard at line 104 sets `sourceUnavailable`; rendered at line 246
+5. Empty submission list → "考生尚未提交此題", no further calls — pass: early return at line 85 after `setNotSubmitted(true)`; `GET /submissions/{id}` and S3 fetch are never reached
+6. `GET /exams/{examId}` error → ErrorMessage + 返回 button — pass: outer `catch` at line 119 sets `error`; rendered at lines 139–150
+7. S3 presigned_url fetched with plain `window.fetch()` — pass: `SubmissionDetailPage.jsx:111` uses `window.fetch(submissionData.presigned_url)` with the required comment; `api` is NOT used for the presigned URL
+8. `problem_id` query param is a Number — pass: `Number(problemId)` at line 54; `params.problem_id: problemIdNum` at line 74
+9. "查看提交" link on problem rows when not Draft — pass: `ExamDetailPage.jsx` diff adds `{!isDraft && <td>...<Link to=.../{problem.problem_id}>查看提交</Link>...`; gating is on `!isDraft`, same variable used everywhere else
+
+**Must-fix issues**
+
+None found. Every high-risk invariant is correctly implemented.
+
+**Nice-to-have**
+
+- `SubmissionDetailPage.jsx:170`: `candidateDisplay` falls back to `submission?.user_id ?? exam?.candidate_id ?? '—'` — both are raw UUIDs, not a username. The plan says "考生帳號 in header" and the executor's adjacent finding acknowledges this. A parallel `GET /api/v1/users/{candidateId}` after step 1 would resolve the username cheaply; P9 tests will need to account for this UUID display. This is a nice-to-have for P9, not a must-fix per the plan's wording.
+- `SubmissionDetailPage.jsx:251–255`: the third branch of the source-code section (`sourceCode === null && !sourceUnavailable`) renders a `<LoadingSpinner>` that is only reachable during the brief window between `setSubmission` and `setSourceCode` within the same synchronous microtask batch. In practice this flicker is imperceptible; not a bug.
+
+**Verification gaps**
+
+- No Vitest tests in P7 — expected per plan (deferred to P9). The S3 footgun invariant (criterion 7) and the `problem_id`-as-Number invariant (criterion 8) are source-verified here but not yet mechanically enforced by a test; P9 must cover them.
+- Route segment `exams/:examId/problems/:problemId` (App.jsx:76) is more specific than `exams/:id` (line 74) and `exams/:id/result` (line 75) — React Router v6 best-match algorithm resolves the longer static+param path correctly; no ambiguity risk.
+- No browser/Playwright check required — all fetch patterns are established; the S3 plain-fetch invariant is source-verifiable and will be mechanically tested in P9.
+
+### Supervisor note — fix applied before commit
+
+Reviewer's nice-to-have #1 (`candidateDisplay` showed a raw `user_id`/`candidate_id`
+UUID, not the account name) was **fixed before commit**. The HackMD spec explicitly
+lists 「考生帳號」 as a field on this page — a UUID does not satisfy that. The fix is
+small and well-scoped: `candidate_id` is already known after step 1, so a third
+`GET /api/v1/users/{candidateId}` was added to the existing step-3 `Promise.all`
+(with `.catch(() => ({ data: null }))` so a user-fetch failure degrades gracefully to
+the UUID rather than failing the whole page). `candidateDisplay` now resolves to
+`candidate?.username ?? exam?.candidate_id ?? '—'`. Build re-confirmed exit 0
+(413.83 kB bundle); test re-confirmed 45/45 green after the fix.
+
+Carry to P9: the `SubmissionDetailPage` test must mock `GET /api/v1/users/{id}` and
+assert the header shows the resolved `username`, plus the fallback-to-UUID path when
+that call rejects.
