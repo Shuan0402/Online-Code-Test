@@ -11,7 +11,7 @@ class User(Base):
     """User (使用者)：記錄系統中的使用者資訊。
     
     - id (PK): UUID，唯一識別碼。
-    - username: String，unique，帳號。
+    - username: String，unique，帳號同 Email。
     - full_name: String，使用者姓名。
     - password_hash: String，加密後的密碼。
     - role: Enum (Admin / Candidate)，區分面試主管與考生。
