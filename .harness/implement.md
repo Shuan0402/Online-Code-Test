@@ -155,3 +155,36 @@ e2e:       skipped
 
 **Commit**: `e47fcd5` feat(frontend): P3 — admin member detail (user info) page
 **Supervisor note**: both nice-to-haves re-triaged as cosmetic. The `full_name: null` one is benign — backend `update_user_by_id` does `if obj_in.full_name is not None: …`, so a `null` PATCH simply leaves the name unchanged (a cleared-name save is a harmless no-op, not a malformed request or data corruption). Deferred, not blocking.
+
+---
+
+## MID-LOOP HANDOFF — after P3  (2026-05-21)
+
+Phases **P1, P2, P3 are complete, committed, and green** (`1091a8a`, `3bfc933`, `e47fcd5`).
+The loop is being handed off to a fresh session at the Phase 2.5 context-pressure check
+(3 phases done + heavy supervisor context — user chose to hand off).
+
+**Remaining work: P4, P5, P6** — all specified in full in `.harness/plan.md`. No open
+questions (OQ-1 was resolved: P4's exam list includes the 考生 column via the N+2 fan-out;
+the P4 plan section was already amended to specify it).
+
+**A resuming session should:**
+1. Read `.harness/prompt.md` (intent + authoritative backend contract), `.harness/plan.md`
+   (P4–P6 specs), and this `.harness/implement.md` (P1–P3 history).
+2. Resume the harness at **Phase 2, P4**. Branch is `feat/admin-panel`; PR base is
+   `feat/interviewer-panel`. Per-phase cycle: executor → reviewer + verifier → commit
+   (`feat(frontend): P<n> — …`) → record-SHA chore commit.
+3. After P6, run harness Phase 6 (write `.harness/lessons.md`, close-loop commit, propose
+   memory updates).
+
+**Carry-forward facts for P4–P6** (already in prompt.md/plan.md, repeated as a checklist):
+- `DELETE /exams/{id}` and `DELETE /problems/{id}` return **204**; `DELETE /users/{id}`
+  returned **200** — do not assume a status code, treat any 2xx as success.
+- `exam_id` is a UUID; `problem_id` is an **int**.
+- P5's `ProblemRead`/`TestCaseRead` field names were verified against live source and the
+  P5 plan section is correct as written (`test_cases[]` with `input_data`,
+  `expected_output`, `score_weight`, `is_sample`; `time_limit` ms, `memory_limit` MB).
+- Tests must mock `@/contexts/AuthContext` where a page uses `useAuth()` (pattern
+  established in P2's `MemberListPage.test.jsx`).
+- Verifier must judge `npm run test` by the `Test Files … passed` summary + exit code,
+  not by a post-green Node ESM-teardown stack trace (lesson L1).
