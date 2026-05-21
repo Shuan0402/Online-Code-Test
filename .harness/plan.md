@@ -1,160 +1,294 @@
-# Harness Plan — questioner-panel
+# Harness Plan — interviewer-panel
 
 **Created**: 2026-05-21
-**Branch**: `feat/questioner-panel` (stacked on `feat/frontend-scaffold`, PR #29)
+**Branch**: feat/interviewer-panel
 **Intent**: see `.harness/prompt.md`
 **Planner**: harness-planner (Sonnet)
 
 ---
 
-## Phases
+## Summary
 
-### P1 — Questioner shell + 題目列表頁
-
-**Goal**: Wire real routes into `App.jsx`, replace the stub page with a `ProblemListPage` that fetches `GET /problems/`, renders the table, supports difficulty filtering, delete (soft), and one-click rejudge.
-
-**Risk tier**: medium
-**Use full ReAct in executor**: no
-
-**Files**:
-- `frontend/src/App.jsx` — replace the catch-all `QuestionerStubPage` route with four named child routes (`index`, `problems`, `problems/new`, `problems/:id/edit`, `problems/:id/submissions`); keep the stub for the routes this phase does not yet implement
-- `frontend/src/pages/questioner/ProblemListPage.jsx` — new page; fetches `GET /api/v1/problems/` (no auth header required, returns `List[ProblemShortRead]` with `{id, title, difficulty}`); local `difficultyFilter` state drives `Array.filter` on the in-memory list (the endpoint has no difficulty query param); delete calls `DELETE /api/v1/problems/{id}` → 204 and splices the item from state; rejudge calls `POST /api/v1/problems/{id}/rejudge` → 202 returns `{message, problem_id, submissions_triggered}` and shows "已觸發 N 筆重測" in an inline confirmation area
-- `frontend/src/pages/questioner/index.js` — barrel re-export so later phases can import from a single path
-
-**Acceptance criteria**:
-- [ ] `npm run build` exits 0
-- [ ] Navigating to `/questioner` as a questioner-role user renders the problem list (fetched from `GET /api/v1/problems/` — HTTP 200, body is an array of `{id, title, difficulty}`)
-- [ ] Selecting "中等" from the difficulty filter shows only Medium problems; selecting "全部" restores the full list (client-side filter, no re-fetch)
-- [ ] Clicking 刪除 on a problem calls `DELETE /api/v1/problems/{id}` and on HTTP 204 the row disappears from the list without a full re-fetch
-- [ ] Clicking 重測 on a problem calls `POST /api/v1/problems/{id}/rejudge` and on HTTP 202 displays "已觸發 N 筆重測" where N = `submissions_triggered` from the response body
-- [ ] Loading / error / empty-list states render with `LoadingSpinner`, `ErrorMessage` (with onRetry), and a "目前沒有題目" message respectively
-- [ ] `npm run test` passes (no new tests in P1; existing 27 tests must stay green)
-- [ ] Edge case: if rejudge returns `submissions_triggered: 0`, the message reads "已觸發 0 筆重測" (not hidden)
-
-**Risk / rollback**: The edit to `App.jsx` replaces the wildcard catch-all `<Route path="*">` inside `/questioner` with named child routes. If this conflicts with the still-open PR #29 at merge time, the fix is a 3-line revert of that block — acceptable, small diff. Rollback: `git checkout HEAD -- frontend/src/App.jsx`.
-
-**Depends on**: —
-
----
-
-### P2 — 題目新增 / 編輯表單 + inline 測資編輯器
-
-**Goal**: Build a single shared `ProblemFormPage` (used for both create and edit) with an inline test-case editor section; create calls `POST /problems/` → 201, edit calls `PATCH /problems/{id}` → 200 with full `test_cases` replacement.
-
-**Risk tier**: medium
-**Use full ReAct in executor**: no
-
-**Files**:
-- `frontend/src/pages/questioner/ProblemFormPage.jsx` — new page; receives `mode` from `useParams` (the route `/questioner/problems/new` vs `/questioner/problems/:id/edit` distinguishes create vs edit); on edit mount, fetches `GET /api/v1/problems/{id}` → 200, body `ProblemRead {id, title, description, difficulty, time_limit, memory_limit, creator_id, created_at, test_cases:[...]}` and populates form state; `test_cases` items from this response lack `problem_id`/`created_at` — handle both shapes per prompt.md schema gotcha; fields: title (text), description (textarea), difficulty (select: Easy/Medium/Hard), time_limit (number, ms), memory_limit (number, MB); inline test-case list shows `input_data`, `expected_output`, `score_weight` (default 10), `is_sample` (checkbox); add/remove test-case rows managed in local state array; each existing test case carries its `id` (for PATCH semantics); submit on create calls `POST /api/v1/problems/` → 201, body `ProblemCreate`; submit on edit calls `PATCH /api/v1/problems/{id}`, body `ProblemUpdate` with `test_cases` array where existing cases include `id` (update), new rows omit `id` (create), removed rows are simply absent (delete); on success, `navigate('/questioner/problems')` (redirects to list)
-- `frontend/src/pages/questioner/index.js` — add `ProblemFormPage` to barrel export
-
-**Acceptance criteria**:
-- [ ] `npm run build` exits 0
-- [ ] Clicking "新增題目" on the list page navigates to `/questioner/problems/new`; submitting a valid form calls `POST /api/v1/problems/` with `Content-Type: application/json` body `{title, description, difficulty, time_limit, memory_limit, test_cases:[{input_data, expected_output, score_weight, is_sample}]}` and on HTTP 201 redirects to the list page
-- [ ] Navigating to `/questioner/problems/:id/edit` fetches `GET /api/v1/problems/{id}` (HTTP 200) and pre-populates all fields including the test-case rows
-- [ ] Adding a test-case row, filling it in, and saving calls `PATCH /api/v1/problems/{id}` with the new row (no `id` field on new row) plus existing rows (with their `id` fields); server returns HTTP 200 `ProblemRead`
-- [ ] Removing an existing test-case row and saving calls `PATCH /api/v1/problems/{id}` with the removed case absent from the array (server performs the delete)
-- [ ] Validation: `title` and at least one test case are required; a visible Chinese error message prevents submission if absent
-- [ ] `npm run test` passes (existing 27 tests green)
-- [ ] Edge case: navigating to `/questioner/problems/999/edit` where 999 does not exist → server returns 404 → page displays "載入失敗" error message rather than crashing
-
-**Risk / rollback**: The dual-mode form (create + edit) in one component is the highest-complexity piece of P2 but is self-contained to one new file. If PATCH semantics cause unexpected server 422s, the executor should log the full request body in the console during development and adjust field naming (snake_case throughout). Rollback: delete `ProblemFormPage.jsx` and remove its route from `App.jsx`.
-
-**Depends on**: P1 (routes in `App.jsx` must already define `/questioner/problems/new` and `/questioner/problems/:id/edit`)
-
----
-
-### P3 — 該題提交紀錄查看頁
-
-**Goal**: Build a read-only `ProblemSubmissionsPage` that lists all submissions for a given problem and shows per-submission judge detail in an expandable row or dialog.
-
-**Risk tier**: low
-**Use full ReAct in executor**: no
-
-**Files**:
-- `frontend/src/pages/questioner/ProblemSubmissionsPage.jsx` — new page; mounts at `/questioner/problems/:id/submissions`; on mount fetches `GET /api/v1/submissions/?problem_id={id}` (no `skip`/`limit` for now — paginate in a future loop); response is `List[SubmissionRead]` with `{id, user_id, problem_id, exam_id, status, score, execution_time, memory_usage, judge_log, created_at, details, presigned_url}`; renders a table of submissions (columns: 提交者 user_id, 狀態, 分數, 執行時間, 提交時間); clicking a row or a "查看詳情" button fetches `GET /api/v1/submissions/{id}` → 200 `SubmissionRead` (same shape, with `details:[SubmissionDetailRead]`) and shows it in a `Dialog`; reuses `JudgeStatusBadge` for status column; judge detail shows `judge_log` in a `<pre>` block and the `details` array (test case index, status, execution_time, score_weight)
-- `frontend/src/pages/questioner/index.js` — add `ProblemSubmissionsPage` to barrel export
-
-**Acceptance criteria**:
-- [ ] `npm run build` exits 0
-- [ ] Clicking "查看提交" (or the submissions link) on a problem row in the list page navigates to `/questioner/problems/:id/submissions`
-- [ ] Page fetches `GET /api/v1/submissions/?problem_id={id}` (HTTP 200) and renders one row per submission
-- [ ] Each row shows `JudgeStatusBadge` with the correct status colour (AC green, WA red, etc.)
-- [ ] Clicking "查看詳情" fetches `GET /api/v1/submissions/{submissionId}` (HTTP 200) and opens a `Dialog` showing `judge_log` in a `<pre>` block and the per-test-case `details` array
-- [ ] Loading and error states are handled; empty list shows "尚無提交紀錄"
-- [ ] `npm run test` passes (existing 27 tests green)
-- [ ] Edge case: if `details` is an empty array, the dialog shows "無詳細測試資料" instead of an empty list
-
-**Risk / rollback**: Purely additive — one new file plus a barrel export update. No existing files changed except `App.jsx` already wired this route in P1. Rollback: delete `ProblemSubmissionsPage.jsx`.
-
-**Depends on**: P1 (route `/questioner/problems/:id/submissions` defined in `App.jsx`)
-
----
-
-### P4 — 潤飾 + 單元測試
-
-**Goal**: Final polish pass — consistent spacing/empty states, fix any discovered UX gaps — then write Vitest unit tests for the logic-heavy parts of the three new pages.
-
-**Risk tier**: low
-**Use full ReAct in executor**: no
-
-**Files**:
-- `frontend/src/pages/questioner/ProblemListPage.test.jsx` — tests: (a) difficulty filter correctly shows/hides items from a mocked list; (b) delete calls `DELETE /api/v1/problems/{id}` and removes the row from the DOM on 204; (c) rejudge calls `POST /api/v1/problems/{id}/rejudge` and displays "已觸發 N 筆重測" from the 202 response `submissions_triggered`
-- `frontend/src/pages/questioner/ProblemFormPage.test.jsx` — tests: (a) renders in create mode with empty fields; (b) renders in edit mode after mocked `GET /problems/{id}` 200 response pre-populates fields; (c) adding a test-case row and submitting sends a `POST` body with `test_cases` array containing the new row (no `id` field); (d) required-field validation blocks submit and shows Chinese error text
-- `frontend/src/pages/questioner/ProblemSubmissionsPage.test.jsx` — tests: (a) renders submission rows from a mocked `GET /submissions/?problem_id=X` 200 response; (b) clicking 查看詳情 fetches `GET /submissions/{id}` and opens a dialog showing `judge_log`; (c) empty `details` array shows "無詳細測試資料"
-- `frontend/src/pages/questioner/ProblemListPage.jsx` — minor polish only (no logic changes): ensure consistent padding, add aria-labels on icon-only buttons
-- `frontend/src/pages/questioner/ProblemFormPage.jsx` — minor polish only: confirm cancel/back button returns to list, fix any edge-case discovered during test writing
-- `frontend/src/pages/questioner/ProblemSubmissionsPage.jsx` — minor polish only: confirm dialog close button works, ensure presigned_url is not rendered if null
-
-**Acceptance criteria**:
-- [ ] `npm run build` exits 0
-- [ ] `npm run test` passes with all 27 prior tests green plus the new questioner tests (target: at least 15 new test assertions across the 3 new test files)
-- [ ] The difficulty filter test: given a mock list `[{difficulty:'Easy',...},{difficulty:'Hard',...}]`, selecting "困難" filter leaves exactly 1 row in the DOM
-- [ ] The rejudge test: mock `POST /problems/1/rejudge` returns `{message:'ok', problem_id:1, submissions_triggered:3}`; asserts the text "已觸發 3 筆重測" is in the DOM
-- [ ] The form create test: mock `POST /problems/` returns HTTP 201 `ProblemRead`; asserts the spy was called with a body where `test_cases[0]` has no `id` property
-- [ ] The spy-on-stub rule: all `localStorage` spies target the `localStorageMock` stub installed by `setup.js` (via `vi.spyOn(localStorage, 'setItem')`), NOT `Storage.prototype.setItem` — consistent with the pattern demonstrated in `EditorPanel.test.jsx` line 187
-- [ ] Edge case (submissions test): when `GET /submissions/?problem_id=X` returns `[]`, the text "尚無提交紀錄" appears
-
-**Risk / rollback**: Tests are purely additive. The mock pattern for `api.js` must use `vi.mock('@/lib/api')` to replace the module, not intercept the prototype. If any test accidentally mocks `Storage.prototype` instead of the stub, the spy will vacuously pass (lesson 3) — the acceptance criterion above guards against this explicitly. Rollback: delete the three `.test.jsx` files.
-
-**Depends on**: P1, P2, P3 (tests import from the page components those phases produce)
-
----
-
-## Whole-plan acceptance
-
-- [ ] All phase acceptance criteria pass
-- [ ] `npm run build` exits 0 end-to-end (no dead imports, no missing modules)
-- [ ] `npm run test` exits 0 with all tests green (≥ 42 assertions total: 27 prior + ≥ 15 new)
-- [ ] A questioner-role user can complete the full golden path in the browser: list → create problem with test cases → edit problem → trigger rejudge → view submissions → see judge detail in dialog
-- [ ] The PR description documents all 4 phases with a phase → implementation mapping (explicit user request per prompt.md)
-- [ ] Manual preview check on the PR URL (user performs this, not Claude)
-
----
-
-## Not doing (and why)
-
-- **Pagination on the submissions list** — `GET /submissions/` supports `skip`/`limit` but the backend returns a plain list with no total count, so a page control cannot display "page N of M". Deferred to a future loop when a count endpoint exists.
-- **Separate test-case CRUD page / using `POST /problems/{id}/testcases` and `PATCH /testcases/{id}`** — user explicitly decided test-case editing is inline in the problem form using `PATCH /problems/{id}` with full replacement; the per-testcase endpoints are a fallback not used by this UI.
-- **`GET /problems/{id}/testcases` endpoint** — the form fetches test cases as part of `GET /problems/{id}` (`ProblemRead.test_cases`), so the separate testcases endpoint is redundant for this use case.
-- **Interviewer and Admin panels** — explicitly out of scope; remain stubs.
-- **Forgot-password / profile / change-password** — out of scope per prompt.md.
-- **i18n layer** — user locked the stack; 純中文 strings are hardcoded in JSX.
-- **TanStack Query** — locked out by user constraint; plain `useEffect` + `axios`.
-- **TypeScript** — locked out; pure JSX.
-- **Progress tracking for rejudge** — no polling endpoint exists on the backend; fire-and-forget per design decision 5 in prompt.md.
-
----
-
-## Open questions for supervisor
-
-- **None blocking P1.** The backend contract is fully verified in prompt.md. The four routes needed (`/questioner`, `/questioner/problems`, `/questioner/problems/new`, `/questioner/problems/:id/edit`, `/questioner/problems/:id/submissions`) are straightforward React Router additions. P1 can be dispatched immediately.
-- **Informational only — merge timing**: This branch is stacked on PR #29 (open). The `App.jsx` edit in P1 may produce a small conflict with PR #29 at merge time. The executor should note this in the P1 commit message. No action needed before dispatch.
+Build the Interviewer (面試官) panel: exam list, create-exam form, exam detail/edit page
+(the heaviest piece — view + edit + auto-generate + manual-add + publish), delete, and
+exam result page. 5 phases: P1 scaffold + list, P2 create form, P3 detail/edit,
+P4 result page, P5 polish + tests. P3 carries the highest risk.
 
 ---
 
 ## Prior lessons consulted
 
-- (prior loop, lesson 1) "A plan written before the backend exists has a short-lived API contract." — Applied by grounding every acceptance criterion in the actual HTTP status codes and response shapes from the verified backend contract in prompt.md (POST → 201, rejudge → 202 `{submissions_triggered}`, DELETE → 204, etc.) rather than vague "calls the API".
-- (prior loop, lesson 2) "A long-running loop on a feature branch drifts from main." — Called out in the P1 Risk/rollback note: the `App.jsx` route edit may lightly conflict with PR #29 at merge time; the executor must note this in the P1 commit message.
-- (prior loop, lesson 3) "Stubbing a global makes prototype spies vacuously pass." — Encoded as an explicit acceptance criterion in P4: all `localStorage` spies must target the `localStorageMock` stub object (via `vi.spyOn(localStorage, 'setItem')`) not `Storage.prototype.setItem`, consistent with the pattern at `EditorPanel.test.jsx` line 187.
+- `f0472e9` L1 — editable lists must use stable keys (`problem.id`, not array index);
+  numeric inputs (`duration_minutes`, `*_count`, `points`) must be coerced to `Number`
+  before sending — NaN would silently 422. Pre-empted in P2/P3 acceptance criteria.
+- `f0472e9` L2 — backend contract is verified in `prompt.md`; plan's acceptance criteria
+  cite real status codes (201/200/204) and schema shapes (`CandidateExamListRead` is
+  sparse; `ExamRead` adds `candidate_id` but not the candidate's name; `problem_id` is
+  int while exam/user ids are UUID).
+- `7ca79b6` L3 — stubbed globals make spies vacuously pass. P5 must target the stub
+  object and include "break the impl, watch it fail" style assertions (e.g. confirm the
+  actual URL called, confirm action buttons disabled when status != Draft, confirm
+  candidate name appears after user list resolves).
+
+---
+
+## Phase 1 — Scaffold: directory, barrel, routing, exam list page
+
+**Goal**: Replace `InterviewerStubPage` with a real `ExamListPage` that fetches
+`GET /api/v1/exams/` and shows all exams in a table with `ExamStatusBadge`, a delete
+confirm dialog (204 on success), and a "新增考試" button.
+
+**Risk tier**: low
+**Use full ReAct in executor**: no
+**Depends on**: nothing
+
+### Files to create / modify
+
+| File | Action | Rationale |
+|---|---|---|
+| `frontend/src/pages/interviewer/ExamListPage.jsx` | **create** | Main list page — mirrors `ProblemListPage.jsx` pattern; fetches `GET /api/v1/exams/`; shows title, status badge, candidate name (resolved from `GET /api/v1/users/`), duration, actions (detail link, delete). |
+| `frontend/src/pages/interviewer/index.js` | **create** | Barrel export — mirrors `questioner/index.js`. |
+| `frontend/src/App.jsx` | **modify** | Replace the two stub routes under `/interviewer` with real nested routes: `index` → `ExamListPage`, `exams/new` → `ExamFormPage` (stub import for now — will be wired in P2), `exams/:id` → `ExamDetailPage` (stub for P3), `exams/:id/result` → `ExamResultPage` (stub for P4). Delete `InterviewerStubPage` import. |
+| `frontend/src/pages/stubs/InterviewerStubPage.jsx` | **delete** | No longer needed once routing is wired. |
+
+### Candidate-name resolution note
+
+`GET /api/v1/exams/` returns `CandidateExamListRead[]` which has no `candidate_id`.
+Fetch `GET /api/v1/users/` in parallel; build a `Map<uuid, username>` client-side.
+Since the list schema has no `candidate_id`, show "—" in the candidate column for the
+list; the detail page (P3) has `candidate_id` from `ExamRead` and resolves from the same
+map. (This matches the verified contract: sparse list schema has no `candidate_id`.)
+
+### Acceptance criteria
+
+1. `cd frontend && npm run build` exits 0.
+2. `cd frontend && npm run test` all green (existing tests unaffected; new tests not
+   required yet — that is P5).
+3. Golden path: logged-in interviewer navigates to `/interviewer` → sees a table with
+   exam title, `ExamStatusBadge`, duration, and a "新增考試" button; clicking delete opens
+   confirm dialog; confirming calls `DELETE /api/v1/exams/{uuid}` (204) and removes the row.
+4. Edge case: `GET /api/v1/exams/` returns `[]` → renders "目前沒有考試" empty state.
+5. Edge case: delete on a `Finished` exam returns `400` from backend → inline error inside
+   dialog stays visible; row is NOT removed.
+6. `InterviewerStubPage` is no longer imported anywhere (build would fail if stale import
+   remained).
+
+### Risk / rollback
+
+Low risk — additive new files; `App.jsx` change is a well-scoped route swap. If broken,
+revert `App.jsx` and keep stub routes.
+
+---
+
+## Phase 2 — Create exam form
+
+**Goal**: Implement `ExamFormPage` for `POST /api/v1/exams/` — title, duration,
+easy/medium/hard quota inputs, candidate dropdown (from `GET /api/v1/users/` filtered to
+`role === 'Candidate'`), client-side validation, and 201 → redirect to exam detail.
+
+**Risk tier**: low
+**Use full ReAct in executor**: no
+**Depends on**: P1 (routing and barrel must exist)
+
+### Files to create / modify
+
+| File | Action | Rationale |
+|---|---|---|
+| `frontend/src/pages/interviewer/ExamFormPage.jsx` | **create** | Create-only form (no edit — edit lives in P3 detail page). Fetches users on mount; filters to candidates; renders a `<select>` for `candidate_id`. Integer fields (`duration_minutes`, `easy_count`, `medium_count`, `hard_count`) use `type="number"` inputs with `min`. |
+| `frontend/src/pages/interviewer/index.js` | **modify** | Add `ExamFormPage` export. |
+| `frontend/src/App.jsx` | **modify** | Wire `exams/new` route to real `ExamFormPage` (replacing the stub placeholder from P1). |
+
+### Numeric-input footgun pre-emption
+
+`ExamCreate` requires `candidate_id` (UUID string) and integer counts. The submit handler
+must call `Number()` / `parseInt()` on all count/duration fields and guard against
+`NaN` (set to 0 / 120 respectively) before sending, matching the pattern in
+`ProblemFormPage.jsx` lines 156–179. `candidate_id` is sent as the raw UUID string from
+the dropdown value — never coerced to int.
+
+### Acceptance criteria
+
+1. `cd frontend && npm run build` exits 0.
+2. `cd frontend && npm run test` green.
+3. Golden path: fill title ("Spring 2026 面試"), set duration 60, set easy 2 / medium 1 /
+   hard 0, pick a candidate from dropdown → submit → `POST /api/v1/exams/` called with
+   `{ title, duration_minutes: 60, easy_count: 2, medium_count: 1, hard_count: 0,
+   candidate_id: "<uuid>" }` → 201 → navigate to `/interviewer/exams/:newId`.
+4. Numeric coercion: clearing the duration field must NOT send `NaN` — fallback 120.
+5. Validation: empty `title` → Chinese error "請填寫考試標題", no API call.
+   No candidate selected → Chinese error "請選擇應試者", no API call.
+6. `candidate_id` in POST body is a UUID string, not an integer.
+
+### Risk / rollback
+
+Low. Form is a new file; only `App.jsx` wiring changes. Rollback = remove route wiring.
+
+---
+
+## Phase 3 — Exam detail / edit page (heaviest phase)
+
+**Goal**: Implement `ExamDetailPage` mounted at `exams/:id`. This single page handles:
+viewing full exam detail (fetches `GET /api/v1/exams/{id}` for `ExamRead`), editing title
++ duration (Draft only) via inline `PATCH`, auto-generating problems (`POST .../generate`,
+Draft only), manually adding one problem from the bank (`POST .../problems`, Draft only,
+opens a picker dialog backed by `GET /api/v1/problems/`), publishing (`POST .../publish`,
+Draft only, disabled if zero problems), and delete (via confirm dialog, same 204/400
+handling as list).
+
+**Risk tier**: high
+**Use full ReAct in executor**: yes
+**Depends on**: P1, P2
+
+### Files to create / modify
+
+| File | Action | Rationale |
+|---|---|---|
+| `frontend/src/pages/interviewer/ExamDetailPage.jsx` | **create** | The core of the panel. Draft-gate logic controls which action buttons are enabled/visible. Resolves `candidate_id` → display name from user list (same `GET /api/v1/users/` call, filtered). |
+| `frontend/src/pages/interviewer/index.js` | **modify** | Add `ExamDetailPage` export. |
+| `frontend/src/App.jsx` | **modify** | Wire `exams/:id` route to real `ExamDetailPage`. |
+
+### Key implementation points
+
+- **Draft-gating**: Edit form fields, "自動生成題目" button, "新增題目" button, and
+  "發佈考試" button are all `disabled` (or hidden) when `exam.status !== 'Draft'`. Each
+  backend action that is Draft-only also shows the `400` detail gracefully inline if a
+  stale action slips through.
+- **Problem list keys**: `exam_problems` items are keyed by `problem_id` (int) — never by
+  array index (lesson L1 pre-emption). `problem_id` is int; exam id is UUID; do not mix.
+- **Manual-add picker**: Opens a `Dialog` listing problems from `GET /api/v1/problems/`
+  (already used by Questioner; reuse the same call style). Each row has an "加入" button
+  that calls `POST /api/v1/exams/{id}/problems` with `{ problem_id: <int>, points: 100 }`.
+  `problem_id` must be sent as an integer, not a string.
+- **Publish guard**: "發佈考試" button is disabled when `exam_problems.length === 0`.
+  Even if clicked when `length > 0`, handle backend `400` (e.g. status already Published)
+  gracefully.
+- **Edit form**: Only `title` and `duration_minutes` are sent in PATCH — do not include
+  `status` or times. `duration_minutes` coerced via `Number()`, fallback 120.
+- **Candidate name**: Use `GET /api/v1/users/` (same fetch pattern as P2 candidate
+  dropdown); `ExamRead` has `candidate_id` (UUID); map to `username` or `full_name`.
+
+### Acceptance criteria
+
+1. `cd frontend && npm run build` exits 0.
+2. `cd frontend && npm run test` green.
+3. Golden path (Draft exam): navigate to `/interviewer/exams/:id` → see title, status
+   badge (草稿), candidate name (resolved, not raw UUID), duration, problem list; click
+   "自動生成題目" → `POST .../generate` → problems table refreshes; click "新增題目" →
+   picker dialog opens, click "加入" on a row → `POST .../problems` with
+   `{ problem_id: <int>, points: 100 }` → problems table refreshes; edit title and save →
+   `PATCH` called with only `{ title, duration_minutes }` → page reflects new title;
+   click "發佈考試" → `POST .../publish` → status badge changes to "已發佈", all Draft
+   action buttons become disabled.
+4. Edge case: exam in `Published` status → edit form, generate, add, and publish buttons
+   are all disabled; attempting to PATCH via keyboard submit still shows "非草稿狀態不可編輯"
+   or the 400 detail.
+5. Edge case: publish with zero `exam_problems` → "發佈考試" button is disabled (client
+   guard); if backend returns `400` regardless → inline error shown.
+6. `problem_id` in add-problem body is an int (never a string).
+7. `exam_problems` table rows use `key={problem.problem_id}` not `key={idx}`.
+
+### Risk / rollback
+
+High — most logic lives here; multiple API mutations; status-gating must be correct.
+Rollback: revert `App.jsx` wiring to stub route; the new file is standalone.
+
+---
+
+## Phase 4 — Exam result page
+
+**Goal**: Implement `ExamResultPage` mounted at `exams/:id/result` that fetches
+`GET /api/v1/exams/{id}/result` and renders `ExamResultRead`: total score banner,
+per-problem table with `sequence`, `title`, `max_points`, `candidate_score`,
+`submission_status` (using `JudgeStatusBadge` for the status column).
+
+**Risk tier**: low
+**Use full ReAct in executor**: no
+**Depends on**: P1 (routing); P3 not strictly required but shares context
+
+### Files to create / modify
+
+| File | Action | Rationale |
+|---|---|---|
+| `frontend/src/pages/interviewer/ExamResultPage.jsx` | **create** | Read-only view; fetches `GET /api/v1/exams/{id}/result`; renders `ExamResultRead`. Handles `"Unsubmitted"` `submission_status` gracefully (show as "未提交"). |
+| `frontend/src/pages/interviewer/index.js` | **modify** | Add `ExamResultPage` export. |
+| `frontend/src/App.jsx` | **modify** | Wire `exams/:id/result` route to real `ExamResultPage`. |
+
+### Acceptance criteria
+
+1. `cd frontend && npm run build` exits 0.
+2. `cd frontend && npm run test` green.
+3. Golden path: navigate to `/interviewer/exams/:id/result` → see exam title, total score
+   (e.g. "135 / 300 分"), per-problem table showing sequence, problem title, max_points,
+   candidate_score, and `JudgeStatusBadge` for `submission_status`; "未提交" shown for
+   `"Unsubmitted"` status.
+4. Edge case: `total_candidate_score` is `null` (exam not started yet) → shows "— / N 分"
+   not a crash.
+5. Edge case: `results[]` is empty → shows "尚無結果" empty state.
+
+### Risk / rollback
+
+Low — read-only page with simple data rendering. Rollback = remove route wiring.
+
+---
+
+## Phase 5 — Polish + Vitest unit tests
+
+**Goal**: Write real unit tests for the four logic-dense areas called out in `prompt.md`
+and `feedback_logic-tests.md`; verify all tests pass; fix any cosmetic polish issues
+found during review.
+
+**Risk tier**: low
+**Use full ReAct in executor**: no
+**Depends on**: P1–P4 all complete
+
+### Files to create / modify
+
+| File | Action | Rationale |
+|---|---|---|
+| `frontend/src/pages/interviewer/ExamListPage.test.jsx` | **create** | Tests: (a) renders exam rows from mocked GET list; (b) delete confirm → DELETE called with UUID, row removed; (c) delete 400 → inline error, row stays. |
+| `frontend/src/pages/interviewer/ExamFormPage.test.jsx` | **create** | Tests: (a) candidate dropdown populated from mocked users filtered to Candidate role; (b) empty title → validation error, POST not called; (c) numeric coercion — clearing duration → Number coercion, not NaN in POST body; (d) successful submit → POST called with UUID candidate_id (string), int counts. |
+| `frontend/src/pages/interviewer/ExamDetailPage.test.jsx` | **create** | Tests: (a) Draft exam → action buttons enabled; (b) Published exam → edit/generate/add/publish all disabled; (c) candidate name resolved (UUID → username via mocked users list); (d) `exam_problems` rows keyed by `problem_id`; (e) publish with 0 problems → button disabled; (f) manual-add sends `problem_id` as int. |
+| `frontend/src/pages/interviewer/ExamResultPage.test.jsx` | **create** | Tests: (a) renders total score and per-problem rows; (b) `"Unsubmitted"` status → "未提交" text shown; (c) null `total_candidate_score` → graceful display. |
+
+### Test-quality requirements (L3 pre-emption)
+
+Every test that asserts a spy was called must also assert the **exact URL and body** (e.g.
+`expect(api.post).toHaveBeenCalledWith('/api/v1/exams/<uuid>/publish')`). Every
+status-gate test must break the implementation when the gate is removed and observe the
+test fail — document this with a comment in the test. Shadcn `Dialog` must be mocked
+inline as in the Questioner tests (avoid Radix portal issues in jsdom).
+
+### Acceptance criteria
+
+1. `cd frontend && npm run build` exits 0.
+2. `cd frontend && npm run test` 100% green; ≥ 12 new test cases across the 4 files.
+3. Each of the four logic categories has at least one test that would fail if the logic
+   were removed: status-gating, candidate-name resolution, numeric coercion, publish guard.
+4. No test uses `key={index}` on dynamic lists — tests confirm `problem_id`-keyed rows
+   survive reorder (or at minimum confirm `key` is not index-based via DOM structure).
+
+### Risk / rollback
+
+Low. Pure test additions. If a test cannot be made green, the bug is in P1–P4 and must
+be fixed before this phase closes.
+
+---
+
+## What was explicitly NOT planned
+
+- **User creation / management**: deferred to Admin panel loop (out of scope per
+  `prompt.md`).
+- **Candidate-panel changes**: no modifications to `/candidate/*` routes or pages.
+- **Backend, judge-worker, docker-compose**: frontend-only loop.
+- **Status `start_time`/`end_time` editing**: `ExamUpdate` supports these fields but the
+  Interviewer edit form intentionally omits them (send only `title` + `duration_minutes`
+  per the verified contract note); they are backend-managed.
+- **Pagination / server-side filtering**: not in the backend contract; client-side only.
+- **Admin panel**: final loop — not touched here.
+
+---
+
+## Open questions (supervisor must resolve before dispatching P1)
+
+None — all ambiguities were resolved at intake (see `prompt.md` "Open questions resolved
+at intake"). The backend contract is authoritative as documented in `prompt.md`.
