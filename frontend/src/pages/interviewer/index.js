@@ -2,3 +2,4 @@
 export { default as ExamListPage } from './ExamListPage'
 export { default as ExamFormPage } from './ExamFormPage'
 export { default as ExamDetailPage } from './ExamDetailPage'
+export { default as ExamResultPage } from './ExamResultPage'

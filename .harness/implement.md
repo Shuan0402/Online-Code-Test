@@ -267,6 +267,73 @@ data-corruption / malformed-request / misrender bug, so not must-fix):
 
 ---
 
+## P4 — Exam result page + exam-list enrichments  (2026-05-21T14:01:00Z)
+
+### Files touched
+- `frontend/src/pages/interviewer/ExamResultPage.jsx` — **created**: read-only page; fetches `GET /api/v1/exams/{id}/result`; renders exam title + `ExamStatusBadge`, total-score banner (`total_candidate_score ?? '—'` / `total_exam_points 分`), per-problem table (題號, 名稱, 滿分, 得分, `JudgeStatusBadge` for `submission_status`); empty state "尚無結果"; error state with 返回考試詳情 button.
+- `frontend/src/pages/interviewer/ExamListPage.jsx` — **modified**: added `STATUS_OPTIONS` constant and `statusFilter` state; added `filteredExams` derivation (client-side, no extra API call); added status `<select>` filter above the table; added "分數" column (`exam.score != null ? '${score} 分' : '—'`); changed table body iteration from `exams.map` to `filteredExams.map`.
+- `frontend/src/pages/interviewer/index.js` — **modified**: added `ExamResultPage` export.
+- `frontend/src/App.jsx` — **modified**: added `ExamResultPage` to barrel import; added `<Route path="exams/:id/result" element={<ExamResultPage />} />` under `/interviewer`.
+
+### Commands run
+- `npm run build` → exit 0 (1695 modules, 399.62 kB JS bundle)
+- `npm run test` → 45/45 green (7 test files)
+
+### Deviations from plan
+- None. All plan items implemented exactly as specified.
+
+### Adjacent findings (not fixed)
+- `ExamDetailPage.jsx` "查看結果" link is now wired and no longer 404s (this was the expected mid-loop dead link from P3).
+
+### Blockers
+- None.
+
+### Verifier verdict
+
+```
+build:     pass (exit 0, 1695 modules, 399.62 kB bundle)
+test:      pass (45/45, 7 files)
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+e2e:       skipped
+```
+
+React Router v7 future-flag warnings in test stderr — pre-existing advisory, not failures.
+
+**Verdict: green**
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (independently confirmed: exit 0, 1695 modules, 399.62 kB)
+2. Tests 100% green — pass (independently confirmed: 45/45)
+3. ExamResultPage fetches correct endpoint, renders banner + table with JudgeStatusBadge — pass: `ExamResultPage.jsx:25` calls `/api/v1/exams/${id}/result` (item route, no trailing slash is correct); JudgeStatusBadge at line 115.
+4. Null total_candidate_score graceful — pass: `ExamResultPage.jsx:60-61` uses `!= null` coalesce to `'—'`; no crash because `result` is never accessed before loading/error guards resolve.
+5. Empty results[] empty state — pass: `ExamResultPage.jsx:88` checks `result.results.length === 0` and renders "尚無結果".
+6. ExamListPage score column, null shows '—' — pass: `ExamListPage.jsx:174` uses `exam.score != null`.
+7. Status filter client-side, real enum values — pass: `ExamListPage.jsx:96-98` derives `filteredExams` from local state only; STATUS_OPTIONS lines 31-38 use Draft/Published/Ongoing/Finished/Archived matching ExamStatusBadge enum.
+8. exams/:id/result route wired, no conflict with exams/:id — pass: `App.jsx:74-75` lists `exams/:id` then `exams/:id/result`; React Router v6 prefers the more-specific static segment match, so no ambiguity.
+
+**Must-fix issues**
+
+None found.
+
+**Nice-to-have**
+
+- `ExamResultPage.jsx:21`: local function named `fetch` shadows `window.fetch`. No bug here (only `api.get` is used), but this name will confuse the P9 test author who spies on `window.fetch` for SubmissionDetailPage. Consider renaming to `loadResult`.
+- `ExamListPage.jsx:147-148`: when a filter is active and produces zero rows, "目前沒有考試" appears — misleading (implies no exams exist at all). A secondary message like "篩選結果為空" when `exams.length > 0 && filteredExams.length === 0` would be cleaner. Low-priority polish.
+
+**Verification gaps**
+
+- No new tests in P4 (deferred to P9 per plan — expected).
+- No browser/Playwright check required: ExamResultPage is read-only; ExamListPage changes are purely additive. No existing page behavior was altered.
+
+
+---
+
 ## Mid-loop handoff — 2026-05-21 (after P3)
 
 **Trigger**: harness Phase 2.5 context-pressure check fired (3 phases shipped +
