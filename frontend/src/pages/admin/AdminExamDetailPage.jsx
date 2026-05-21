@@ -59,7 +59,9 @@ export default function AdminExamDetailPage() {
         }
         setUsersMap(map)
       } catch (err) {
-        setLoadError(err.response?.data?.detail ?? '載入考試資料失敗，請稍後再試')
+        setLoadError(
+          err.response?.data?.detail ?? '載入考試資料失敗，請稍後再試',
+        )
       } finally {
         setLoading(false)
       }
@@ -156,9 +158,12 @@ export default function AdminExamDetailPage() {
           </div>
 
           <div className="space-y-1">
-            <p className="text-muted-foreground font-medium">題目數量（易/中/難）</p>
+            <p className="text-muted-foreground font-medium">
+              題目數量（易/中/難）
+            </p>
             <p>
-              {exam.easy_count ?? 0} / {exam.medium_count ?? 0} / {exam.hard_count ?? 0}
+              {exam.easy_count ?? 0} / {exam.medium_count ?? 0} /{' '}
+              {exam.hard_count ?? 0}
             </p>
           </div>
         </div>
@@ -197,12 +202,15 @@ export default function AdminExamDetailPage() {
       </section>
 
       {/* 刪除確認 Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={(open) => {
-        if (!open) {
-          setShowDeleteDialog(false)
-          setDeleteError(null)
-        }
-      }}>
+      <Dialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowDeleteDialog(false)
+            setDeleteError(null)
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>確認刪除考試</DialogTitle>
@@ -212,18 +220,27 @@ export default function AdminExamDetailPage() {
           </DialogHeader>
 
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
 
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => { setShowDeleteDialog(false); setDeleteError(null) }}
+              onClick={() => {
+                setShowDeleteDialog(false)
+                setDeleteError(null)
+              }}
               disabled={deleting}
             >
               取消
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
               {deleting ? '刪除中…' : '確認刪除'}
             </Button>
           </DialogFooter>

@@ -13,25 +13,25 @@ import { useOfflineRecovery } from '@/hooks/useOfflineRecovery'
 
 // ── 評測狀態標籤與顏色 ───────────────────────────────────────────────────────
 const STATUS_LABEL = {
-  Pending:     '評判中',
-  Judging:     '評判中',
-  AC:          'AC',
-  WA:          'WA',
-  TLE:         'TLE',
-  MLE:         'MLE',
-  RE:          'RE',
-  CE:          'CE',
+  Pending: '評判中',
+  Judging: '評判中',
+  AC: 'AC',
+  WA: 'WA',
+  TLE: 'TLE',
+  MLE: 'MLE',
+  RE: 'RE',
+  CE: 'CE',
   Unsubmitted: '未提交',
 }
 const STATUS_VARIANT = {
-  AC:          'bg-green-500 text-white',
-  WA:          'bg-red-500 text-white',
-  TLE:         'bg-orange-500 text-white',
-  MLE:         'bg-orange-400 text-white',
-  RE:          'bg-red-400 text-white',
-  CE:          'bg-yellow-500 text-white',
-  Pending:     'bg-blue-400 text-white',
-  Judging:     'bg-blue-500 text-white animate-pulse',
+  AC: 'bg-green-500 text-white',
+  WA: 'bg-red-500 text-white',
+  TLE: 'bg-orange-500 text-white',
+  MLE: 'bg-orange-400 text-white',
+  RE: 'bg-red-400 text-white',
+  CE: 'bg-yellow-500 text-white',
+  Pending: 'bg-blue-400 text-white',
+  Judging: 'bg-blue-500 text-white animate-pulse',
   Unsubmitted: 'bg-gray-200 text-gray-600',
 }
 
@@ -78,7 +78,8 @@ export default function TakeExamPage() {
   useEffect(() => {
     if (!examId) return
 
-    api.post(`/api/v1/exams/${examId}/start`)
+    api
+      .post(`/api/v1/exams/${examId}/start`)
       .then((res) => {
         setExam(res.data)
         setRemainingSeconds(res.data.remaining_seconds ?? 0)
@@ -107,7 +108,7 @@ export default function TakeExamPage() {
     exam?.exam_problems ?? [],
     examId,
     exam?.status ?? '',
-    handlePendingFound
+    handlePendingFound,
   )
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -119,14 +120,17 @@ export default function TakeExamPage() {
   // ─────────────────────────────────────────────────────────────────────────────
 
   // 輪詢回呼：更新評測狀態，若終止就清 pending key
-  const handlePollResult = useCallback((problemId) => (data) => {
-    setStatuses((prev) => ({ ...prev, [problemId]: data.status }))
-    const terminal = data.status !== 'Pending' && data.status !== 'Judging'
-    if (terminal) {
-      localStorage.removeItem(`pending:${problemId}`)
-      setPollingIds((prev) => ({ ...prev, [problemId]: null }))
-    }
-  }, [])
+  const handlePollResult = useCallback(
+    (problemId) => (data) => {
+      setStatuses((prev) => ({ ...prev, [problemId]: data.status }))
+      const terminal = data.status !== 'Pending' && data.status !== 'Judging'
+      if (terminal) {
+        localStorage.removeItem(`pending:${problemId}`)
+        setPollingIds((prev) => ({ ...prev, [problemId]: null }))
+      }
+    },
+    [],
+  )
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PollingSlot — small inner component so we can call useAdaptivePolling
@@ -163,7 +167,10 @@ export default function TakeExamPage() {
       // 只要 2xx 都算成功
       const submissionId = res.data.id
       // 寫 pending key
-      localStorage.setItem(`pending:${problemId}`, JSON.stringify({ submissionId, ts: Date.now() }))
+      localStorage.setItem(
+        `pending:${problemId}`,
+        JSON.stringify({ submissionId, ts: Date.now() }),
+      )
       // 啟動輪詢
       setStatuses((prev) => ({ ...prev, [problemId]: 'Pending' }))
       setPollingIds((prev) => ({ ...prev, [problemId]: submissionId }))
@@ -226,7 +233,10 @@ export default function TakeExamPage() {
         <Button
           size="sm"
           variant="destructive"
-          onClick={() => { setIsTimeout(false); setShowFinalize(true) }}
+          onClick={() => {
+            setIsTimeout(false)
+            setShowFinalize(true)
+          }}
         >
           交卷
         </Button>
@@ -259,17 +269,19 @@ export default function TakeExamPage() {
       </div>
 
       {/* ── 提交錯誤 banner（inline，取代原本的 alert()） ────────────────── */}
-      {submitError && activeProblem && submitError.problemId === activeProblem.problem_id && (
-        <div className="flex items-center justify-between gap-3 bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-600 shrink-0">
-          <span>{submitError.message}</span>
-          <button
-            className="text-red-400 hover:text-red-600 font-medium shrink-0"
-            onClick={() => setSubmitError(null)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {submitError &&
+        activeProblem &&
+        submitError.problemId === activeProblem.problem_id && (
+          <div className="flex items-center justify-between gap-3 bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-600 shrink-0">
+            <span>{submitError.message}</span>
+            <button
+              className="text-red-400 hover:text-red-600 font-medium shrink-0"
+              onClick={() => setSubmitError(null)}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
       {/* ── 主體：題目說明 + 編輯器 ─────────────────────────────────────────── */}
       {activeProblem ? (
@@ -289,7 +301,9 @@ export default function TakeExamPage() {
               ref={editorRef}
               examId={examId}
               problemId={activeProblem.problem_id}
-              onSubmit={(code, lang) => handleSubmit(activeProblem.problem_id, code, lang)}
+              onSubmit={(code, lang) =>
+                handleSubmit(activeProblem.problem_id, code, lang)
+              }
               submitting={!!submittingPids[activeProblem.problem_id]}
             />
           </div>

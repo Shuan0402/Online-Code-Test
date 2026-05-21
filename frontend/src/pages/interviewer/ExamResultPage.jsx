@@ -32,7 +32,9 @@ export default function ExamResultPage() {
       }
     }
     loadResult()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [id])
 
   if (loading) {
@@ -48,7 +50,10 @@ export default function ExamResultPage() {
       <div className="p-6">
         <ErrorMessage message={error} />
         <div className="mt-4">
-          <Button variant="outline" onClick={() => navigate(`/interviewer/exams/${id}`)}>
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/interviewer/exams/${id}`)}
+          >
             返回考試詳情
           </Button>
         </div>
@@ -86,7 +91,9 @@ export default function ExamResultPage() {
       <section>
         <h2 className="text-base font-semibold mb-3">題目結果</h2>
         {result.results.length === 0 ? (
-          <p className="text-center text-muted-foreground py-12 text-sm">尚無結果</p>
+          <p className="text-center text-muted-foreground py-12 text-sm">
+            尚無結果
+          </p>
         ) : (
           <div className="rounded-lg border overflow-hidden">
             <table className="w-full text-sm">
@@ -105,11 +112,15 @@ export default function ExamResultPage() {
                     key={item.problem_id}
                     className="border-t hover:bg-muted/30 transition-colors"
                   >
-                    <td className="px-4 py-3 text-muted-foreground">{item.sequence}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {item.sequence}
+                    </td>
                     <td className="px-4 py-3 font-medium">{item.title}</td>
                     <td className="px-4 py-3">{item.max_points}</td>
                     <td className="px-4 py-3">
-                      {item.candidate_score != null ? item.candidate_score : '—'}
+                      {item.candidate_score != null
+                        ? item.candidate_score
+                        : '—'}
                     </td>
                     <td className="px-4 py-3">
                       <JudgeStatusBadge status={item.submission_status} />

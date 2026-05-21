@@ -43,9 +43,7 @@ vi.mock('@/components/LoadingSpinner', () => ({
 
 // --- mock ErrorMessage ---
 vi.mock('@/components/ErrorMessage', () => ({
-  default: ({ message }) => (
-    <div data-testid="error-message">{message}</div>
-  ),
+  default: ({ message }) => <div data-testid="error-message">{message}</div>,
 }))
 
 import api from '@/lib/api'
@@ -66,7 +64,7 @@ function renderPage(id = 'user-uuid-001') {
       <Routes>
         <Route path="/admin/members/:id" element={<MemberDetailPage />} />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -119,7 +117,9 @@ describe('MemberDetailPage', () => {
     fireEvent.change(roleSelect, { target: { value: 'Interviewer' } })
 
     // Submit the edit form
-    const form = screen.getByRole('button', { name: '儲存變更' }).closest('form')
+    const form = screen
+      .getByRole('button', { name: '儲存變更' })
+      .closest('form')
     fireEvent.submit(form)
 
     await waitFor(() => {
@@ -151,7 +151,9 @@ describe('MemberDetailPage', () => {
     const pwInput = screen.getByLabelText('新密碼')
     fireEvent.change(pwInput, { target: { value: '1234567' } }) // 7 chars
 
-    const pwForm = screen.getByRole('button', { name: '重設密碼' }).closest('form')
+    const pwForm = screen
+      .getByRole('button', { name: '重設密碼' })
+      .closest('form')
     fireEvent.submit(pwForm)
 
     await waitFor(() => {
@@ -174,13 +176,18 @@ describe('MemberDetailPage', () => {
     const pwInput = screen.getByLabelText('新密碼')
     fireEvent.change(pwInput, { target: { value: 'newpass123' } }) // 10 chars ≥ 8
 
-    const pwForm = screen.getByRole('button', { name: '重設密碼' }).closest('form')
+    const pwForm = screen
+      .getByRole('button', { name: '重設密碼' })
+      .closest('form')
     fireEvent.submit(pwForm)
 
     await waitFor(() => {
-      expect(api.put).toHaveBeenCalledWith('/api/v1/users/user-uuid-001/password-reset', {
-        new_password: 'newpass123',
-      })
+      expect(api.put).toHaveBeenCalledWith(
+        '/api/v1/users/user-uuid-001/password-reset',
+        {
+          new_password: 'newpass123',
+        },
+      )
     })
 
     // Success message shown
@@ -200,6 +207,8 @@ describe('MemberDetailPage', () => {
       expect(screen.getByTestId('error-message')).toBeInTheDocument()
     })
 
-    expect(screen.getByTestId('error-message')).toHaveTextContent('找不到該使用者')
+    expect(screen.getByTestId('error-message')).toHaveTextContent(
+      '找不到該使用者',
+    )
   })
 })

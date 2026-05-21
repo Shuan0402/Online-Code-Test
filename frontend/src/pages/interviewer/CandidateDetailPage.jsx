@@ -42,7 +42,9 @@ export default function CandidateDetailPage() {
         if (status === 404) {
           setUserError('找不到此考生（404）')
         } else {
-          setUserError(err.response?.data?.detail ?? '載入考生資料失敗，請稍後再試')
+          setUserError(
+            err.response?.data?.detail ?? '載入考生資料失敗，請稍後再試',
+          )
         }
       } finally {
         setUserLoading(false)
@@ -67,8 +69,12 @@ export default function CandidateDetailPage() {
         }
 
         // Fan-out: fetch each exam detail in parallel
-        const details = await Promise.all(ids.map((id) => api.get(`/api/v1/exams/${id}`)))
-        const mine = details.map((r) => r.data).filter((e) => e.candidate_id === userId)
+        const details = await Promise.all(
+          ids.map((id) => api.get(`/api/v1/exams/${id}`)),
+        )
+        const mine = details
+          .map((r) => r.data)
+          .filter((e) => e.candidate_id === userId)
         setCandidateExams(mine)
       } catch (err) {
         setExamsError('無法載入考試列表')
@@ -137,7 +143,10 @@ export default function CandidateDetailPage() {
           </thead>
           <tbody>
             {candidateExams.map((exam) => (
-              <tr key={exam.id} className="border-t hover:bg-muted/30 transition-colors">
+              <tr
+                key={exam.id}
+                className="border-t hover:bg-muted/30 transition-colors"
+              >
                 <td className="px-4 py-3 font-medium">{exam.title}</td>
                 <td className="px-4 py-3">
                   <ExamStatusBadge status={exam.status} />

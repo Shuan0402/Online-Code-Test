@@ -27,7 +27,11 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild, variant }) => {
     if (asChild) return <span onClick={onClick}>{children}</span>
-    return <button onClick={onClick} disabled={disabled}>{children}</button>
+    return (
+      <button onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    )
   },
 }))
 
@@ -71,7 +75,7 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <CandidateListPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -112,7 +116,14 @@ describe('CandidateListPage', () => {
   it('shows "目前沒有考生" when no Candidate users exist', async () => {
     // Return only non-Candidate users → filtered list is empty
     api.get.mockResolvedValue({
-      data: [{ id: 'int-1', username: 'charlie', role: 'Interviewer', created_at: '2026-01-01T00:00:00Z' }],
+      data: [
+        {
+          id: 'int-1',
+          username: 'charlie',
+          role: 'Interviewer',
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ],
     })
     renderPage()
 

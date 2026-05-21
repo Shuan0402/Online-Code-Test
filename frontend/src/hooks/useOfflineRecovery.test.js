@@ -32,13 +32,19 @@ describe('useOfflineRecovery', () => {
 
   it('calls onPendingFound when a pending key exists in localStorage', async () => {
     // Set pending key for BOTH problems so the hook never falls through to /latest
-    localStorage.setItem('pending:10', JSON.stringify({ submissionId: 'sub-10', ts: Date.now() }))
-    localStorage.setItem('pending:20', JSON.stringify({ submissionId: 'sub-20', ts: Date.now() }))
+    localStorage.setItem(
+      'pending:10',
+      JSON.stringify({ submissionId: 'sub-10', ts: Date.now() }),
+    )
+    localStorage.setItem(
+      'pending:20',
+      JSON.stringify({ submissionId: 'sub-20', ts: Date.now() }),
+    )
 
     const onPendingFound = vi.fn()
 
     renderHook(() =>
-      useOfflineRecovery(PROBLEMS, EXAM_ID, 'Ongoing', onPendingFound)
+      useOfflineRecovery(PROBLEMS, EXAM_ID, 'Ongoing', onPendingFound),
     )
 
     await waitFor(() => {
@@ -50,13 +56,19 @@ describe('useOfflineRecovery', () => {
   })
 
   it('calls onPendingFound for each problem that has a pending key', async () => {
-    localStorage.setItem('pending:10', JSON.stringify({ submissionId: 'sub-10', ts: 0 }))
-    localStorage.setItem('pending:20', JSON.stringify({ submissionId: 'sub-20', ts: 0 }))
+    localStorage.setItem(
+      'pending:10',
+      JSON.stringify({ submissionId: 'sub-10', ts: 0 }),
+    )
+    localStorage.setItem(
+      'pending:20',
+      JSON.stringify({ submissionId: 'sub-20', ts: 0 }),
+    )
 
     const onPendingFound = vi.fn()
 
     renderHook(() =>
-      useOfflineRecovery(PROBLEMS, EXAM_ID, 'Ongoing', onPendingFound)
+      useOfflineRecovery(PROBLEMS, EXAM_ID, 'Ongoing', onPendingFound),
     )
 
     await waitFor(() => {
@@ -70,7 +82,7 @@ describe('useOfflineRecovery', () => {
   it('falls back to GET /submissions/latest when no pending key and exam is Ongoing', async () => {
     // No pending keys in localStorage
     api.get.mockResolvedValue({
-      data: { id: 'sub-from-api', status: 'Judging' }
+      data: { id: 'sub-from-api', status: 'Judging' },
     })
 
     const onPendingFound = vi.fn()
@@ -80,13 +92,13 @@ describe('useOfflineRecovery', () => {
         [{ problem_id: 10 }],
         EXAM_ID,
         'Ongoing',
-        onPendingFound
-      )
+        onPendingFound,
+      ),
     )
 
     await waitFor(() => {
       expect(api.get).toHaveBeenCalledWith('/api/v1/submissions/latest', {
-        params: { problem_id: 10, exam_id: EXAM_ID }
+        params: { problem_id: 10, exam_id: EXAM_ID },
       })
     })
 
@@ -106,9 +118,9 @@ describe('useOfflineRecovery', () => {
       useOfflineRecovery(
         [{ problem_id: 10 }],
         EXAM_ID,
-        'Finished',  // not Ongoing
-        onPendingFound
-      )
+        'Finished', // not Ongoing
+        onPendingFound,
+      ),
     )
 
     // Give the effect time to run
@@ -120,7 +132,7 @@ describe('useOfflineRecovery', () => {
 
   it('does NOT call onPendingFound when /submissions/latest returns a terminal status', async () => {
     api.get.mockResolvedValue({
-      data: { id: 'sub-terminal', status: 'AC' }
+      data: { id: 'sub-terminal', status: 'AC' },
     })
 
     const onPendingFound = vi.fn()
@@ -130,8 +142,8 @@ describe('useOfflineRecovery', () => {
         [{ problem_id: 10 }],
         EXAM_ID,
         'Ongoing',
-        onPendingFound
-      )
+        onPendingFound,
+      ),
     )
 
     await waitFor(() => {
@@ -147,9 +159,7 @@ describe('useOfflineRecovery', () => {
   it('does nothing when problems array is empty', async () => {
     const onPendingFound = vi.fn()
 
-    renderHook(() =>
-      useOfflineRecovery([], EXAM_ID, 'Ongoing', onPendingFound)
-    )
+    renderHook(() => useOfflineRecovery([], EXAM_ID, 'Ongoing', onPendingFound))
 
     await act(async () => {})
 
@@ -161,7 +171,7 @@ describe('useOfflineRecovery', () => {
     const onPendingFound = vi.fn()
 
     renderHook(() =>
-      useOfflineRecovery(PROBLEMS, null, 'Ongoing', onPendingFound)
+      useOfflineRecovery(PROBLEMS, null, 'Ongoing', onPendingFound),
     )
 
     await act(async () => {})
@@ -172,7 +182,7 @@ describe('useOfflineRecovery', () => {
 
   it('handles 404 from /submissions/latest gracefully (no crash, no onPendingFound)', async () => {
     const notFound = Object.assign(new Error('Not Found'), {
-      response: { status: 404 }
+      response: { status: 404 },
     })
     api.get.mockRejectedValue(notFound)
 
@@ -183,8 +193,8 @@ describe('useOfflineRecovery', () => {
         [{ problem_id: 10 }],
         EXAM_ID,
         'Ongoing',
-        onPendingFound
-      )
+        onPendingFound,
+      ),
     )
 
     await waitFor(() => {

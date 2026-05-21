@@ -71,7 +71,9 @@ export default function LoginPage() {
         } else if (status === 422) {
           // 422 almost always means the body encoding is wrong (not form-urlencoded).
           setError('登入請求格式錯誤（422），請聯絡系統管理員。')
-          console.error('[LoginPage] 422 Unprocessable Entity — check Content-Type header and body encoding.')
+          console.error(
+            '[LoginPage] 422 Unprocessable Entity — check Content-Type header and body encoding.',
+          )
         } else {
           setError(`登入失敗（${status}），請稍後再試。`)
         }
@@ -88,7 +90,9 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm shadow-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">線上程式測驗</CardTitle>
-          <CardDescription className="text-center">請輸入帳號與密碼登入</CardDescription>
+          <CardDescription className="text-center">
+            請輸入帳號與密碼登入
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -32,10 +32,14 @@ describe('ExamTimer', () => {
     render(<ExamTimer initialSeconds={10} onTimeout={vi.fn()} />)
     expect(screen.getByText(/00:10/)).toBeInTheDocument()
 
-    act(() => { vi.advanceTimersByTime(1000) })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
     expect(screen.getByText(/00:09/)).toBeInTheDocument()
 
-    act(() => { vi.advanceTimersByTime(1000) })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
     expect(screen.getByText(/00:08/)).toBeInTheDocument()
   })
 
@@ -47,12 +51,16 @@ describe('ExamTimer', () => {
 
   it('applies warning style when remaining < 5 minutes (300 s)', () => {
     // Start at exactly 300 — NOT in warning zone yet (300 is not < 300)
-    const { container } = render(<ExamTimer initialSeconds={300} onTimeout={vi.fn()} />)
+    const { container } = render(
+      <ExamTimer initialSeconds={300} onTimeout={vi.fn()} />,
+    )
     let timerEl = container.querySelector('[aria-label]')
     expect(timerEl.className).not.toMatch(/text-red-600/)
 
     // Tick once → 299s, which IS < 300 → warning
-    act(() => { vi.advanceTimersByTime(1000) })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
     timerEl = container.querySelector('[aria-label]')
     expect(timerEl.className).toMatch(/text-red-600/)
     expect(timerEl.className).toMatch(/animate-pulse/)
@@ -62,27 +70,41 @@ describe('ExamTimer', () => {
     const onTimeout = vi.fn()
     render(<ExamTimer initialSeconds={3} onTimeout={onTimeout} />)
 
-    act(() => { vi.advanceTimersByTime(1000) }) // 2s
-    act(() => { vi.advanceTimersByTime(1000) }) // 1s
-    act(() => { vi.advanceTimersByTime(1000) }) // 0s → fires
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    }) // 2s
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    }) // 1s
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    }) // 0s → fires
 
     expect(onTimeout).toHaveBeenCalledTimes(1)
 
     // More ticks — should not fire again
-    act(() => { vi.advanceTimersByTime(5000) })
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
     expect(onTimeout).toHaveBeenCalledTimes(1)
   })
 
   it('displays 00:00 when countdown reaches zero', () => {
     render(<ExamTimer initialSeconds={2} onTimeout={vi.fn()} />)
-    act(() => { vi.advanceTimersByTime(2000) })
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
     expect(screen.getByText(/00:00/)).toBeInTheDocument()
   })
 
   it('resets countdown when initialSeconds prop changes', () => {
-    const { rerender } = render(<ExamTimer initialSeconds={10} onTimeout={vi.fn()} />)
+    const { rerender } = render(
+      <ExamTimer initialSeconds={10} onTimeout={vi.fn()} />,
+    )
 
-    act(() => { vi.advanceTimersByTime(3000) }) // 7s left
+    act(() => {
+      vi.advanceTimersByTime(3000)
+    }) // 7s left
     expect(screen.getByText(/00:07/)).toBeInTheDocument()
 
     // New initialSeconds from parent (e.g., server refresh)

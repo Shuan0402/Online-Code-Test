@@ -159,7 +159,10 @@ export default function ProblemListPage() {
 
       {/* 難度篩選 */}
       <div className="flex items-center gap-2">
-        <label htmlFor="difficulty-filter" className="text-sm font-medium text-muted-foreground">
+        <label
+          htmlFor="difficulty-filter"
+          className="text-sm font-medium text-muted-foreground"
+        >
           難度篩選：
         </label>
         <select
@@ -203,32 +206,28 @@ export default function ProblemListPage() {
                   <td className="px-4 py-3">
                     <span
                       className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        DIFFICULTY_COLORS[problem.difficulty] ?? 'bg-gray-100 text-gray-700'
+                        DIFFICULTY_COLORS[problem.difficulty] ??
+                        'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {DIFFICULTY_LABELS[problem.difficulty] ?? problem.difficulty}
+                      {DIFFICULTY_LABELS[problem.difficulty] ??
+                        problem.difficulty}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
                       {/* 編輯 */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                      >
+                      <Button variant="outline" size="sm" asChild>
                         <Link to={`/questioner/problems/${problem.id}/edit`}>
                           編輯
                         </Link>
                       </Button>
 
                       {/* 查看提交 */}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        asChild
-                      >
-                        <Link to={`/questioner/problems/${problem.id}/submissions`}>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link
+                          to={`/questioner/problems/${problem.id}/submissions`}
+                        >
                           查看提交
                         </Link>
                       </Button>
@@ -268,7 +267,15 @@ export default function ProblemListPage() {
       )}
 
       {/* 刪除確認 Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(null) } }}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null)
+            setDeleteError(null)
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>確認刪除</DialogTitle>
@@ -278,12 +285,17 @@ export default function ProblemListPage() {
           </DialogHeader>
           {/* 刪除失敗的 inline 錯誤訊息 */}
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
+              onClick={() => {
+                setDeleteTarget(null)
+                setDeleteError(null)
+              }}
               disabled={deleteLoading}
             >
               取消

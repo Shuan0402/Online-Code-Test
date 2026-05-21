@@ -4,9 +4,9 @@ import { Badge } from '@/components/ui/badge'
 import LoadingSpinner from '@/components/LoadingSpinner'
 
 const DIFFICULTY_MAP = {
-  Easy:   { label: '簡單', className: 'bg-green-100 text-green-800' },
+  Easy: { label: '簡單', className: 'bg-green-100 text-green-800' },
   Medium: { label: '中等', className: 'bg-yellow-100 text-yellow-800' },
-  Hard:   { label: '困難', className: 'bg-red-100 text-red-800' },
+  Hard: { label: '困難', className: 'bg-red-100 text-red-800' },
 }
 
 /**
@@ -33,20 +33,25 @@ export default function ProblemPanel({ problemId, points, sequence }) {
     setError(null)
     setProblem(null)
 
-    api.get(`/api/v1/problems/${problemId}`)
+    api
+      .get(`/api/v1/problems/${problemId}`)
       .then((res) => {
         if (!cancelled) setProblem(res.data)
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err?.response?.data?.detail || '無法載入題目資料，請稍後再試。')
+          setError(
+            err?.response?.data?.detail || '無法載入題目資料，請稍後再試。',
+          )
         }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [problemId])
 
   if (loading) {
@@ -69,16 +74,23 @@ export default function ProblemPanel({ problemId, points, sequence }) {
 
   if (!problem) return null
 
-  const diff = DIFFICULTY_MAP[problem.difficulty] ?? { label: problem.difficulty, className: '' }
+  const diff = DIFFICULTY_MAP[problem.difficulty] ?? {
+    label: problem.difficulty,
+    className: '',
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4 h-full overflow-y-auto">
       {/* 題目標題列 */}
       <div className="flex items-start gap-2 flex-wrap">
-        <span className="text-muted-foreground text-sm font-medium">題 {sequence}．</span>
+        <span className="text-muted-foreground text-sm font-medium">
+          題 {sequence}．
+        </span>
         <h2 className="text-lg font-bold leading-tight">{problem.title}</h2>
         <Badge className={diff.className}>{diff.label}</Badge>
-        <Badge variant="outline" className="ml-auto shrink-0">{points} 分</Badge>
+        <Badge variant="outline" className="ml-auto shrink-0">
+          {points} 分
+        </Badge>
       </div>
 
       {/* 時間 / 記憶體限制 */}
@@ -100,12 +112,20 @@ export default function ProblemPanel({ problemId, points, sequence }) {
             <div key={tc.id} className="text-xs border rounded overflow-hidden">
               <div className="grid grid-cols-2">
                 <div className="bg-muted/50 p-2">
-                  <p className="font-medium mb-1 text-muted-foreground">輸入 {i + 1}</p>
-                  <pre className="whitespace-pre-wrap font-mono">{tc.input_data}</pre>
+                  <p className="font-medium mb-1 text-muted-foreground">
+                    輸入 {i + 1}
+                  </p>
+                  <pre className="whitespace-pre-wrap font-mono">
+                    {tc.input_data}
+                  </pre>
                 </div>
                 <div className="bg-muted/30 p-2 border-l">
-                  <p className="font-medium mb-1 text-muted-foreground">輸出 {i + 1}</p>
-                  <pre className="whitespace-pre-wrap font-mono">{tc.expected_output}</pre>
+                  <p className="font-medium mb-1 text-muted-foreground">
+                    輸出 {i + 1}
+                  </p>
+                  <pre className="whitespace-pre-wrap font-mono">
+                    {tc.expected_output}
+                  </pre>
                 </div>
               </div>
             </div>

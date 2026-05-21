@@ -28,7 +28,11 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild, type, variant }) => {
     if (asChild) return <span>{children}</span>
-    return <button onClick={onClick} disabled={disabled} type={type ?? 'button'}>{children}</button>
+    return (
+      <button onClick={onClick} disabled={disabled} type={type ?? 'button'}>
+        {children}
+      </button>
+    )
   },
 }))
 
@@ -39,7 +43,7 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <CandidateFormPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -58,7 +62,9 @@ describe('CandidateFormPage', () => {
     fireEvent.change(passwordInput, { target: { value: 'password8' } })
 
     // Submit the form element directly (avoids jsdom required-field block on button click)
-    const form = screen.getByRole('button', { name: '建立考生' }).closest('form')
+    const form = screen
+      .getByRole('button', { name: '建立考生' })
+      .closest('form')
     fireEvent.submit(form)
 
     await waitFor(() => {

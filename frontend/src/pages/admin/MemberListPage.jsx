@@ -146,7 +146,9 @@ export default function MemberListPage() {
                 <th className="px-4 py-3 text-left font-medium">姓名</th>
                 <th className="px-4 py-3 text-left font-medium">帳號</th>
                 <th className="px-4 py-3 text-left font-medium">角色</th>
-                <th className="px-4 py-3 text-left font-medium w-44">建立時間</th>
+                <th className="px-4 py-3 text-left font-medium w-44">
+                  建立時間
+                </th>
                 <th className="px-4 py-3 text-left font-medium">操作</th>
               </tr>
             </thead>
@@ -194,24 +196,41 @@ export default function MemberListPage() {
       )}
 
       {/* 刪除確認 Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) closeDeleteDialog() }}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog()
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>確認刪除成員</DialogTitle>
             <DialogDescription>
-              確定要刪除成員「{deleteTarget?.full_name ?? deleteTarget?.username}」嗎？此操作無法復原。
+              確定要刪除成員「
+              {deleteTarget?.full_name ?? deleteTarget?.username}
+              」嗎？此操作無法復原。
             </DialogDescription>
           </DialogHeader>
 
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDeleteDialog} disabled={deleting}>
+            <Button
+              variant="outline"
+              onClick={closeDeleteDialog}
+              disabled={deleting}
+            >
               取消
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
               {deleting ? '刪除中…' : '確認刪除'}
             </Button>
           </DialogFooter>

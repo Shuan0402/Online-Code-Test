@@ -18,7 +18,12 @@ import api from '@/lib/api'
  * @param {string} examStatus   — 目前考試狀態字串
  * @param {function} onPendingFound — (problemId, submissionId) => void
  */
-export function useOfflineRecovery(problems, examId, examStatus, onPendingFound) {
+export function useOfflineRecovery(
+  problems,
+  examId,
+  examStatus,
+  onPendingFound,
+) {
   useEffect(() => {
     if (!problems || problems.length === 0 || !examId) return
 
@@ -45,13 +50,16 @@ export function useOfflineRecovery(problems, examId, examStatus, onPendingFound)
       if (isOngoing) {
         try {
           const res = await api.get('/api/v1/submissions/latest', {
-            params: { problem_id: pid, exam_id: examId }
+            params: { problem_id: pid, exam_id: examId },
           })
           const sub = res.data
           // 只對非終態的提交恢復輪詢
           if (sub && (sub.status === 'Pending' || sub.status === 'Judging')) {
             // 重新寫入 pending 鍵，方便下次冷重啟
-            localStorage.setItem(`pending:${pid}`, JSON.stringify({ submissionId: sub.id, ts: Date.now() }))
+            localStorage.setItem(
+              `pending:${pid}`,
+              JSON.stringify({ submissionId: sub.id, ts: Date.now() }),
+            )
             onPendingFound(pid, sub.id)
           }
         } catch {
@@ -59,6 +67,6 @@ export function useOfflineRecovery(problems, examId, examStatus, onPendingFound)
         }
       }
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examId]) // 只在 examId 確定後執行一次
 }

@@ -42,7 +42,9 @@ export default function MemberDetailPage() {
         if (status === 404) {
           setLoadError('找不到該使用者')
         } else {
-          setLoadError(err.response?.data?.detail ?? '載入使用者資料失敗，請稍後再試')
+          setLoadError(
+            err.response?.data?.detail ?? '載入使用者資料失敗，請稍後再試',
+          )
         }
       } finally {
         setLoading(false)
@@ -87,12 +89,16 @@ export default function MemberDetailPage() {
     setResetting(true)
     try {
       // Admin force-reset: PUT /users/{id}/password-reset — no old password needed
-      await api.put(`/api/v1/users/${id}/password-reset`, { new_password: newPassword })
+      await api.put(`/api/v1/users/${id}/password-reset`, {
+        new_password: newPassword,
+      })
       setNewPassword('')
       setPwSuccess('密碼已重設')
     } catch (err) {
       const detail = err.response?.data?.detail
-      setPwError(typeof detail === 'string' ? detail : '重設密碼失敗，請稍後再試')
+      setPwError(
+        typeof detail === 'string' ? detail : '重設密碼失敗，請稍後再試',
+      )
     } finally {
       setResetting(false)
     }
@@ -129,24 +135,36 @@ export default function MemberDetailPage() {
         <h2 className="text-lg font-semibold">基本資料</h2>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">姓名</label>
+          <label className="text-sm font-medium text-muted-foreground">
+            姓名
+          </label>
           <p className="text-sm border rounded-md px-3 py-2 bg-muted">
             {member.full_name ?? '—'}
           </p>
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">帳號（不可更改）</label>
-          <p className="text-sm border rounded-md px-3 py-2 bg-muted">{member.username}</p>
+          <label className="text-sm font-medium text-muted-foreground">
+            帳號（不可更改）
+          </label>
+          <p className="text-sm border rounded-md px-3 py-2 bg-muted">
+            {member.username}
+          </p>
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">角色</label>
-          <p className="text-sm border rounded-md px-3 py-2 bg-muted">{member.role}</p>
+          <label className="text-sm font-medium text-muted-foreground">
+            角色
+          </label>
+          <p className="text-sm border rounded-md px-3 py-2 bg-muted">
+            {member.role}
+          </p>
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">密碼</label>
+          <label className="text-sm font-medium text-muted-foreground">
+            密碼
+          </label>
           {/* There is no password field in UserRead — always render a masked placeholder */}
           <p className="text-sm border rounded-md px-3 py-2 bg-muted tracking-widest">
             ••••••••

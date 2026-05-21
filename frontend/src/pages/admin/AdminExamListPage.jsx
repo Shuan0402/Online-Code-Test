@@ -209,7 +209,12 @@ export default function AdminExamListPage() {
       )}
 
       {/* 刪除確認 Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) closeDeleteDialog() }}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) closeDeleteDialog()
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>確認刪除考試</DialogTitle>
@@ -219,14 +224,24 @@ export default function AdminExamListPage() {
           </DialogHeader>
 
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDeleteDialog} disabled={deleting}>
+            <Button
+              variant="outline"
+              onClick={closeDeleteDialog}
+              disabled={deleting}
+            >
               取消
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
               {deleting ? '刪除中…' : '確認刪除'}
             </Button>
           </DialogFooter>

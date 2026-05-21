@@ -31,12 +31,15 @@ export default function ResultPage() {
     setLoading(true)
     setError(null)
 
-    api.get(`/api/v1/exams/${examId}/result`)
+    api
+      .get(`/api/v1/exams/${examId}/result`)
       .then((res) => {
         setResult(res.data)
       })
       .catch((err) => {
-        setError(err?.response?.data?.detail || '無法載入考試結果，請稍後再試。')
+        setError(
+          err?.response?.data?.detail || '無法載入考試結果，請稍後再試。',
+        )
       })
       .finally(() => {
         setLoading(false)
@@ -74,7 +77,8 @@ export default function ResultPage() {
             <p className="text-3xl font-semibold text-primary">
               {result.total_candidate_score}
               <span className="text-base text-muted-foreground font-normal">
-                {' '}/ {result.total_exam_points} 分
+                {' '}
+                / {result.total_exam_points} 分
               </span>
             </p>
           </div>
@@ -84,16 +88,29 @@ export default function ResultPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/30">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground w-16">題號</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">題目</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">狀態</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground w-24">得分</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground w-16">
+                    題號
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                    題目
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">
+                    狀態
+                  </th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground w-24">
+                    得分
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {result.results.map((item) => (
-                  <tr key={item.problem_id} className="hover:bg-muted/10 transition-colors">
-                    <td className="px-4 py-3 text-muted-foreground">{item.sequence}</td>
+                  <tr
+                    key={item.problem_id}
+                    className="hover:bg-muted/10 transition-colors"
+                  >
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {item.sequence}
+                    </td>
                     <td className="px-4 py-3 font-medium">{item.title}</td>
                     <td className="px-4 py-3">
                       <JudgeStatusBadge status={item.submission_status} />
@@ -107,7 +124,9 @@ export default function ResultPage() {
             </table>
 
             {result.results.length === 0 && (
-              <p className="text-center text-muted-foreground py-8">此次考試沒有題目記錄。</p>
+              <p className="text-center text-muted-foreground py-8">
+                此次考試沒有題目記錄。
+              </p>
             )}
           </div>
         </div>

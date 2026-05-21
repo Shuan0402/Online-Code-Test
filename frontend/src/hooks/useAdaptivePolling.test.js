@@ -68,43 +68,63 @@ describe('useAdaptivePolling', () => {
     // Strategy: advance by each delay, then flush microtasks.
 
     // Poll 1: starts at POLLING_DELAYS[0] = 300ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[0]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[0])
+    })
     expect(api.get).toHaveBeenCalledTimes(1)
 
     // Poll 2: next delay = POLLING_DELAYS[1] = 500ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[1]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[1])
+    })
     expect(api.get).toHaveBeenCalledTimes(2)
 
     // Poll 3: POLLING_DELAYS[2] = 1000ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[2]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[2])
+    })
     expect(api.get).toHaveBeenCalledTimes(3)
 
     // Poll 4: POLLING_DELAYS[3] = 2000ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[3]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[3])
+    })
     expect(api.get).toHaveBeenCalledTimes(4)
 
     // Poll 5: POLLING_DELAYS[4] = 3000ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[4]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[4])
+    })
     expect(api.get).toHaveBeenCalledTimes(5)
 
     // Poll 6: POLLING_DELAYS[5] = 5000ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[5]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[5])
+    })
     expect(api.get).toHaveBeenCalledTimes(6)
 
     // Poll 7: POLLING_DELAYS[6] = 5000ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[6]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[6])
+    })
     expect(api.get).toHaveBeenCalledTimes(7)
 
     // Poll 8: POLLING_DELAYS[7] = 5000ms
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[7]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[7])
+    })
     expect(api.get).toHaveBeenCalledTimes(8)
 
     // Poll 9: POLLING_DELAYS[8] = 10000ms (last entry)
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[8]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[8])
+    })
     expect(api.get).toHaveBeenCalledTimes(9)
 
     // Poll 10: should use POLLING_DELAYS[8] = 10000ms again (cycles on last)
-    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[8]) })
+    await act(async () => {
+      vi.advanceTimersByTime(POLLING_DELAYS[8])
+    })
     expect(api.get).toHaveBeenCalledTimes(10)
   })
 
@@ -188,7 +208,9 @@ describe('useAdaptivePolling', () => {
       api.get.mockResolvedValue({ data: { id: 'sub-t', status } })
       const onResult = vi.fn()
 
-      const { unmount } = renderHook(() => useAdaptivePolling('sub-t', onResult))
+      const { unmount } = renderHook(() =>
+        useAdaptivePolling('sub-t', onResult),
+      )
 
       await act(async () => {
         vi.advanceTimersByTime(300)

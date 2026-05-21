@@ -155,7 +155,9 @@ export default function ExamListPage() {
                 <th className="px-4 py-3 text-left font-medium w-28">狀態</th>
                 <th className="px-4 py-3 text-left font-medium w-28">時長</th>
                 <th className="px-4 py-3 text-left font-medium w-24">分數</th>
-                <th className="px-4 py-3 text-left font-medium w-44">建立時間</th>
+                <th className="px-4 py-3 text-left font-medium w-44">
+                  建立時間
+                </th>
                 <th className="px-4 py-3 text-left font-medium">操作</th>
               </tr>
             </thead>
@@ -219,7 +221,9 @@ export default function ExamListPage() {
           </DialogHeader>
           {/* 刪除失敗的 inline 錯誤訊息 */}
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
           <DialogFooter>
             <Button

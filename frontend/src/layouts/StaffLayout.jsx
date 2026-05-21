@@ -57,10 +57,14 @@ export default function StaffLayout() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="border-b bg-white px-6 py-3 flex items-center justify-between shadow-sm">
-        <span className="text-lg font-semibold text-primary">線上程式測驗 — 管理後台</span>
+        <span className="text-lg font-semibold text-primary">
+          線上程式測驗 — 管理後台
+        </span>
         <div className="flex items-center gap-3">
           {user && (
-            <span className="text-sm text-muted-foreground">{user.username ?? user.email ?? ''}</span>
+            <span className="text-sm text-muted-foreground">
+              {user.username ?? user.email ?? ''}
+            </span>
           )}
           <button
             onClick={logout}
@@ -74,7 +78,12 @@ export default function StaffLayout() {
         {/* Sidebar — only shows links applicable to this user's role */}
         <aside className="w-56 border-r bg-white p-4 space-y-1 shrink-0">
           {navLinks.map((link) => (
-            <SidebarLink key={link.to} to={link.to} label={link.label} end={link.end} />
+            <SidebarLink
+              key={link.to}
+              to={link.to}
+              label={link.label}
+              end={link.end}
+            />
           ))}
         </aside>
         {/* Main content */}

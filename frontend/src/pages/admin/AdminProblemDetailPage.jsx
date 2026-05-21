@@ -62,7 +62,9 @@ export default function AdminProblemDetailPage() {
         const res = await api.get(`/api/v1/problems/${id}`)
         setProblem(res.data)
       } catch (err) {
-        setLoadError(err.response?.data?.detail ?? '載入題目資料失敗，請稍後再試')
+        setLoadError(
+          err.response?.data?.detail ?? '載入題目資料失敗，請稍後再試',
+        )
       } finally {
         setLoading(false)
       }
@@ -129,7 +131,8 @@ export default function AdminProblemDetailPage() {
             <p className="text-muted-foreground font-medium">難度</p>
             <span
               className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                DIFFICULTY_COLORS[problem.difficulty] ?? 'bg-gray-100 text-gray-700'
+                DIFFICULTY_COLORS[problem.difficulty] ??
+                'bg-gray-100 text-gray-700'
               }`}
             >
               {DIFFICULTY_LABELS[problem.difficulty] ?? problem.difficulty}
@@ -138,17 +141,25 @@ export default function AdminProblemDetailPage() {
 
           <div className="space-y-1">
             <p className="text-muted-foreground font-medium">時間限制</p>
-            <p>{problem.time_limit != null ? `${problem.time_limit} ms` : '—'}</p>
+            <p>
+              {problem.time_limit != null ? `${problem.time_limit} ms` : '—'}
+            </p>
           </div>
 
           <div className="space-y-1">
             <p className="text-muted-foreground font-medium">記憶體限制</p>
-            <p>{problem.memory_limit != null ? `${problem.memory_limit} MB` : '—'}</p>
+            <p>
+              {problem.memory_limit != null
+                ? `${problem.memory_limit} MB`
+                : '—'}
+            </p>
           </div>
 
           <div className="space-y-1">
             <p className="text-muted-foreground font-medium">建立者 ID</p>
-            <p className="font-mono text-xs break-all">{problem.creator_id ?? '—'}</p>
+            <p className="font-mono text-xs break-all">
+              {problem.creator_id ?? '—'}
+            </p>
           </div>
 
           <div className="space-y-1">
@@ -180,19 +191,27 @@ export default function AdminProblemDetailPage() {
                   <th className="px-4 py-3 text-left font-medium w-8">#</th>
                   <th className="px-4 py-3 text-left font-medium">輸入</th>
                   <th className="px-4 py-3 text-left font-medium">預期輸出</th>
-                  <th className="px-4 py-3 text-left font-medium w-20">配分權重</th>
+                  <th className="px-4 py-3 text-left font-medium w-20">
+                    配分權重
+                  </th>
                   <th className="px-4 py-3 text-left font-medium w-20">範例</th>
                 </tr>
               </thead>
               <tbody>
                 {problem.test_cases.map((tc, idx) => (
                   <tr key={idx} className="border-t">
-                    <td className="px-4 py-3 text-muted-foreground">{idx + 1}</td>
-                    <td className="px-4 py-3">
-                      <pre className="whitespace-pre-wrap font-mono text-xs">{tc.input_data}</pre>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {idx + 1}
                     </td>
                     <td className="px-4 py-3">
-                      <pre className="whitespace-pre-wrap font-mono text-xs">{tc.expected_output}</pre>
+                      <pre className="whitespace-pre-wrap font-mono text-xs">
+                        {tc.input_data}
+                      </pre>
+                    </td>
+                    <td className="px-4 py-3">
+                      <pre className="whitespace-pre-wrap font-mono text-xs">
+                        {tc.expected_output}
+                      </pre>
                     </td>
                     <td className="px-4 py-3">{tc.score_weight}</td>
                     <td className="px-4 py-3">{tc.is_sample ? '是' : '否'}</td>
@@ -223,7 +242,9 @@ export default function AdminProblemDetailPage() {
           </DialogHeader>
 
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
 
           <DialogFooter>
@@ -237,7 +258,11 @@ export default function AdminProblemDetailPage() {
             >
               取消
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={deleting}>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
               {deleting ? '刪除中…' : '確認刪除'}
             </Button>
           </DialogFooter>

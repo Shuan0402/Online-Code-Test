@@ -57,11 +57,17 @@ export function useAdaptivePolling(submissionId, onResult) {
       }
     } catch (err) {
       // 網路錯誤時繼續輪詢（沿用目前延遲索引）
-      console.warn('[useAdaptivePolling] 輪詢失敗，稍後重試', err?.response?.status)
+      console.warn(
+        '[useAdaptivePolling] 輪詢失敗，稍後重試',
+        err?.response?.status,
+      )
     }
 
     // 選出下一個延遲，超過陣列末端就固定使用最後值
-    const nextDelayIdx = Math.min(delayIndexRef.current + 1, POLLING_DELAYS.length - 1)
+    const nextDelayIdx = Math.min(
+      delayIndexRef.current + 1,
+      POLLING_DELAYS.length - 1,
+    )
     delayIndexRef.current = nextDelayIdx
     timerRef.current = setTimeout(poll, POLLING_DELAYS[nextDelayIdx])
   }, [stopPolling])

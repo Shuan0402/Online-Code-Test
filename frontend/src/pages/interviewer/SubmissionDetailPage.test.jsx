@@ -30,7 +30,11 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild }) => {
     if (asChild) return <span>{children}</span>
-    return <button onClick={onClick} disabled={disabled}>{children}</button>
+    return (
+      <button onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    )
   },
 }))
 
@@ -53,7 +57,9 @@ vi.mock('@/components/JudgeStatusBadge', () => ({
       Pending: '待評測',
       Unsubmitted: '未提交',
     }
-    return <span data-testid="judge-status-badge">{LABELS[status] ?? status}</span>
+    return (
+      <span data-testid="judge-status-badge">{LABELS[status] ?? status}</span>
+    )
   },
 }))
 
@@ -73,9 +79,7 @@ const MOCK_EXAM = {
   candidate_id: CANDIDATE_UUID,
 }
 
-const MOCK_SUBMISSION_LIST = [
-  { id: SUBMISSION_UUID },
-]
+const MOCK_SUBMISSION_LIST = [{ id: SUBMISSION_UUID }]
 
 const MOCK_SUBMISSION_DETAIL = {
   id: SUBMISSION_UUID,
@@ -86,8 +90,20 @@ const MOCK_SUBMISSION_DETAIL = {
   execution_time: 42,
   presigned_url: PRESIGNED_URL,
   details: [
-    { id: 1, testcase_id: 1, status: 'Accepted', score: 50, execution_time: 20 },
-    { id: 2, testcase_id: 2, status: 'Accepted', score: 50, execution_time: 22 },
+    {
+      id: 1,
+      testcase_id: 1,
+      status: 'Accepted',
+      score: 50,
+      execution_time: 20,
+    },
+    {
+      id: 2,
+      testcase_id: 2,
+      status: 'Accepted',
+      score: 50,
+      execution_time: 22,
+    },
   ],
 }
 
@@ -108,7 +124,9 @@ const MOCK_CANDIDATE_USER = {
 function renderPage() {
   return render(
     <MemoryRouter
-      initialEntries={[`/interviewer/exams/${EXAM_UUID}/problems/${PROBLEM_ID}`]}
+      initialEntries={[
+        `/interviewer/exams/${EXAM_UUID}/problems/${PROBLEM_ID}`,
+      ]}
     >
       <Routes>
         <Route
@@ -116,7 +134,7 @@ function renderPage() {
           element={<SubmissionDetailPage />}
         />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -139,11 +157,11 @@ describe('SubmissionDetailPage', () => {
   // This test fails if `window.fetch(presigned_url)` is replaced with `api.get(presigned_url)`
   it('fetches source code via window.fetch (not api.get) when presigned_url is non-null', async () => {
     api.get
-      .mockResolvedValueOnce({ data: MOCK_EXAM })                          // step 1: exam
-      .mockResolvedValueOnce({ data: MOCK_SUBMISSION_LIST })               // step 2: submissions list
-      .mockResolvedValueOnce({ data: MOCK_SUBMISSION_DETAIL })             // step 3: submission detail
-      .mockResolvedValueOnce({ data: MOCK_PROBLEM })                       // step 4: problem
-      .mockResolvedValueOnce({ data: MOCK_CANDIDATE_USER })                // step 5: candidate user
+      .mockResolvedValueOnce({ data: MOCK_EXAM }) // step 1: exam
+      .mockResolvedValueOnce({ data: MOCK_SUBMISSION_LIST }) // step 2: submissions list
+      .mockResolvedValueOnce({ data: MOCK_SUBMISSION_DETAIL }) // step 3: submission detail
+      .mockResolvedValueOnce({ data: MOCK_PROBLEM }) // step 4: problem
+      .mockResolvedValueOnce({ data: MOCK_CANDIDATE_USER }) // step 5: candidate user
 
     fetchSpy.mockResolvedValue({
       text: async () => 'def fib(n): return n',
@@ -169,7 +187,10 @@ describe('SubmissionDetailPage', () => {
   // (b) presigned_url === null → "程式碼暫無法顯示" shown, no fetch() called
   // This test fails if the `presigned_url === null` null-guard is removed
   it('shows "程式碼暫無法顯示" and does not call window.fetch when presigned_url is null', async () => {
-    const submissionWithNullUrl = { ...MOCK_SUBMISSION_DETAIL, presigned_url: null }
+    const submissionWithNullUrl = {
+      ...MOCK_SUBMISSION_DETAIL,
+      presigned_url: null,
+    }
 
     api.get
       .mockResolvedValueOnce({ data: MOCK_EXAM })
@@ -191,8 +212,8 @@ describe('SubmissionDetailPage', () => {
   // This test fails if the early-return guard on empty submissions list is removed
   it('shows "考生尚未提交此題" when submission list is empty and skips subsequent API calls', async () => {
     api.get
-      .mockResolvedValueOnce({ data: MOCK_EXAM })          // step 1: exam
-      .mockResolvedValueOnce({ data: [] })                  // step 2: empty submissions
+      .mockResolvedValueOnce({ data: MOCK_EXAM }) // step 1: exam
+      .mockResolvedValueOnce({ data: [] }) // step 2: empty submissions
 
     renderPage()
 
@@ -203,11 +224,16 @@ describe('SubmissionDetailPage', () => {
     // api.get should have been called only twice (exam + submissions list)
     expect(api.get).toHaveBeenCalledTimes(2)
     expect(api.get).toHaveBeenCalledWith(`/api/v1/exams/${EXAM_UUID}`)
-    expect(api.get).toHaveBeenCalledWith('/api/v1/submissions/', expect.any(Object))
+    expect(api.get).toHaveBeenCalledWith(
+      '/api/v1/submissions/',
+      expect.any(Object),
+    )
 
     // No call for submission detail
     const calls = api.get.mock.calls.map((c) => c[0])
-    expect(calls.every((url) => !url.includes(`/submissions/${SUBMISSION_UUID}`))).toBe(true)
+    expect(
+      calls.every((url) => !url.includes(`/submissions/${SUBMISSION_UUID}`)),
+    ).toBe(true)
 
     expect(fetchSpy).not.toHaveBeenCalled()
   })
@@ -290,7 +316,9 @@ describe('SubmissionDetailPage', () => {
 
     await waitFor(() => {
       // Falls back to the candidate_id UUID from the exam
-      expect(screen.getByText(new RegExp(`考生帳號：${CANDIDATE_UUID}`))).toBeInTheDocument()
+      expect(
+        screen.getByText(new RegExp(`考生帳號：${CANDIDATE_UUID}`)),
+      ).toBeInTheDocument()
     })
   })
 })

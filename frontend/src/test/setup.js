@@ -11,13 +11,26 @@ import { vi } from 'vitest'
 function createLocalStorageMock() {
   let store = {}
   return {
-    getItem: vi.fn((key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null)),
-    setItem: vi.fn((key, value) => { store[key] = String(value) }),
-    removeItem: vi.fn((key) => { delete store[key] }),
-    clear: vi.fn(() => { store = {} }),
-    get length() { return Object.keys(store).length },
+    getItem: vi.fn((key) =>
+      Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+    ),
+    setItem: vi.fn((key, value) => {
+      store[key] = String(value)
+    }),
+    removeItem: vi.fn((key) => {
+      delete store[key]
+    }),
+    clear: vi.fn(() => {
+      store = {}
+    }),
+    get length() {
+      return Object.keys(store).length
+    },
     key: vi.fn((index) => Object.keys(store)[index] ?? null),
-    _reset() { store = {}; vi.clearAllMocks() },
+    _reset() {
+      store = {}
+      vi.clearAllMocks()
+    },
   }
 }
 

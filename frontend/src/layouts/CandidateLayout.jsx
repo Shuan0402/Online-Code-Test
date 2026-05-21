@@ -9,7 +9,10 @@ export default function CandidateLayout() {
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       <header className="border-b bg-white px-6 py-3 flex items-center justify-between shadow-sm shrink-0">
-        <Link to="/candidate/exams" className="text-lg font-semibold text-primary">
+        <Link
+          to="/candidate/exams"
+          className="text-lg font-semibold text-primary"
+        >
           線上程式測驗
         </Link>
         <div className="flex items-center gap-3">

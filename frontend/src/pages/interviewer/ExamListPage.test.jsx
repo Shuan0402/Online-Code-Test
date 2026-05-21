@@ -25,7 +25,8 @@ vi.mock('@/lib/api', () => ({
 
 // --- mock shadcn Dialog to render inline (avoid Radix portal issues in jsdom) ---
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }) => open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ open, children }) =>
+    open ? <div data-testid="dialog">{children}</div> : null,
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
   DialogTitle: ({ children }) => <div>{children}</div>,
@@ -37,7 +38,11 @@ vi.mock('@/components/ui/dialog', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild, variant }) => {
     if (asChild) return <span onClick={onClick}>{children}</span>
-    return <button onClick={onClick} disabled={disabled}>{children}</button>
+    return (
+      <button onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    )
   },
 }))
 
@@ -58,7 +63,9 @@ vi.mock('@/components/ErrorMessage', () => ({
 
 // --- mock ExamStatusBadge ---
 vi.mock('@/components/ExamStatusBadge', () => ({
-  default: ({ status }) => <span data-testid={`badge-${status}`}>{status}</span>,
+  default: ({ status }) => (
+    <span data-testid={`badge-${status}`}>{status}</span>
+  ),
 }))
 
 import api from '@/lib/api'
@@ -68,15 +75,29 @@ const UUID_1 = 'aaaaaaaa-1111-1111-1111-000000000001'
 const UUID_2 = 'aaaaaaaa-2222-2222-2222-000000000002'
 
 const MOCK_EXAMS = [
-  { id: UUID_1, title: '草稿考試', status: 'Draft', duration_minutes: 60, score: null, created_at: '2026-01-01T00:00:00Z' },
-  { id: UUID_2, title: '進行中考試', status: 'Ongoing', duration_minutes: 90, score: 150, created_at: '2026-01-02T00:00:00Z' },
+  {
+    id: UUID_1,
+    title: '草稿考試',
+    status: 'Draft',
+    duration_minutes: 60,
+    score: null,
+    created_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: UUID_2,
+    title: '進行中考試',
+    status: 'Ongoing',
+    duration_minutes: 90,
+    score: 150,
+    created_at: '2026-01-02T00:00:00Z',
+  },
 ]
 
 function renderPage() {
   return render(
     <MemoryRouter>
       <ExamListPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 

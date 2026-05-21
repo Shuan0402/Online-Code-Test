@@ -78,7 +78,9 @@ export default function CandidateListPage() {
               <tr>
                 <th className="px-4 py-3 text-left font-medium">考生姓名</th>
                 <th className="px-4 py-3 text-left font-medium">考生帳號</th>
-                <th className="px-4 py-3 text-left font-medium w-44">建立時間</th>
+                <th className="px-4 py-3 text-left font-medium w-44">
+                  建立時間
+                </th>
                 <th className="px-4 py-3 text-left font-medium">操作</th>
               </tr>
             </thead>
@@ -97,7 +99,9 @@ export default function CandidateListPage() {
                   </td>
                   <td className="px-4 py-3">
                     <Button variant="outline" size="sm" asChild>
-                      <Link to={`/interviewer/candidates/${candidate.id}`}>查看</Link>
+                      <Link to={`/interviewer/candidates/${candidate.id}`}>
+                        查看
+                      </Link>
                     </Button>
                   </td>
                 </tr>
@@ -108,7 +112,9 @@ export default function CandidateListPage() {
       )}
 
       {/* 說明：刪除操作需由管理員執行 */}
-      <p className="text-xs text-muted-foreground">刪除考生帳號需由管理員操作</p>
+      <p className="text-xs text-muted-foreground">
+        刪除考生帳號需由管理員操作
+      </p>
     </div>
   )
 }

@@ -40,13 +40,15 @@ export default function ExamFormPage() {
       .then((res) => {
         if (cancelled) return
         const onlyCandidates = (res.data ?? []).filter(
-          (u) => u.role === 'Candidate'
+          (u) => u.role === 'Candidate',
         )
         setCandidates(onlyCandidates)
       })
       .catch((err) => {
         if (cancelled) return
-        setLoadError(err.response?.data?.detail ?? '無法載入應試者清單，請稍後再試')
+        setLoadError(
+          err.response?.data?.detail ?? '無法載入應試者清單，請稍後再試',
+        )
       })
       .finally(() => {
         if (!cancelled) setLoadingCandidates(false)
@@ -83,7 +85,10 @@ export default function ExamFormPage() {
 
     const body = {
       title: title.trim(),
-      duration_minutes: Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 120,
+      duration_minutes:
+        Number.isFinite(parsedDuration) && parsedDuration > 0
+          ? parsedDuration
+          : 120,
       easy_count: Number.isFinite(parsedEasy) ? parsedEasy : 0,
       medium_count: Number.isFinite(parsedMedium) ? parsedMedium : 0,
       hard_count: Number.isFinite(parsedHard) ? parsedHard : 0,
@@ -131,10 +136,7 @@ export default function ExamFormPage() {
       {/* 頁首 */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">新增考試</h1>
-        <Button
-          variant="outline"
-          onClick={() => navigate('/interviewer')}
-        >
+        <Button variant="outline" onClick={() => navigate('/interviewer')}>
           取消
         </Button>
       </div>
@@ -224,7 +226,9 @@ export default function ExamFormPage() {
 
         {/* 前端驗證錯誤 */}
         {validationError && (
-          <p className="text-sm font-medium text-destructive">{validationError}</p>
+          <p className="text-sm font-medium text-destructive">
+            {validationError}
+          </p>
         )}
 
         {/* API 送出錯誤 */}
@@ -234,7 +238,10 @@ export default function ExamFormPage() {
 
         {/* 底部按鈕列 */}
         <div className="flex items-center gap-3 pt-2">
-          <Button type="submit" disabled={submitting || candidates.length === 0}>
+          <Button
+            type="submit"
+            disabled={submitting || candidates.length === 0}
+          >
             {submitting ? '建立中…' : '建立考試'}
           </Button>
           <Button

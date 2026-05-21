@@ -27,7 +27,11 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild, variant }) => {
     if (asChild) return <span onClick={onClick}>{children}</span>
-    return <button onClick={onClick} disabled={disabled}>{children}</button>
+    return (
+      <button onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    )
   },
 }))
 
@@ -43,7 +47,9 @@ vi.mock('@/components/ErrorMessage', () => ({
 
 // --- mock ExamStatusBadge ---
 vi.mock('@/components/ExamStatusBadge', () => ({
-  default: ({ status }) => <span data-testid="exam-status-badge">{status}</span>,
+  default: ({ status }) => (
+    <span data-testid="exam-status-badge">{status}</span>
+  ),
 }))
 
 // --- mock JudgeStatusBadge — maps Unsubmitted → 未提交 (same as real component) ---
@@ -56,7 +62,9 @@ vi.mock('@/components/JudgeStatusBadge', () => ({
       Pending: '待評測',
       Unsubmitted: '未提交',
     }
-    return <span data-testid="judge-status-badge">{LABELS[status] ?? status}</span>
+    return (
+      <span data-testid="judge-status-badge">{LABELS[status] ?? status}</span>
+    )
   },
 }))
 
@@ -69,9 +77,12 @@ function renderPage() {
   return render(
     <MemoryRouter initialEntries={[`/interviewer/exams/${EXAM_UUID}/result`]}>
       <Routes>
-        <Route path="/interviewer/exams/:id/result" element={<ExamResultPage />} />
+        <Route
+          path="/interviewer/exams/:id/result"
+          element={<ExamResultPage />}
+        />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 

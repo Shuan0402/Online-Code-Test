@@ -40,7 +40,7 @@ function formatDateTime(isoString) {
  * 點擊「查看詳情」開啟 Dialog 顯示 judge_log 與逐測資的 details。
  */
 export default function ProblemSubmissionsPage() {
-  const { id } = useParams()           // problem id（字串）
+  const { id } = useParams() // problem id（字串）
   const navigate = useNavigate()
 
   // 提交列表狀態
@@ -97,7 +97,11 @@ export default function ProblemSubmissionsPage() {
     <div className="p-6 space-y-4">
       {/* 頁首 */}
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={() => navigate('/questioner/problems')}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate('/questioner/problems')}
+        >
           ← 返回
         </Button>
         <h1 className="text-xl font-semibold">提交紀錄（題目 #{id}）</h1>
@@ -136,7 +140,10 @@ export default function ProblemSubmissionsPage() {
             </thead>
             <tbody className="divide-y">
               {submissions.map((sub) => (
-                <tr key={sub.id} className="hover:bg-muted/20 transition-colors">
+                <tr
+                  key={sub.id}
+                  className="hover:bg-muted/20 transition-colors"
+                >
                   <td className="px-4 py-3">{sub.user_id}</td>
                   <td className="px-4 py-3">
                     <JudgeStatusBadge status={sub.status} />
@@ -145,9 +152,13 @@ export default function ProblemSubmissionsPage() {
                     {sub.score != null ? sub.score : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {sub.execution_time != null ? `${sub.execution_time} ms` : '—'}
+                    {sub.execution_time != null
+                      ? `${sub.execution_time} ms`
+                      : '—'}
                   </td>
-                  <td className="px-4 py-3">{formatDateTime(sub.created_at)}</td>
+                  <td className="px-4 py-3">
+                    {formatDateTime(sub.created_at)}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <Button
                       variant="outline"
@@ -191,19 +202,27 @@ export default function ProblemSubmissionsPage() {
             <div className="space-y-4">
               {/* 評測狀態 */}
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground font-medium">狀態：</span>
+                <span className="text-sm text-muted-foreground font-medium">
+                  狀態：
+                </span>
                 <JudgeStatusBadge status={selectedSubmission.status} />
               </div>
 
               {/* 分數 */}
               <div className="text-sm">
-                <span className="text-muted-foreground font-medium">分數：</span>
-                {selectedSubmission.score != null ? selectedSubmission.score : '—'}
+                <span className="text-muted-foreground font-medium">
+                  分數：
+                </span>
+                {selectedSubmission.score != null
+                  ? selectedSubmission.score
+                  : '—'}
               </div>
 
               {/* judge_log */}
               <div className="space-y-1">
-                <p className="text-sm text-muted-foreground font-medium">評測日誌：</p>
+                <p className="text-sm text-muted-foreground font-medium">
+                  評測日誌：
+                </p>
                 {selectedSubmission.judge_log ? (
                   <pre className="rounded bg-muted p-3 text-xs whitespace-pre-wrap break-words overflow-x-auto">
                     {selectedSubmission.judge_log}
@@ -215,19 +234,32 @@ export default function ProblemSubmissionsPage() {
 
               {/* 測試資料詳情 */}
               <div className="space-y-2">
-                <p className="text-sm text-muted-foreground font-medium">測資詳情：</p>
-                {!selectedSubmission.details || selectedSubmission.details.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">無詳細測試資料</p>
+                <p className="text-sm text-muted-foreground font-medium">
+                  測資詳情：
+                </p>
+                {!selectedSubmission.details ||
+                selectedSubmission.details.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    無詳細測試資料
+                  </p>
                 ) : (
                   <div className="overflow-x-auto rounded border">
                     <table className="w-full text-xs">
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="px-3 py-2 text-left font-medium">#</th>
-                          <th className="px-3 py-2 text-left font-medium">狀態</th>
-                          <th className="px-3 py-2 text-right font-medium">執行時間</th>
-                          <th className="px-3 py-2 text-right font-medium">記憶體</th>
-                          <th className="px-3 py-2 text-right font-medium">分數</th>
+                          <th className="px-3 py-2 text-left font-medium">
+                            狀態
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            執行時間
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            記憶體
+                          </th>
+                          <th className="px-3 py-2 text-right font-medium">
+                            分數
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -238,10 +270,14 @@ export default function ProblemSubmissionsPage() {
                               <JudgeStatusBadge status={detail.status} />
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {detail.execution_time != null ? `${detail.execution_time} ms` : '—'}
+                              {detail.execution_time != null
+                                ? `${detail.execution_time} ms`
+                                : '—'}
                             </td>
                             <td className="px-3 py-2 text-right">
-                              {detail.memory_usage != null ? `${detail.memory_usage} MB` : '—'}
+                              {detail.memory_usage != null
+                                ? `${detail.memory_usage} MB`
+                                : '—'}
                             </td>
                             <td className="px-3 py-2 text-right">
                               {detail.score != null ? detail.score : '—'}

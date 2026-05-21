@@ -23,7 +23,8 @@ vi.mock('@/lib/api', () => ({
 
 // --- mock shadcn Dialog to render inline (avoid Radix portal issues in jsdom) ---
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }) => open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ open, children }) =>
+    open ? <div data-testid="dialog">{children}</div> : null,
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
   DialogTitle: ({ children }) => <div>{children}</div>,
@@ -35,13 +36,19 @@ vi.mock('@/components/ui/dialog', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild, variant, size }) => {
     if (asChild) return <span onClick={onClick}>{children}</span>
-    return <button onClick={onClick} disabled={disabled}>{children}</button>
+    return (
+      <button onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    )
   },
 }))
 
 // --- mock ExamStatusBadge ---
 vi.mock('@/components/ExamStatusBadge', () => ({
-  default: ({ status }) => <span data-testid={`status-badge-${status}`}>{status}</span>,
+  default: ({ status }) => (
+    <span data-testid={`status-badge-${status}`}>{status}</span>
+  ),
 }))
 
 // --- mock LoadingSpinner ---
@@ -71,9 +78,30 @@ const MOCK_SPARSE_EXAMS = [
 
 // Full ExamRead returned by GET /api/v1/exams/{id}
 const MOCK_DETAIL_EXAMS = [
-  { id: 'exam-uuid-1', title: '草稿考試', status: 'Draft', score: null, candidate_id: 'user-uuid-1', exam_problems: [] },
-  { id: 'exam-uuid-2', title: '進行中考試', status: 'Ongoing', score: 88, candidate_id: 'user-uuid-2', exam_problems: [] },
-  { id: 'exam-uuid-3', title: '已結束考試', status: 'Finished', score: 75, candidate_id: 'user-uuid-1', exam_problems: [] },
+  {
+    id: 'exam-uuid-1',
+    title: '草稿考試',
+    status: 'Draft',
+    score: null,
+    candidate_id: 'user-uuid-1',
+    exam_problems: [],
+  },
+  {
+    id: 'exam-uuid-2',
+    title: '進行中考試',
+    status: 'Ongoing',
+    score: 88,
+    candidate_id: 'user-uuid-2',
+    exam_problems: [],
+  },
+  {
+    id: 'exam-uuid-3',
+    title: '已結束考試',
+    status: 'Finished',
+    score: 75,
+    candidate_id: 'user-uuid-1',
+    exam_problems: [],
+  },
 ]
 
 // Users returned by GET /api/v1/users/
@@ -86,7 +114,7 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <AdminExamListPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 

@@ -118,7 +118,10 @@ export default function AdminProblemListPage() {
 
       {/* 難度篩選 */}
       <div className="flex items-center gap-2">
-        <label htmlFor="difficulty-filter" className="text-sm font-medium text-muted-foreground">
+        <label
+          htmlFor="difficulty-filter"
+          className="text-sm font-medium text-muted-foreground"
+        >
           難度篩選：
         </label>
         <select
@@ -164,10 +167,12 @@ export default function AdminProblemListPage() {
                   <td className="px-4 py-3">
                     <span
                       className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        DIFFICULTY_COLORS[problem.difficulty] ?? 'bg-gray-100 text-gray-700'
+                        DIFFICULTY_COLORS[problem.difficulty] ??
+                        'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {DIFFICULTY_LABELS[problem.difficulty] ?? problem.difficulty}
+                      {DIFFICULTY_LABELS[problem.difficulty] ??
+                        problem.difficulty}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -208,7 +213,9 @@ export default function AdminProblemListPage() {
           </DialogHeader>
 
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
 
           <DialogFooter>
@@ -222,7 +229,11 @@ export default function AdminProblemListPage() {
             >
               取消
             </Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
               {deleting ? '刪除中…' : '確認刪除'}
             </Button>
           </DialogFooter>

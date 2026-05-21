@@ -35,7 +35,8 @@ export default function ExamListPage() {
     setLoading(true)
     setError(null)
 
-    api.get('/api/v1/exams')
+    api
+      .get('/api/v1/exams')
       .then((res) => {
         setExams(res.data)
       })
@@ -110,7 +111,9 @@ export default function ExamListPage() {
                 <p className="font-medium text-base truncate">{exam.title}</p>
                 <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-muted-foreground">
                   <ExamStatusBadge status={exam.status} />
-                  <span>時長：{exam.duration_minutes ?? exam.duration ?? '—'} 分鐘</span>
+                  <span>
+                    時長：{exam.duration_minutes ?? exam.duration ?? '—'} 分鐘
+                  </span>
                   {exam.status === 'Finished' && exam.score != null && (
                     <span>得分：{exam.score}</span>
                   )}
@@ -119,10 +122,7 @@ export default function ExamListPage() {
 
               {/* Right: action button */}
               {STARTABLE_STATUSES.includes(exam.status) && (
-                <Button
-                  onClick={() => openDialog(exam)}
-                  className="shrink-0"
-                >
+                <Button onClick={() => openDialog(exam)} className="shrink-0">
                   開始作答
                 </Button>
               )}
@@ -132,7 +132,12 @@ export default function ExamListPage() {
       )}
 
       {/* ── Start-exam confirmation dialog ─────────────────────────────── */}
-      <Dialog open={!!selectedExam} onOpenChange={(open) => { if (!open) closeDialog() }}>
+      <Dialog
+        open={!!selectedExam}
+        onOpenChange={(open) => {
+          if (!open) closeDialog()
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>確認開始考試？</DialogTitle>
@@ -146,17 +151,10 @@ export default function ExamListPage() {
           )}
 
           <DialogFooter className="mt-4 flex gap-2 justify-end">
-            <Button
-              variant="outline"
-              onClick={closeDialog}
-              disabled={starting}
-            >
+            <Button variant="outline" onClick={closeDialog} disabled={starting}>
               取消
             </Button>
-            <Button
-              onClick={handleConfirmStart}
-              disabled={starting}
-            >
+            <Button onClick={handleConfirmStart} disabled={starting}>
               {starting ? '開始中…' : '確認開始'}
             </Button>
           </DialogFooter>

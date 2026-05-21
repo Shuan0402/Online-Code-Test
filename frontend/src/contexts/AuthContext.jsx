@@ -1,10 +1,18 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react'
 import api from '@/lib/api'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem('access_token') || null)
+  const [token, setToken] = useState(
+    () => localStorage.getItem('access_token') || null,
+  )
   const [user, setUser] = useState(() => {
     try {
       const stored = localStorage.getItem('user')
@@ -34,7 +42,9 @@ export function AuthProvider({ children }) {
         const status = err.response?.status
         if (status === 404) {
           // Backend endpoint not yet shipped — use the cached user from localStorage.
-          console.warn('[AuthContext] GET /api/v1/users/me returned 404 (endpoint not yet deployed). Using cached user from localStorage.')
+          console.warn(
+            '[AuthContext] GET /api/v1/users/me returned 404 (endpoint not yet deployed). Using cached user from localStorage.',
+          )
         } else if (status === 401) {
           // Token invalid/expired — clear everything.
           setToken(null)
@@ -42,7 +52,10 @@ export function AuthProvider({ children }) {
           localStorage.removeItem('access_token')
           localStorage.removeItem('user')
         } else {
-          console.error('[AuthContext] Failed to rehydrate session:', err.message)
+          console.error(
+            '[AuthContext] Failed to rehydrate session:',
+            err.message,
+          )
         }
       })
       .finally(() => setLoading(false))
@@ -68,7 +81,9 @@ export function AuthProvider({ children }) {
       const status = err.response?.status
       if (status === 404 && fallbackUser) {
         // /users/me not yet available — use whatever the LoginPage decoded / passed.
-        console.warn('[AuthContext] GET /api/v1/users/me → 404; using fallback user object.')
+        console.warn(
+          '[AuthContext] GET /api/v1/users/me → 404; using fallback user object.',
+        )
         setUser(fallbackUser)
         localStorage.setItem('user', JSON.stringify(fallbackUser))
         return fallbackUser

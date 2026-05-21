@@ -162,9 +162,7 @@ export default function SubmissionDetailPage() {
         <Button variant="outline" size="sm" asChild>
           <Link to={`/interviewer/exams/${examId}`}>← 返回考試詳情</Link>
         </Button>
-        {exam && (
-          <h1 className="text-xl font-semibold">{exam.title}</h1>
-        )}
+        {exam && <h1 className="text-xl font-semibold">{exam.title}</h1>}
         <p className="text-muted-foreground">考生尚未提交此題</p>
       </div>
     )
@@ -197,7 +195,8 @@ export default function SubmissionDetailPage() {
             <span className="font-medium">{problem.title}</span>
             <span
               className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                DIFFICULTY_COLORS[problem.difficulty] ?? 'bg-gray-100 text-gray-700'
+                DIFFICULTY_COLORS[problem.difficulty] ??
+                'bg-gray-100 text-gray-700'
               }`}
             >
               {DIFFICULTY_LABELS[problem.difficulty] ?? problem.difficulty}
@@ -218,7 +217,9 @@ export default function SubmissionDetailPage() {
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div>
               <span className="text-muted-foreground">語言：</span>
-              <span>{LANGUAGE_LABELS[submission.language] ?? submission.language}</span>
+              <span>
+                {LANGUAGE_LABELS[submission.language] ?? submission.language}
+              </span>
             </div>
             <div>
               <span className="text-muted-foreground">狀態：</span>
@@ -246,7 +247,9 @@ export default function SubmissionDetailPage() {
           <h2 className="text-base font-semibold">提交程式碼</h2>
         </div>
         {sourceUnavailable ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">程式碼暫無法顯示</p>
+          <p className="px-4 py-6 text-sm text-muted-foreground">
+            程式碼暫無法顯示
+          </p>
         ) : sourceCode !== null ? (
           <pre className="bg-muted rounded p-4 text-sm overflow-auto whitespace-pre-wrap break-words">
             {sourceCode}
@@ -272,10 +275,14 @@ export default function SubmissionDetailPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium w-20">測資編號</th>
+                  <th className="px-4 py-3 text-left font-medium w-20">
+                    測資編號
+                  </th>
                   <th className="px-4 py-3 text-left font-medium w-28">狀態</th>
                   <th className="px-4 py-3 text-left font-medium w-16">得分</th>
-                  <th className="px-4 py-3 text-left font-medium w-28">執行時間</th>
+                  <th className="px-4 py-3 text-left font-medium w-28">
+                    執行時間
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -284,7 +291,9 @@ export default function SubmissionDetailPage() {
                     key={detail.id}
                     className="border-t hover:bg-muted/30 transition-colors"
                   >
-                    <td className="px-4 py-3 text-muted-foreground">{detail.testcase_id}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {detail.testcase_id}
+                    </td>
                     <td className="px-4 py-3">
                       <JudgeStatusBadge status={detail.status} />
                     </td>

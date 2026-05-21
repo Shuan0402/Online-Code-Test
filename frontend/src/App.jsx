@@ -9,9 +9,32 @@ import NotFoundPage from './pages/NotFoundPage'
 import LoginPage from './pages/LoginPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
 import ExamListPage from './pages/candidate/ExamListPage'
-import { ProblemListPage, ProblemFormPage, ProblemSubmissionsPage } from './pages/questioner'
-import { ExamListPage as InterviewerExamListPage, ExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage, ProfilePage } from './pages/interviewer'
-import { DashboardPage, MemberListPage, MemberCreatePage, MemberDetailPage, AdminExamListPage, AdminExamDetailPage, AdminProblemListPage, AdminProblemDetailPage } from '@/pages/admin'
+import {
+  ProblemListPage,
+  ProblemFormPage,
+  ProblemSubmissionsPage,
+} from './pages/questioner'
+import {
+  ExamListPage as InterviewerExamListPage,
+  ExamFormPage,
+  ExamDetailPage,
+  ExamResultPage,
+  CandidateListPage,
+  CandidateFormPage,
+  CandidateDetailPage,
+  SubmissionDetailPage,
+  ProfilePage,
+} from './pages/interviewer'
+import {
+  DashboardPage,
+  MemberListPage,
+  MemberCreatePage,
+  MemberDetailPage,
+  AdminExamListPage,
+  AdminExamDetailPage,
+  AdminProblemListPage,
+  AdminProblemDetailPage,
+} from '@/pages/admin'
 import TakeExamPage from './pages/candidate/TakeExamPage'
 import ResultPage from './pages/candidate/ResultPage'
 
@@ -57,7 +80,10 @@ export default function App() {
           <Route path="problems/new" element={<ProblemFormPage />} />
           <Route path="problems/:id/edit" element={<ProblemFormPage />} />
           {/* P3 — submissions view for a specific problem */}
-          <Route path="problems/:id/submissions" element={<ProblemSubmissionsPage />} />
+          <Route
+            path="problems/:id/submissions"
+            element={<ProblemSubmissionsPage />}
+          />
         </Route>
 
         {/* Interviewer panel */}
@@ -73,7 +99,10 @@ export default function App() {
           <Route path="exams/new" element={<ExamFormPage />} />
           <Route path="exams/:id" element={<ExamDetailPage />} />
           <Route path="exams/:id/result" element={<ExamResultPage />} />
-          <Route path="exams/:examId/problems/:problemId" element={<SubmissionDetailPage />} />
+          <Route
+            path="exams/:examId/problems/:problemId"
+            element={<SubmissionDetailPage />}
+          />
           <Route path="candidates" element={<CandidateListPage />} />
           <Route path="candidates/new" element={<CandidateFormPage />} />
           <Route path="candidates/:id" element={<CandidateDetailPage />} />

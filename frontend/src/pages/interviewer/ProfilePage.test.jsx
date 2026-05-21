@@ -50,7 +50,7 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <ProfilePage />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -100,7 +100,9 @@ describe('ProfilePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '儲存變更' }))
 
     await waitFor(() => {
-      expect(api.patch).toHaveBeenCalledWith('/api/v1/users/me', { full_name: '新姓名' })
+      expect(api.patch).toHaveBeenCalledWith('/api/v1/users/me', {
+        full_name: '新姓名',
+      })
     })
 
     // PATCH body must NOT include username or role
@@ -124,9 +126,15 @@ describe('ProfilePage', () => {
       expect(screen.getByText('interviewer01')).toBeInTheDocument()
     })
 
-    fireEvent.change(screen.getByLabelText('目前密碼'), { target: { value: 'oldpass' } })
-    fireEvent.change(screen.getByLabelText('新密碼'), { target: { value: 'short' } })
-    fireEvent.change(screen.getByLabelText('確認新密碼'), { target: { value: 'short' } })
+    fireEvent.change(screen.getByLabelText('目前密碼'), {
+      target: { value: 'oldpass' },
+    })
+    fireEvent.change(screen.getByLabelText('新密碼'), {
+      target: { value: 'short' },
+    })
+    fireEvent.change(screen.getByLabelText('確認新密碼'), {
+      target: { value: 'short' },
+    })
 
     fireEvent.click(screen.getByRole('button', { name: '更新密碼' }))
 
@@ -146,9 +154,15 @@ describe('ProfilePage', () => {
       expect(screen.getByText('interviewer01')).toBeInTheDocument()
     })
 
-    fireEvent.change(screen.getByLabelText('目前密碼'), { target: { value: 'oldpassword' } })
-    fireEvent.change(screen.getByLabelText('新密碼'), { target: { value: 'newpassword1' } })
-    fireEvent.change(screen.getByLabelText('確認新密碼'), { target: { value: 'newpassword2' } })
+    fireEvent.change(screen.getByLabelText('目前密碼'), {
+      target: { value: 'oldpassword' },
+    })
+    fireEvent.change(screen.getByLabelText('新密碼'), {
+      target: { value: 'newpassword1' },
+    })
+    fireEvent.change(screen.getByLabelText('確認新密碼'), {
+      target: { value: 'newpassword2' },
+    })
 
     fireEvent.click(screen.getByRole('button', { name: '更新密碼' }))
 

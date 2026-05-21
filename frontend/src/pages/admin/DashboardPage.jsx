@@ -7,7 +7,16 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 // ExamStatus enum values (capitalized)
 const EXAM_STATUSES = ['Draft', 'Published', 'Ongoing', 'Finished', 'Archived']
 // JudgeStatus enum values (capitalized)
-const JUDGE_STATUSES = ['Pending', 'Judging', 'AC', 'WA', 'TLE', 'MLE', 'RE', 'CE']
+const JUDGE_STATUSES = [
+  'Pending',
+  'Judging',
+  'AC',
+  'WA',
+  'TLE',
+  'MLE',
+  'RE',
+  'CE',
+]
 // UserRole enum values (capitalized)
 const USER_ROLES = ['Admin', 'Candidate', 'Interviewer', 'Questioner']
 
@@ -80,7 +89,9 @@ export default function DashboardPage() {
             {EXAM_STATUSES.map((status) => (
               <div key={status} className="rounded-md border p-3 text-center">
                 <p className="text-sm text-muted-foreground">{status}</p>
-                <p className="text-xl font-semibold">{countBy(exams, 'status', status)}</p>
+                <p className="text-xl font-semibold">
+                  {countBy(exams, 'status', status)}
+                </p>
               </div>
             ))}
           </div>
@@ -93,12 +104,16 @@ export default function DashboardPage() {
           <CardTitle>提交統計</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold mb-4">提交總數：{submissions.length}</p>
+          <p className="text-3xl font-bold mb-4">
+            提交總數：{submissions.length}
+          </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {JUDGE_STATUSES.map((status) => (
               <div key={status} className="rounded-md border p-3 text-center">
                 <p className="text-sm text-muted-foreground">{status}</p>
-                <p className="text-xl font-semibold">{countBy(submissions, 'status', status)}</p>
+                <p className="text-xl font-semibold">
+                  {countBy(submissions, 'status', status)}
+                </p>
               </div>
             ))}
           </div>
@@ -116,7 +131,9 @@ export default function DashboardPage() {
             {USER_ROLES.map((role) => (
               <div key={role} className="rounded-md border p-3 text-center">
                 <p className="text-sm text-muted-foreground">{role}</p>
-                <p className="text-xl font-semibold">{countBy(users, 'role', role)}</p>
+                <p className="text-xl font-semibold">
+                  {countBy(users, 'role', role)}
+                </p>
               </div>
             ))}
           </div>

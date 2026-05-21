@@ -63,10 +63,15 @@ const MOCK_USERS = [
   { id: 'u4', username: 'inter1', role: 'Interviewer' },
 ]
 
-function setupApiMocks(exams = MOCK_EXAMS, submissions = MOCK_SUBMISSIONS, users = MOCK_USERS) {
+function setupApiMocks(
+  exams = MOCK_EXAMS,
+  submissions = MOCK_SUBMISSIONS,
+  users = MOCK_USERS,
+) {
   api.get.mockImplementation((url) => {
     if (url === '/api/v1/exams/') return Promise.resolve({ data: exams })
-    if (url === '/api/v1/submissions/') return Promise.resolve({ data: submissions })
+    if (url === '/api/v1/submissions/')
+      return Promise.resolve({ data: submissions })
     if (url === '/api/v1/users/') return Promise.resolve({ data: users })
     return Promise.reject(new Error(`unexpected url: ${url}`))
   })
@@ -76,7 +81,7 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <DashboardPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -179,6 +184,8 @@ describe('DashboardPage', () => {
       expect(screen.getByText('考試總數：3')).toBeInTheDocument()
     })
 
-    expect(screen.queryByRole('link', { name: /Grafana/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /Grafana/i }),
+    ).not.toBeInTheDocument()
   })
 })

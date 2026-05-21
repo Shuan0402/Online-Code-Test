@@ -1,16 +1,22 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 import Editor from '@monaco-editor/react'
 import { Button } from '@/components/ui/button'
 
 const LANGUAGE_OPTIONS = [
   { value: 'python', label: 'Python' },
-  { value: 'cpp',    label: 'C++' },
+  { value: 'cpp', label: 'C++' },
 ]
 
 // Monaco 的 language id 對應（cpp 要對應到 Monaco 的 'cpp'）
 const MONACO_LANG_MAP = {
   python: 'python',
-  cpp:    'cpp',
+  cpp: 'cpp',
 }
 
 const DEFAULT_CODE = {
@@ -28,7 +34,10 @@ const DEFAULT_CODE = {
  */
 // forwardRef so TakeExamPage can call editorRef.current.flushDraft() synchronously
 // before changing the active problem index, preventing draft loss on rapid tab switch.
-const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmit, submitting }, ref) {
+const EditorPanel = forwardRef(function EditorPanel(
+  { examId, problemId, onSubmit, submitting },
+  ref,
+) {
   const draftKey = `draft:exam:${examId}:problem:${problemId}`
 
   // 從 localStorage 取草稿，沒有就用預設程式碼
@@ -61,7 +70,7 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
     const loaded = saved ?? DEFAULT_CODE[language]
     setCode(loaded)
     codeRef.current = loaded
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftKey])
 
   const handleCodeChange = (value) => {
@@ -92,7 +101,10 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
     <div className="flex flex-col h-full">
       {/* 工具列 */}
       <div className="flex items-center gap-3 px-3 py-2 border-b bg-muted/20 shrink-0">
-        <label className="text-sm font-medium text-muted-foreground" htmlFor="lang-select">
+        <label
+          className="text-sm font-medium text-muted-foreground"
+          htmlFor="lang-select"
+        >
           語言：
         </label>
         <select
@@ -103,17 +115,15 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
           disabled={submitting}
         >
           {LANGUAGE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
           ))}
         </select>
 
         <div className="flex-1" />
 
-        <Button
-          size="sm"
-          onClick={handleSubmit}
-          disabled={submitting}
-        >
+        <Button size="sm" onClick={handleSubmit} disabled={submitting}>
           {submitting ? '提交中…' : '提交本題'}
         </Button>
       </div>

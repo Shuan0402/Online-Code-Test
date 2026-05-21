@@ -17,26 +17,26 @@ import {
 import api from '@/lib/api'
 
 const STATUS_LABEL = {
-  Pending:     '評判中',
-  Judging:     '評判中',
-  AC:          '通過',
-  WA:          '答案錯誤',
-  TLE:         '超時',
-  MLE:         '超出記憶體',
-  RE:          '執行錯誤',
-  CE:          '編譯錯誤',
+  Pending: '評判中',
+  Judging: '評判中',
+  AC: '通過',
+  WA: '答案錯誤',
+  TLE: '超時',
+  MLE: '超出記憶體',
+  RE: '執行錯誤',
+  CE: '編譯錯誤',
   Unsubmitted: '未提交',
 }
 
 const STATUS_COLOR = {
-  AC:          'text-green-600',
-  WA:          'text-red-600',
-  TLE:         'text-orange-500',
-  MLE:         'text-orange-500',
-  RE:          'text-red-500',
-  CE:          'text-yellow-600',
-  Pending:     'text-blue-500',
-  Judging:     'text-blue-500',
+  AC: 'text-green-600',
+  WA: 'text-red-600',
+  TLE: 'text-orange-500',
+  MLE: 'text-orange-500',
+  RE: 'text-red-500',
+  CE: 'text-yellow-600',
+  Pending: 'text-blue-500',
+  Judging: 'text-blue-500',
   Unsubmitted: 'text-muted-foreground',
 }
 
@@ -51,7 +51,15 @@ const STATUS_COLOR = {
  * @param {function} onClose       — 關閉 modal（非自動模式時可取消）
  * @param {function} onDone        — 交卷完成後呼叫（通常是 navigate 到結果頁）
  */
-export default function FinalizeModal({ open, isTimeout, problems, statuses, examId, onClose, onDone }) {
+export default function FinalizeModal({
+  open,
+  isTimeout,
+  problems,
+  statuses,
+  examId,
+  onClose,
+  onDone,
+}) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
@@ -74,7 +82,12 @@ export default function FinalizeModal({ open, isTimeout, problems, statuses, exa
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v && !isTimeout && !submitting) onClose() }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && !isTimeout && !submitting) onClose()
+      }}
+    >
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
@@ -94,7 +107,10 @@ export default function FinalizeModal({ open, isTimeout, problems, statuses, exa
             const label = STATUS_LABEL[st] ?? st
             const color = STATUS_COLOR[st] ?? ''
             return (
-              <div key={p.problem_id} className="flex justify-between items-center text-sm border-b pb-1">
+              <div
+                key={p.problem_id}
+                className="flex justify-between items-center text-sm border-b pb-1"
+              >
                 <span className="text-muted-foreground">
                   題 {p.sequence}．{p.title}
                 </span>
@@ -104,9 +120,7 @@ export default function FinalizeModal({ open, isTimeout, problems, statuses, exa
           })}
         </div>
 
-        {error && (
-          <p className="text-sm text-red-600 mt-1">{error}</p>
-        )}
+        {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
 
         <DialogFooter className="gap-2">
           {/* 非超時模式下可取消 */}

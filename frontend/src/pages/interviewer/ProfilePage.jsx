@@ -52,13 +52,17 @@ export default function ProfilePage() {
     setProfileSaving(true)
     try {
       // Only send full_name — UserUpdate has no username field; do NOT send role.
-      const res = await api.patch('/api/v1/users/me', { full_name: fullName || null })
+      const res = await api.patch('/api/v1/users/me', {
+        full_name: fullName || null,
+      })
       setUser(res.data)
       setFullName(res.data.full_name ?? '')
       setProfileSuccess('個人資料已更新')
     } catch (err) {
       const detail = err.response?.data?.detail
-      setProfileError(typeof detail === 'string' ? detail : '更新失敗，請重試。')
+      setProfileError(
+        typeof detail === 'string' ? detail : '更新失敗，請重試。',
+      )
     } finally {
       setProfileSaving(false)
     }
@@ -90,7 +94,11 @@ export default function ProfilePage() {
       setPwSuccess('密碼已更新')
     } catch (err) {
       const detail = err.response?.data?.detail
-      setPwError(typeof detail === 'string' ? detail : '修改密碼失敗，請確認目前密碼是否正確。')
+      setPwError(
+        typeof detail === 'string'
+          ? detail
+          : '修改密碼失敗，請確認目前密碼是否正確。',
+      )
     } finally {
       setPwSaving(false)
     }
@@ -109,11 +117,17 @@ export default function ProfilePage() {
 
         {/* Read-only fields */}
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">帳號</label>
-          <p className="text-sm border rounded-md px-3 py-2 bg-muted">{user.username}</p>
+          <label className="text-sm font-medium text-muted-foreground">
+            帳號
+          </label>
+          <p className="text-sm border rounded-md px-3 py-2 bg-muted">
+            {user.username}
+          </p>
         </div>
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">角色</label>
+          <label className="text-sm font-medium text-muted-foreground">
+            角色
+          </label>
           <p className="text-sm border rounded-md px-3 py-2 bg-muted">
             {ROLE_LABEL[user.role] ?? user.role}
           </p>
@@ -122,7 +136,9 @@ export default function ProfilePage() {
         {/* Editable field */}
         <form onSubmit={handleProfileSave} className="space-y-4">
           <div className="space-y-1">
-            <label htmlFor="fullName" className="text-sm font-medium">姓名</label>
+            <label htmlFor="fullName" className="text-sm font-medium">
+              姓名
+            </label>
             <input
               id="fullName"
               type="text"
@@ -157,7 +173,9 @@ export default function ProfilePage() {
 
         <form onSubmit={handlePasswordChange} className="space-y-4">
           <div className="space-y-1">
-            <label htmlFor="oldPassword" className="text-sm font-medium">目前密碼</label>
+            <label htmlFor="oldPassword" className="text-sm font-medium">
+              目前密碼
+            </label>
             <input
               id="oldPassword"
               type="password"
@@ -169,7 +187,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="newPassword" className="text-sm font-medium">新密碼</label>
+            <label htmlFor="newPassword" className="text-sm font-medium">
+              新密碼
+            </label>
             <input
               id="newPassword"
               type="password"
@@ -181,7 +201,9 @@ export default function ProfilePage() {
           </div>
 
           <div className="space-y-1">
-            <label htmlFor="confirmPassword" className="text-sm font-medium">確認新密碼</label>
+            <label htmlFor="confirmPassword" className="text-sm font-medium">
+              確認新密碼
+            </label>
             <input
               id="confirmPassword"
               type="password"
@@ -192,12 +214,8 @@ export default function ProfilePage() {
             />
           </div>
 
-          {pwError && (
-            <p className="text-sm text-destructive">{pwError}</p>
-          )}
-          {pwSuccess && (
-            <p className="text-sm text-green-600">{pwSuccess}</p>
-          )}
+          {pwError && <p className="text-sm text-destructive">{pwError}</p>}
+          {pwSuccess && <p className="text-sm text-green-600">{pwSuccess}</p>}
 
           <button
             type="submit"

@@ -8,7 +8,13 @@
  * (d) 必填欄位驗證：空 title 阻擋 submit，顯示中文錯誤，POST spy 不被呼叫
  */
 
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -74,7 +80,7 @@ function renderCreateMode() {
       <Routes>
         <Route path="/questioner/problems/new" element={<ProblemFormPage />} />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -83,9 +89,12 @@ function renderEditMode() {
   return render(
     <MemoryRouter initialEntries={['/questioner/problems/42/edit']}>
       <Routes>
-        <Route path="/questioner/problems/:id/edit" element={<ProblemFormPage />} />
+        <Route
+          path="/questioner/problems/:id/edit"
+          element={<ProblemFormPage />}
+        />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -124,7 +133,13 @@ describe('ProblemFormPage', () => {
         time_limit: 2000,
         memory_limit: 512,
         test_cases: [
-          { id: 10, input_data: '1 2', expected_output: '3', score_weight: 20, is_sample: true },
+          {
+            id: 10,
+            input_data: '1 2',
+            expected_output: '3',
+            score_weight: 20,
+            is_sample: true,
+          },
         ],
       },
     })

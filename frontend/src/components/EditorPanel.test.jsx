@@ -63,7 +63,7 @@ describe('EditorPanel', () => {
         problemId={PROBLEM_ID}
         onSubmit={vi.fn()}
         submitting={false}
-      />
+      />,
     )
 
     const textarea = screen.getByTestId('monaco-stub')
@@ -81,7 +81,7 @@ describe('EditorPanel', () => {
         problemId={PROBLEM_ID}
         onSubmit={vi.fn()}
         submitting={false}
-      />
+      />,
     )
 
     // Type some code via the textarea stub
@@ -108,7 +108,7 @@ describe('EditorPanel', () => {
         problemId={PROBLEM_ID}
         onSubmit={vi.fn()}
         submitting={false}
-      />
+      />,
     )
 
     const textarea = screen.getByTestId('monaco-stub')
@@ -118,11 +118,15 @@ describe('EditorPanel', () => {
     expect(localStorage.getItem(draftKey)).toBeNull()
 
     // Advance 999ms — still not yet
-    act(() => { vi.advanceTimersByTime(999) })
+    act(() => {
+      vi.advanceTimersByTime(999)
+    })
     expect(localStorage.getItem(draftKey)).toBeNull()
 
     // Advance 1ms more (total 1000ms) — fires
-    act(() => { vi.advanceTimersByTime(1) })
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
     expect(localStorage.getItem(draftKey)).toBe('debounced code')
   })
 
@@ -138,7 +142,7 @@ describe('EditorPanel', () => {
         problemId={1}
         onSubmit={vi.fn()}
         submitting={false}
-      />
+      />,
     )
 
     let textarea = screen.getByTestId('monaco-stub')
@@ -151,7 +155,7 @@ describe('EditorPanel', () => {
         problemId={2}
         onSubmit={vi.fn()}
         submitting={false}
-      />
+      />,
     )
 
     textarea = screen.getByTestId('monaco-stub')
@@ -169,14 +173,16 @@ describe('EditorPanel', () => {
         problemId={PROBLEM_ID}
         onSubmit={vi.fn()}
         submitting={false}
-      />
+      />,
     )
 
     const textarea = screen.getByTestId('monaco-stub')
     fireEvent.change(textarea, { target: { value: 'version 1' } })
 
     // Flush immediately
-    act(() => { ref.current.flushDraft() })
+    act(() => {
+      ref.current.flushDraft()
+    })
     expect(localStorage.getItem(draftKey)).toBe('version 1')
 
     // Now advance well past 1s — no second write should happen (debounce was cancelled).
@@ -184,7 +190,9 @@ describe('EditorPanel', () => {
     // the global localStorage with a plain object via vi.stubGlobal — that object is NOT
     // a native Storage instance, so Storage.prototype.setItem is never invoked.
     const setItemSpy = vi.spyOn(localStorage, 'setItem')
-    act(() => { vi.advanceTimersByTime(2000) })
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
     // setItem should not have been called again after the flush
     expect(setItemSpy).not.toHaveBeenCalled()
     setItemSpy.mockRestore()

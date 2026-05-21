@@ -23,7 +23,8 @@ vi.mock('@/lib/api', () => ({
 
 // --- mock shadcn Dialog to render inline (avoid Radix portal issues in jsdom) ---
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }) => open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ open, children }) =>
+    open ? <div data-testid="dialog">{children}</div> : null,
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
   DialogTitle: ({ children }) => <div>{children}</div>,
@@ -35,7 +36,11 @@ vi.mock('@/components/ui/dialog', () => ({
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild }) => {
     if (asChild) return <span onClick={onClick}>{children}</span>
-    return <button onClick={onClick} disabled={disabled}>{children}</button>
+    return (
+      <button onClick={onClick} disabled={disabled}>
+        {children}
+      </button>
+    )
   },
 }))
 
@@ -68,7 +73,7 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <AdminProblemListPage />
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 

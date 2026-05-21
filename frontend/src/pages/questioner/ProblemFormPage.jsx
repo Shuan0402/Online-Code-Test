@@ -32,7 +32,7 @@ function newTestCaseRow() {
 }
 
 export default function ProblemFormPage() {
-  const { id } = useParams()          // edit 模式時有值；create 模式時 undefined
+  const { id } = useParams() // edit 模式時有值；create 模式時 undefined
   const isEditMode = !!id
   const navigate = useNavigate()
 
@@ -40,7 +40,7 @@ export default function ProblemFormPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [difficulty, setDifficulty] = useState('Easy')
-  const [timeLimit, setTimeLimit] = useState(1000)   // ms
+  const [timeLimit, setTimeLimit] = useState(1000) // ms
   const [memoryLimit, setMemoryLimit] = useState(256) // MB
 
   // --- 測資列狀態 ---
@@ -82,8 +82,8 @@ export default function ProblemFormPage() {
         // 每列保留 id（用於 PATCH 語義），其餘欄位直接帶入
         // 若後端回傳 test_cases: []，保持空陣列 — 讓「至少需要一筆測試資料」驗證觸發
         const rows = (data.test_cases ?? []).map((tc) => ({
-          id: tc.id,                          // 保留 id → backend 會視為「更新」
-          _clientKey: ++_clientKeyCounter,    // 穩定 React key
+          id: tc.id, // 保留 id → backend 會視為「更新」
+          _clientKey: ++_clientKeyCounter, // 穩定 React key
           input_data: tc.input_data ?? '',
           expected_output: tc.expected_output ?? '',
           score_weight: tc.score_weight ?? 10,
@@ -125,7 +125,7 @@ export default function ProblemFormPage() {
   // 更新單一測資列的某個欄位
   const updateTestCase = (index, field, value) => {
     setTestCases((prev) =>
-      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
     )
   }
 
@@ -177,7 +177,9 @@ export default function ProblemFormPage() {
       description,
       difficulty,
       time_limit: Number.isFinite(parsedTimeLimit) ? parsedTimeLimit : 1000,
-      memory_limit: Number.isFinite(parsedMemoryLimit) ? parsedMemoryLimit : 256,
+      memory_limit: Number.isFinite(parsedMemoryLimit)
+        ? parsedMemoryLimit
+        : 256,
       test_cases: testCasesPayload,
     }
 
@@ -212,7 +214,10 @@ export default function ProblemFormPage() {
       <div className="p-6">
         <ErrorMessage message={loadError} onRetry={fetchProblem} />
         <div className="mt-4">
-          <Button variant="outline" onClick={() => navigate('/questioner/problems')}>
+          <Button
+            variant="outline"
+            onClick={() => navigate('/questioner/problems')}
+          >
             返回列表
           </Button>
         </div>
@@ -310,13 +315,20 @@ export default function ProblemFormPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-medium">測試資料</h2>
-            <Button type="button" variant="outline" size="sm" onClick={addTestCase}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addTestCase}
+            >
               新增一筆測資
             </Button>
           </div>
 
           {testCases.length === 0 && (
-            <p className="text-sm text-muted-foreground">尚未新增任何測試資料</p>
+            <p className="text-sm text-muted-foreground">
+              尚未新增任何測試資料
+            </p>
           )}
 
           {testCases.map((tc, index) => (
@@ -351,7 +363,9 @@ export default function ProblemFormPage() {
                 <textarea
                   id={`input-${index}`}
                   value={tc.input_data}
-                  onChange={(e) => updateTestCase(index, 'input_data', e.target.value)}
+                  onChange={(e) =>
+                    updateTestCase(index, 'input_data', e.target.value)
+                  }
                   placeholder="測資輸入（stdin）"
                   rows={3}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
@@ -364,7 +378,9 @@ export default function ProblemFormPage() {
                 <textarea
                   id={`output-${index}`}
                   value={tc.expected_output}
-                  onChange={(e) => updateTestCase(index, 'expected_output', e.target.value)}
+                  onChange={(e) =>
+                    updateTestCase(index, 'expected_output', e.target.value)
+                  }
                   placeholder="預期輸出（stdout）"
                   rows={3}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
@@ -406,7 +422,9 @@ export default function ProblemFormPage() {
 
         {/* 前端驗證錯誤 */}
         {validationError && (
-          <p className="text-sm font-medium text-destructive">{validationError}</p>
+          <p className="text-sm font-medium text-destructive">
+            {validationError}
+          </p>
         )}
 
         {/* API 送出錯誤 */}

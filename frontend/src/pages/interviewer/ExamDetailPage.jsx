@@ -121,7 +121,9 @@ export default function ExamDetailPage() {
     const body = {
       title: editTitle.trim() || exam.title,
       duration_minutes:
-        Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 120,
+        Number.isFinite(parsedDuration) && parsedDuration > 0
+          ? parsedDuration
+          : 120,
     }
     try {
       const res = await api.patch(`/api/v1/exams/${id}`, body)
@@ -272,7 +274,8 @@ export default function ExamDetailPage() {
         <div>
           <span className="font-medium text-muted-foreground">難度配額：</span>
           <span>
-            簡單 {exam.easy_count} ／ 中等 {exam.medium_count} ／ 困難 {exam.hard_count}
+            簡單 {exam.easy_count} ／ 中等 {exam.medium_count} ／ 困難{' '}
+            {exam.hard_count}
           </span>
         </div>
       </div>
@@ -339,11 +342,15 @@ export default function ExamDetailPage() {
 
         {/* 自動生成錯誤 */}
         {generateError && (
-          <p className="px-4 py-2 text-sm font-medium text-destructive">{generateError}</p>
+          <p className="px-4 py-2 text-sm font-medium text-destructive">
+            {generateError}
+          </p>
         )}
 
         {exam.exam_problems.length === 0 ? (
-          <p className="text-center text-muted-foreground py-10 text-sm">尚未加入任何題目</p>
+          <p className="text-center text-muted-foreground py-10 text-sm">
+            尚未加入任何題目
+          </p>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-muted-foreground">
@@ -364,22 +371,28 @@ export default function ExamDetailPage() {
                   key={problem.problem_id}
                   className="border-t hover:bg-muted/30 transition-colors"
                 >
-                  <td className="px-4 py-3 text-muted-foreground">{problem.sequence}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {problem.sequence}
+                  </td>
                   <td className="px-4 py-3 font-medium">{problem.title}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        DIFFICULTY_COLORS[problem.difficulty] ?? 'bg-gray-100 text-gray-700'
+                        DIFFICULTY_COLORS[problem.difficulty] ??
+                        'bg-gray-100 text-gray-700'
                       }`}
                     >
-                      {DIFFICULTY_LABELS[problem.difficulty] ?? problem.difficulty}
+                      {DIFFICULTY_LABELS[problem.difficulty] ??
+                        problem.difficulty}
                     </span>
                   </td>
                   <td className="px-4 py-3">{problem.points}</td>
                   {!isDraft && (
                     <td className="px-4 py-3">
                       <Button variant="outline" size="sm" asChild>
-                        <Link to={`/interviewer/exams/${id}/problems/${problem.problem_id}`}>
+                        <Link
+                          to={`/interviewer/exams/${id}/problems/${problem.problem_id}`}
+                        >
                           查看提交
                         </Link>
                       </Button>
@@ -445,7 +458,9 @@ export default function ExamDetailPage() {
             <p className="text-sm font-medium text-destructive">{bankError}</p>
           ) : availableProblems.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              {problemBank.length === 0 ? '題庫中尚無題目' : '所有題目已加入考試'}
+              {problemBank.length === 0
+                ? '題庫中尚無題目'
+                : '所有題目已加入考試'}
             </p>
           ) : (
             <table className="w-full text-sm">
@@ -458,12 +473,16 @@ export default function ExamDetailPage() {
               </thead>
               <tbody>
                 {availableProblems.map((p) => (
-                  <tr key={p.id} className="border-t hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={p.id}
+                    className="border-t hover:bg-muted/30 transition-colors"
+                  >
                     <td className="px-3 py-2 font-medium">{p.title}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          DIFFICULTY_COLORS[p.difficulty] ?? 'bg-gray-100 text-gray-700'
+                          DIFFICULTY_COLORS[p.difficulty] ??
+                          'bg-gray-100 text-gray-700'
                         }`}
                       >
                         {DIFFICULTY_LABELS[p.difficulty] ?? p.difficulty}
@@ -487,7 +506,9 @@ export default function ExamDetailPage() {
 
           {/* 加入失敗的 inline 錯誤 */}
           {addError && (
-            <p className="text-sm font-medium text-destructive mt-2">{addError}</p>
+            <p className="text-sm font-medium text-destructive mt-2">
+              {addError}
+            </p>
           )}
 
           <DialogFooter>
@@ -522,7 +543,9 @@ export default function ExamDetailPage() {
             </DialogDescription>
           </DialogHeader>
           {deleteError && (
-            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+            <p className="text-sm font-medium text-destructive">
+              {deleteError}
+            </p>
           )}
           <DialogFooter>
             <Button

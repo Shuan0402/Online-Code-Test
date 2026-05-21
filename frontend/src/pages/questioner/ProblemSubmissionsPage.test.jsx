@@ -21,7 +21,8 @@ vi.mock('@/lib/api', () => ({
 
 // --- mock shadcn Dialog to render inline (avoid Radix portal issues in jsdom) ---
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }) => open ? <div data-testid="dialog">{children}</div> : null,
+  Dialog: ({ open, children }) =>
+    open ? <div data-testid="dialog">{children}</div> : null,
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
   DialogTitle: ({ children }) => <div>{children}</div>,
@@ -96,7 +97,7 @@ function renderPage() {
           element={<ProblemSubmissionsPage />}
         />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
   )
 }
 
@@ -139,7 +140,13 @@ describe('ProblemSubmissionsPage', () => {
         ...MOCK_SUBMISSIONS[0],
         judge_log: '評測日誌內容',
         details: [
-          { id: 1, status: 'AC', execution_time: 10, memory_usage: 8, score: 10 },
+          {
+            id: 1,
+            status: 'AC',
+            execution_time: 10,
+            memory_usage: 8,
+            score: 10,
+          },
         ],
       },
     })
