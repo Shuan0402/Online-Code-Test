@@ -3,3 +3,10 @@
 # vim swap files
 *.swp
 *.swo
+
+# local-only — do not push
+/CLAUDE.md
+
+# frontend build output & dependencies
+frontend/node_modules/
+frontend/dist/
