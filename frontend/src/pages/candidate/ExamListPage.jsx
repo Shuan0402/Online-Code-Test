@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '@/lib/api'
 import ExamStatusBadge from '@/components/ExamStatusBadge'
+import LoadingSpinner from '@/components/LoadingSpinner'
+import ErrorMessage from '@/components/ErrorMessage'
 import {
   Dialog,
   DialogContent,
@@ -28,26 +30,27 @@ export default function ExamListPage() {
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState(null)
 
-  // ── Fetch exam list on mount ──────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false
+  // ── Fetch exam list (stable ref so it can be passed to ErrorMessage.onRetry) ─
+  const fetchExams = useCallback(() => {
+    setLoading(true)
+    setError(null)
 
-    async function fetchExams() {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await api.get('/api/v1/exams')
-        if (!cancelled) setExams(res.data)
-      } catch (err) {
-        if (!cancelled) setError('無法載入考試列表，請稍後再試。')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    fetchExams()
-    return () => { cancelled = true }
+    api.get('/api/v1/exams')
+      .then((res) => {
+        setExams(res.data)
+      })
+      .catch(() => {
+        setError('無法載入考試列表，請稍後再試。')
+      })
+      .finally(() => {
+        setLoading(false)
+      })
   }, [])
+
+  // ── Fetch on mount ────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchExams()
+  }, [fetchExams])
 
   // ── Open / close confirmation dialog ────────────────────────────────────
   function openDialog(exam) {
@@ -82,11 +85,13 @@ export default function ExamListPage() {
       <h1 className="text-2xl font-semibold mb-6">我的考試</h1>
 
       {loading && (
-        <p className="text-muted-foreground text-center py-12">載入中…</p>
+        <div className="flex justify-center py-16">
+          <LoadingSpinner />
+        </div>
       )}
 
       {!loading && error && (
-        <p className="text-red-500 text-center py-12">{error}</p>
+        <ErrorMessage message={error} onRetry={fetchExams} />
       )}
 
       {!loading && !error && exams.length === 0 && (

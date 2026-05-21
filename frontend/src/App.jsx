@@ -13,15 +13,7 @@ import QuestionerStubPage from './pages/stubs/QuestionerStubPage'
 import InterviewerStubPage from './pages/stubs/InterviewerStubPage'
 import AdminStubPage from './pages/stubs/AdminStubPage'
 import TakeExamPage from './pages/candidate/TakeExamPage'
-
-// Temporary stub for P5 result page (implemented in P5).
-function CandidateStub() {
-  return (
-    <div className="p-8 text-muted-foreground text-center text-lg">
-      功能開發中
-    </div>
-  )
-}
+import ResultPage from './pages/candidate/ResultPage'
 
 export default function App() {
   return (
@@ -46,7 +38,7 @@ export default function App() {
           <Route index element={<Navigate to="/candidate/exams" replace />} />
           <Route path="exams" element={<ExamListPage />} />
           <Route path="exams/:id/take" element={<TakeExamPage />} />
-          <Route path="exams/:id/result" element={<CandidateStub />} />
+          <Route path="exams/:id/result" element={<ResultPage />} />
         </Route>
 
         {/* Questioner panel */}

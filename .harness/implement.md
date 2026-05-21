@@ -804,3 +804,138 @@ The spy now watches `localStorage.setItem` — the `vi.fn()` installed by `creat
 ### Context pressure note (before P5)
 
 Phase 2.5 check fired before P5: 3+ phases done this loop (P3/P4/P4.5 incl. 2 fix rounds), context heavy. Supervisor proposed handoff; user chose to continue and finish P5 + close the loop in the same session. Recorded per harness rule so a future session can see the check was run.
+
+---
+
+## P5 — Candidate panel: Result page + polish  (2026-05-21T10:05:00Z)
+
+### Files created/modified
+
+| Path | Role |
+|------|------|
+| `frontend/src/components/LoadingSpinner.jsx` | Created — simple Tailwind spinner; size prop: sm/md/lg; `role="status"` for a11y |
+| `frontend/src/components/ErrorMessage.jsx` | Created — reusable error card; red-bordered with message + optional "重試" `<Button>` via `onRetry` callback |
+| `frontend/src/components/JudgeStatusBadge.jsx` | Created — coloured chip for JudgeStatus + "Unsubmitted"; mirrors STATUS_LABEL/STATUS_CLASS from TakeExamPage but as a standalone component; does NOT reuse ExamStatusBadge |
+| `frontend/src/pages/candidate/ResultPage.jsx` | Created — route `/candidate/exams/:id/result`; fetches `GET /api/v1/exams/{id}/result`; renders title, total score, per-problem table (題號/題目/狀態/得分); LoadingSpinner while loading, ErrorMessage+retry on error; "返回考試列表" button |
+| `frontend/src/App.jsx` | Modified — replaced `CandidateStub` function + its import with real `ResultPage` import; wired `/candidate/exams/:id/result` route |
+| `frontend/src/pages/candidate/ExamListPage.jsx` | Modified — added `useCallback` import; converted `fetchExams` to `useCallback` for stable ref; replaced plain "載入中…" `<p>` with `<LoadingSpinner />`; replaced plain error `<p>` with `<ErrorMessage message={error} onRetry={fetchExams} />` |
+| `frontend/src/pages/candidate/TakeExamPage.jsx` | Modified — added `LoadingSpinner` import; added `submitError` state `{ problemId, message }`; replaced `alert()` call (~line 166) with `setSubmitError({problemId, message})`; replaced plain "載入考試資料中…" with `<LoadingSpinner />` + text; added dismissible red banner below tab row shown when `submitError.problemId === activeProblem.problem_id` |
+
+### Commands run
+
+| Command | Result |
+|---------|--------|
+| `npm run build` | exit 0; vite v5.4.21; 1688 modules; 363.71 kB JS / 24.57 kB CSS |
+| `npm run test` | exit 0; **27 tests passed** (4 files: ExamTimer 7, useOfflineRecovery 8, useAdaptivePolling 7, EditorPanel 5); 771ms |
+
+### Deviations from plan
+
+1. **Result contract override applied** — `GET /api/v1/exams/{id}/result` returns `ExamResultRead` with `total_exam_points` / `total_candidate_score` (int) and `results[].submission_status` (not `execution_time`). The plan's "execution time" column was omitted; result table columns are 題號/題目/狀態/得分 per the verified contract.
+2. **`JudgeStatusBadge.jsx` created as new component** — TakeExamPage has inline STATUS_LABEL/STATUS_CLASS constants but they are not exported. Rather than touching TakeExamPage's internals, a new standalone badge component was created that replicates the same mapping. ResultPage uses it; TakeExamPage still uses its own inline constants (no regression).
+3. **`fetchExams` converted to `useCallback`** — Plan said "replace plain loading/error". Implementation required promoting the function to `useCallback` so its stable reference could be passed as `onRetry` prop without triggering infinite re-renders. Minor refactor, no behavior change.
+4. **Submit error banner dismissible with ✕ button** — The plan said "inline error message near submit area or dismissible banner"; chose dismissible banner (red strip below tab row) so it doesn't overlap the editor. Matches plan intent.
+
+### Adjacent findings (not fixed)
+
+- `JudgeStatusBadge.jsx` and the inline `STATUS_LABEL`/`STATUS_CLASS` constants in `TakeExamPage.jsx` are now duplicated. A later cleanup pass could extract TakeExamPage's constants into the badge component and import it. Not a defect.
+- `ProblemPanel.jsx` still shows plain "載入題目中…" text (not LoadingSpinner) for the per-problem GET fetch inside TakeExamPage. The P5 task says "show `<LoadingSpinner />` while problem detail loads" — this was interpreted as the exam-level loader (the `if (!exam)` guard). The ProblemPanel internal loading state was not changed as it is a separate component with its own minimal loading display. If the supervisor wants ProblemPanel's loading state updated, it is a one-line change.
+
+### Blockers
+
+None. All 27 existing tests pass. Build exits 0.
+
+### Verifier verdict (P5)
+
+```
+build:    pass   (exit 0; vite v5.4.21; 1688 modules; 363.71 kB JS / 24.57 kB CSS)
+test:     pass   (27/27; ExamTimer 7, useAdaptivePolling 7, useOfflineRecovery 8, EditorPanel 5; 695ms — no P4.5 regression)
+dev:      pass   (HTTP 200, valid HTML at http://localhost:5173; <!doctype html> + lang="zh-TW" confirmed)
+ts-files: pass   (0 .ts/.tsx files under frontend/src)
+deps:     pass   (package.json identical to P4.5 commit a803f66; no new production or dev dependencies added; P5 is pure source files as expected)
+lint:     no lint configured (expected; unchanged from all prior phases)
+e2e:      deferred to supervisor (no e2e/ directory; browser test requires GET /api/v1/exams/{id}/result backend endpoint)
+```
+
+New P5 files confirmed present:
+- `frontend/src/pages/candidate/ResultPage.jsx`
+- `frontend/src/components/LoadingSpinner.jsx`
+- `frontend/src/components/ErrorMessage.jsx`
+- `frontend/src/components/JudgeStatusBadge.jsx`
+
+**Verdict: green**
+
+### Reviewer verdict (P5)
+
+**Verdict: fix-required**
+
+#### Criteria scorecard
+
+| Criterion | Score | Reason |
+|-----------|-------|--------|
+| `npm run build` exits 0 | pass | Independently verified: vite v5.4.21, 1688 modules, exit 0 |
+| ResultPage correct endpoint `/api/v1/exams/{id}/result` | pass | `ResultPage.jsx:34` — `api.get(\`/api/v1/exams/${examId}/result\`)` via shared `api` instance |
+| ResultPage renders title + total score (`total_candidate_score`/`total_exam_points`) | pass | `ResultPage.jsx:73-79` — `result.title`, `result.total_candidate_score`, `result.total_exam_points` |
+| ResultPage per-problem table (題號/題目/狀態/得分) | pass | `ResultPage.jsx:87-106` — four columns, correct field mappings |
+| ResultPage LoadingSpinner while loading | pass | `ResultPage.jsx:59-63` — spinner shown when `loading === true` |
+| ResultPage ErrorMessage + retry on failure | pass | `ResultPage.jsx:65-67` — `<ErrorMessage message={error} onRetry={fetchResult} />` |
+| "返回考試列表" navigates to `/candidate/exams` | pass | `ResultPage.jsx:54` — `navigate('/candidate/exams')` |
+| JudgeStatusBadge covers all 8 JudgeStatus values + "Unsubmitted" | pass | `JudgeStatusBadge.jsx:9-31` — all 9 entries present in both maps |
+| JudgeStatusBadge unknown value does not crash | pass | `JudgeStatusBadge.jsx:34-35` — `?? status` / `?? 'bg-gray-200 text-gray-600'` fallbacks |
+| ExamListPage spinner shown while fetching | pass | `ExamListPage.jsx:87-91` — `<LoadingSpinner />` under `loading` guard |
+| ExamListPage ErrorMessage with working retry | pass | `ExamListPage.jsx:93-95` — `onRetry={fetchExams}` where `fetchExams` is a stable `useCallback` |
+| ExamListPage `overflow-y-auto h-full` root class retained (P4 regression) | pass | `ExamListPage.jsx:84` — `"p-6 max-w-3xl mx-auto overflow-y-auto h-full"` intact |
+| ExamListPage "目前沒有考試" empty state intact | pass | `ExamListPage.jsx:97-99` — unchanged from P4 |
+| TakeExamPage `alert()` gone, replaced with inline error state | pass | `TakeExamPage.jsx:73,173` — `setSubmitError({problemId, message})`; no `alert()` present |
+| TakeExamPage LoadingSpinner while exam loads | pass | `TakeExamPage.jsx:202-207` — `<LoadingSpinner />` + text when `!exam` |
+| P4 flushDraft on tab switch not regressed | pass | `TakeExamPage.jsx:142-146` — `editorRef.current?.flushDraft()` before `setActiveIdx` |
+| P4 single-interval timer not regressed | pass | `ExamTimer.jsx` untouched by P5 diff; single-interval logic intact from P4 |
+| 27 P4.5 tests still pass | pass | Independently verified: `npm run test` — 27/27 pass in 868ms |
+| Shared `api` instance, no raw `fetch`, no TypeScript | pass | All new files import from `@/lib/api`; no `fetch()`; all files `.jsx` |
+| 純中文 user-visible strings | pass | All labels/messages are Chinese |
+
+#### Must-fix issues
+
+1. **`ProblemPanel.jsx:51-57` — LoadingSpinner not used for per-problem loading, contradicting P5 acceptance criterion.** The plan's P5 states "show `<LoadingSpinner />` while `GET /api/v1/problems/{id}` loads." `ProblemPanel.jsx:51-57` still renders a plain `<div>…載入題目中…</div>` text string with no spinner. The executor noted this as a deliberate interpretation but the criterion is explicit. Fix: replace the plain `<div>` loading state in `ProblemPanel.jsx` with `<LoadingSpinner />` (one-line change; `LoadingSpinner` is already available as a shared component).
+
+#### Nice-to-have
+
+1. **`JudgeStatusBadge.jsx` duplicates `STATUS_LABEL`/`STATUS_VARIANT` from `TakeExamPage.jsx:15-36`.** The executor flagged this. The values are identical (same 9 keys, same colors). A future cleanup can export the constants from `JudgeStatusBadge.jsx` and import them in `TakeExamPage.jsx`, eliminating the drift risk if a new judge status is added (e.g., a future `Skipped` status would need updating in two places). Not a blocker for this loop.
+
+2. **`ResultPage.jsx:109-111` — empty `results` array shows "此次考試沒有題目記錄" inside the table container.** If the backend legitimately returns `results: []` (no problems submitted), the table header is rendered but the tbody is empty, then the message appears below it. Minor UX oddity; no functional defect.
+
+3. **`handlePollResult` is called inline during render (`TakeExamPage.jsx:309` — `onResult={handlePollResult(p.problem_id)}`), creating a new function reference each render.** This is safe because `useAdaptivePolling.js:34-36` stores `onResult` in a ref and updates it every render — the new reference does not cause polling restarts. However the pattern is subtle; a future maintainer may not notice the ref-update guard. Consider memoizing per-problem callbacks with `useMemo` keyed on `exam?.exam_problems` for clarity.
+
+#### Verification gaps
+
+- Browser/Playwright check is needed before merge for the `ProblemPanel` spinner: the must-fix is a visual change that tests do not cover (ProblemPanel has no unit tests). After applying the one-line fix, a quick manual or Playwright check of the loading flash while `GET /api/v1/problems/{id}` responds would close this gap.
+- No new tests were added for `ResultPage`, `LoadingSpinner`, or `ErrorMessage`. These are thin components and their behavior is covered by the build+type check, but a smoke render test would prevent future regressions.
+
+---
+
+## P5 — fix round 1  (2026-05-21T10:13:00Z)
+
+### Must-fix applied
+
+**`frontend/src/components/ProblemPanel.jsx`** — Added `import LoadingSpinner from '@/components/LoadingSpinner'` and replaced the plain-text loading div (lines 51-57) with a centered flex container containing `<LoadingSpinner />` plus a small caption span ("載入題目中…").
+
+### Commands run
+
+| Command | Result |
+|---------|--------|
+| `cd frontend && npm run build` | pass — exit 0, built in 2.01s |
+| `cd frontend && npm run test` | pass — 27/27 tests, 4 files |
+
+### Deviation
+
+None.
+
+### Blockers
+
+None.
+
+### Supervisor resolution + commit (P5)
+
+- Reviewer verdict: **fix-required** (1 must-fix: `ProblemPanel` plain-text loading state). Verifier verdict: **green**.
+- Fix round 1: `ProblemPanel.jsx` now imports and renders `<LoadingSpinner />`. Supervisor verified `ProblemPanel.jsx:55` + build exit 0 + 27/27 tests pass.
+- Reviewer nice-to-haves (dedup STATUS constants between `JudgeStatusBadge` and `TakeExamPage`, empty-results table header, memoize per-problem poll callback) deferred — no functional defect; safe to leave for a future cleanup pass.
+- **Committed P5 as `<SHA>`** on `feat/frontend-scaffold`.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
+import LoadingSpinner from '@/components/LoadingSpinner'
 
 const DIFFICULTY_MAP = {
   Easy:   { label: '簡單', className: 'bg-green-100 text-green-800' },
@@ -50,8 +51,9 @@ export default function ProblemPanel({ problemId, points, sequence }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        載入題目中…
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-muted-foreground">
+        <LoadingSpinner />
+        <span className="text-sm">載入題目中…</span>
       </div>
     )
   }

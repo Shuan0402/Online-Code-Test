@@ -6,6 +6,7 @@ import ExamTimer from '@/components/ExamTimer'
 import ProblemPanel from '@/components/ProblemPanel'
 import EditorPanel from '@/components/EditorPanel'
 import FinalizeModal from './FinalizeModal'
+import LoadingSpinner from '@/components/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { useAdaptivePolling } from '@/hooks/useAdaptivePolling'
 import { useOfflineRecovery } from '@/hooks/useOfflineRecovery'
@@ -67,6 +68,9 @@ export default function TakeExamPage() {
   // ── 交卷 Modal ───────────────────────────────────────────────────────────────
   const [showFinalize, setShowFinalize] = useState(false)
   const [isTimeout, setIsTimeout] = useState(false)
+
+  // ── 提交錯誤（inline，取代 alert()） ─────────────────────────────────────────
+  const [submitError, setSubmitError] = useState(null) // { problemId, message }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. 掛載時呼叫 POST /api/v1/exams/{examId}/start（idempotent）
@@ -146,6 +150,8 @@ export default function TakeExamPage() {
   // ─────────────────────────────────────────────────────────────────────────────
   const handleSubmit = async (problemId, code, language) => {
     setSubmittingPids((prev) => ({ ...prev, [problemId]: true }))
+    // 清除此題的舊提交錯誤
+    setSubmitError(null)
     try {
       const res = await api.post('/api/v1/submissions/', {
         problem_id: problemId,
@@ -163,7 +169,8 @@ export default function TakeExamPage() {
       setPollingIds((prev) => ({ ...prev, [problemId]: submissionId }))
     } catch (err) {
       console.error('[TakeExamPage] 提交失敗', err?.response?.data)
-      alert(err?.response?.data?.detail || '提交失敗，請稍後再試。')
+      const message = err?.response?.data?.detail || '提交失敗，請稍後再試。'
+      setSubmitError({ problemId, message })
     } finally {
       setSubmittingPids((prev) => ({ ...prev, [problemId]: false }))
     }
@@ -193,8 +200,9 @@ export default function TakeExamPage() {
 
   if (!exam) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        載入考試資料中…
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+        <LoadingSpinner />
+        <span className="text-sm">載入考試資料中…</span>
       </div>
     )
   }
@@ -249,6 +257,19 @@ export default function TakeExamPage() {
           )
         })}
       </div>
+
+      {/* ── 提交錯誤 banner（inline，取代原本的 alert()） ────────────────── */}
+      {submitError && activeProblem && submitError.problemId === activeProblem.problem_id && (
+        <div className="flex items-center justify-between gap-3 bg-red-50 border-b border-red-200 px-4 py-2 text-sm text-red-600 shrink-0">
+          <span>{submitError.message}</span>
+          <button
+            className="text-red-400 hover:text-red-600 font-medium shrink-0"
+            onClick={() => setSubmitError(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* ── 主體：題目說明 + 編輯器 ─────────────────────────────────────────── */}
       {activeProblem ? (
