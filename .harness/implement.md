@@ -712,3 +712,69 @@ that call rejects.
 ### Commit
 
 `89cb707` — feat(frontend): P7 — candidate submission detail page
+
+---
+
+## P8 — Profile / change-password page  (2026-05-21T15:45:00Z)
+
+### Files touched
+- `frontend/src/pages/interviewer/ProfilePage.jsx` — **created**: two-section page; section 1 shows read-only `帳號` and `角色` (mapped via `ROLE_LABEL` to Chinese), and editable `姓名`; save calls `PATCH /api/v1/users/me` with `{ full_name }` only (no `username`, no `role`); section 2 has three password inputs (`oldPassword`, `newPassword`, `confirmPassword`); client-side validation: `new_password.length < 8` → "新密碼至少需要 8 個字元", mismatch → "新密碼與確認密碼不一致"; on success calls `PUT /api/v1/users/me/password` with `{ old_password, new_password }`, clears fields, shows "密碼已更新"; each section has its own `error`/`success` state; `GET /api/v1/users/me` on mount populates form.
+- `frontend/src/pages/interviewer/index.js` — **modified**: added `ProfilePage` export.
+- `frontend/src/App.jsx` — **modified**: added `ProfilePage` to barrel import; added `<Route path="profile" element={<ProfilePage />} />` under `/interviewer`.
+- `frontend/src/layouts/StaffLayout.jsx` — **modified**: added `{ to: '/interviewer/profile', label: '個人資料' }` to `interviewer` array, `admin` array, and unknown-role fallback array.
+
+### Commands run
+- `npm run build` → exit 0 (1700 modules, 418.29 kB JS bundle)
+- `npm run test` → 45/45 green (7 test files)
+
+### Deviations from plan
+- None. All plan items implemented exactly as specified.
+- `ROLE_LABEL` map added on this page as directed by supervisor carry-note from P6 (profile page should render Chinese role labels; `CandidateDetailPage` was NOT retroactively modified per P8 scope boundary).
+
+### Adjacent findings (not fixed)
+- `CandidateDetailPage.jsx` still renders `candidate.role` as raw English enum — fixing it is out of P8 scope per the supervisor note. P9 may address it if time permits.
+
+### Blockers
+- None.
+
+### Verifier verdict
+
+```
+build:     pass (exit 0, 1700 modules, 418.29 kB bundle)
+test:      pass (45/45, 7 files)
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+e2e:       skipped
+```
+
+React Router v7 future-flag warnings in test stderr are pre-existing advisory output — not failures. Module count (+1 vs P7's 1699) and bundle size (+4.55 kB) are consistent with one new page file added.
+
+**Verdict: green**
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (independently confirmed: exit 0, 1700 modules, 418.29 kB)
+2. Tests 100% green — pass (independently confirmed: 45/45, 7 files, no regressions)
+3. Profile edit golden path — pass: `GET /api/v1/users/me` called at `ProfilePage.jsx:36`; `full_name` pre-filled at line 38; `handleProfileSave` at line 48 updates local state on 200 at line 56–57; success message "個人資料已更新" at line 58.
+4. Password change golden path — pass: `PUT /api/v1/users/me/password` at line 83; body is `{ old_password, new_password }` at lines 84–85 (field name is `old_password`, NOT `current_password`); fields cleared at lines 87–89; "密碼已更新" shown at line 90.
+5. Password validation — pass: `newPassword.length < 8` blocked at line 72–75 with "新密碼至少需要 8 個字元"; mismatch blocked at line 76–79 with "新密碼與確認密碼不一致"; both return before `api.put`.
+6. PATCH body contains ONLY `full_name` — pass: `ProfilePage.jsx:55` sends `{ full_name: fullName || null }`; no `username`, no `role` in the object literal. Comment at line 54 documents the reason.
+7. Sidebar "個人資料" link — pass: `StaffLayout.jsx` adds `{ to: '/interviewer/profile', label: '個人資料' }` to `interviewer` (line 28), `admin` (line 34), and fallback (line 48) arrays. Route wired at `App.jsx:80`.
+8. Two separate independent forms — pass: two distinct `<form>` elements with separate `onSubmit` handlers; `profileError`/`profileSuccess` and `pwError`/`pwSuccess` are completely independent state variables.
+
+**Must-fix issues**
+
+None found. All critical invariants verified by direct code inspection.
+
+**Nice-to-have**
+
+- `ProfilePage.jsx:55`: sends `full_name: fullName || null` — an empty string becomes `null` on save. This matches `CandidateFormPage`'s pattern and is likely intentional, but it means clearing the name field and saving PATCHes `null` (not `""`) to the backend. Fine per the `UserUpdate` schema's nullable `full_name`, but worth a comment for the P9 test author who will assert the exact body.
+- No browser/Playwright check needed — the page is entirely standard React forms, no user-visible behavior regressed in any existing page.
+
+**Verification gaps**
+
+- No Vitest tests added in P8 — expected per plan (deferred to P9). The P9 test plan at `plan.md:563` already enumerates five test cases for `ProfilePage.test.jsx` including the exact-body assertion for PATCH and the PUT field-name check (`old_password` not `current_password`).
