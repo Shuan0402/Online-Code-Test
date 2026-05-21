@@ -1,631 +1,410 @@
-# Harness Plan — interviewer-panel
+# Harness Plan — admin-panel
 
-**Created**: 2026-05-21
-**Branch**: feat/interviewer-panel
+**Created**: 2026-05-21T09:00:00Z
+**Branch**: feat/admin-panel (stacked on feat/interviewer-panel)
 **Intent**: see `.harness/prompt.md`
-**Planner**: harness-planner (Sonnet)
-
-> **REPLANNED — 2026-05-21 (resumed session after P3).** P1–P3 below were executed and
-> shipped (commits `620b068`, `a730e6e`, `07f8efb`). After P3 the loop scope was expanded
-> to match the full HackMD spec. This document replaces the stale P4/P5 with 6 fresh phases
-> (P4–P9). P1–P3 phase blocks below remain accurate as a record of completed work.
+**Planner**: harness-planner (claude-sonnet-4-6)
 
 ---
 
-## Summary (updated)
+## Phase grouping strategy
 
-Full Interviewer panel per HackMD spec. P1–P3 done. Remaining: exam result page + list
-enrichments (P4), candidate account management — list + create (P5), candidate detail (P6),
-candidate problem-solving detail (P7, highest remaining risk — S3 presigned URL footgun),
-profile/password (P8), Vitest tests for all new pages (P9). 6 new phases. P7 is high risk.
-Tests are deferred to a dedicated P9 so all pages exist before their tests are written.
+8 page components + routing changes + tests are split into 6 phases. The scaffold (P1) wires
+all 8 routes via a stub-barrel so App.jsx is only touched once. Each subsequent phase (P2–P6)
+creates real page files and updates the barrel — App.jsx and StaffLayout are frozen after P1.
+Tests are co-located with their phase so each phase is independently green-testable before the
+next starts. This matches the interviewer-panel pattern.
+
+---
+
+## Phases
+
+### P1 — Routing Scaffold + Layout Admin Nav Rewrite
+
+**Goal**: Wire all 8 `/admin/*` routes in App.jsx, rewrite `NAV_BY_ROLE.admin` in
+StaffLayout.jsx, and create the `pages/admin/index.js` barrel with 8 stub exports; delete
+`AdminStubPage.jsx` and its import from App.jsx.
+
+**Risk tier**: low
+**Use full ReAct in executor**: no
+
+**Files**:
+- `frontend/src/App.jsx` — replace AdminStubPage stub routes with 8 proper nested routes
+  importing all 8 named pages from `@/pages/admin`; remove AdminStubPage import
+- `frontend/src/layouts/StaffLayout.jsx` — replace `NAV_BY_ROLE.admin` with 4 dedicated admin
+  entries (儀表板 `/admin` with end=true, 成員管理 `/admin/members`, 考試管理 `/admin/exams`,
+  題目管理 `/admin/problems`); add `end` prop support to SidebarLink so the dashboard NavLink
+  does not stay active on sub-routes
+- `frontend/src/pages/admin/index.js` — create barrel; export 8 stub components
+  (`() => null`) with exact names: DashboardPage, MemberListPage, MemberCreatePage,
+  MemberDetailPage, AdminExamListPage, AdminExamDetailPage, AdminProblemListPage,
+  AdminProblemDetailPage
+- `frontend/src/pages/stubs/AdminStubPage.jsx` — delete (no longer referenced)
+
+**API calls introduced by this phase**: none (stubs render null)
+
+**Acceptance criteria**:
+- [ ] `cd frontend && npm run build` exits 0 with no new errors
+- [ ] `cd frontend && npm run test` passes (judge by `Test Files ... passed` summary + exit
+  code; ignore any ESM-teardown stack trace after a green summary — see L1)
+- [ ] Navigating to `/admin` as an admin-role user renders `StaffLayout` sidebar with exactly
+  4 entries: 儀表板 / 成員管理 / 考試管理 / 題目管理
+- [ ] 儀表板 NavLink is not highlighted when on `/admin/members` (end prop correct)
+- [ ] `/admin/*` routes no longer render the old "功能開發中" stub text
+
+**Risk / rollback**: Low. P1 only rewires routing and nav — no API calls. If something breaks,
+revert the 3 file changes; the stub was already there as a fallback pattern.
+
+**Depends on**: —
+
+---
+
+### P2 — Member List + Member Create Pages + Tests
+
+**Goal**: Build `MemberListPage` (all users table with role filter, delete-self guard, delete
+confirm dialog) and `MemberCreatePage` (create form with role picker and validation), with
+Vitest unit tests for their logic-dense pieces.
+
+**Risk tier**: medium
+**Use full ReAct in executor**: no
+
+**Files**:
+- `frontend/src/pages/admin/MemberListPage.jsx` — create; renders all users from
+  `GET /api/v1/users/` in a table (姓名=`full_name??username`, 帳號=`username`,
+  角色=`role`, 建立時間=`created_at`); client-side role filter via native `<select>`;
+  delete button **disabled** for the row where `user.id === currentUser.id`
+  (guard uses `useAuth()` → `user.id`); delete confirmation Dialog calls
+  `DELETE /api/v1/users/{user.id}` (returns **200**, not 204); row click or 查看 button
+  navigates to `/admin/members/{user.id}`; 新增成員 button navigates to `/admin/members/new`
+- `frontend/src/pages/admin/MemberCreatePage.jsx` — create; form with fields: 帳號
+  (username, required, 3–50 chars), 姓名 (full_name, optional, ≤100), 密碼 (password,
+  required, ≥8 chars), 角色 (role, native `<select>`, options Admin/Candidate/Interviewer/
+  Questioner, default Candidate); validates client-side before POST; calls
+  `POST /api/v1/users/` with `{username, full_name: trim||null, password, role}`;
+  on 201 navigates to `/admin/members/{res.data.id}`; on 400 "該帳號名稱已存在" shows
+  inline error; back button → `/admin/members`
+- `frontend/src/pages/admin/MemberListPage.test.jsx` — create; tests: (a) all 4 roles
+  rendered from mixed response, (b) role filter "Admin" → only Admin rows visible,
+  role filter "全部" → all rows, (c) delete button disabled for the row matching
+  `useAuth().user.id` (delete-self guard), delete button enabled for other rows,
+  (d) delete confirm → `DELETE /api/v1/users/{id}` called, row removed from state;
+  mock `@/contexts/AuthContext` as `{ useAuth: vi.fn(() => ({ user: { id: 'admin-uuid' } })) }`
+- `frontend/src/pages/admin/MemberCreatePage.test.jsx` — create; tests: (a) empty username →
+  "請填寫帳號", POST not called, (b) username 2 chars → "帳號至少需要 3 個字元", POST not
+  called, (c) password 7 chars → "密碼至少需要 8 個字元", POST not called, (d) success →
+  POST body has `{username, full_name: null, password, role: 'Candidate'}` for default role,
+  (e) 400 "該帳號名稱已存在" → inline error message shown
+- `frontend/src/pages/admin/index.js` — update: replace MemberListPage and MemberCreatePage
+  stub exports with real file imports
+
+**API calls in this phase**:
+| Page | Call | Field resolved |
+|---|---|---|
+| MemberListPage | `GET /api/v1/users/` | 姓名=`full_name??username`, 帳號=`username`, 角色=`role`, 建立時間=`created_at` |
+| MemberListPage | `DELETE /api/v1/users/{id}` | returns **200** (not 204) — treat any 2xx as success |
+| MemberCreatePage | `POST /api/v1/users/` | body: `{username, full_name, password, role}` |
+
+**Acceptance criteria**:
+- [ ] `cd frontend && npm run build` exits 0
+- [ ] `cd frontend && npm run test` — `MemberListPage.test.jsx` and `MemberCreatePage.test.jsx`
+  pass; all prior tests still pass; judge by summary + exit code
+- [ ] Navigating to `/admin/members` shows a table with all users (4 role values visible in
+  mixed dataset), role filter narrows rows client-side without a new fetch
+- [ ] Delete button is visually disabled for the current admin user's own row
+- [ ] Delete confirms via dialog; on success, row disappears; on 400 Ongoing-style error, dialog
+  stays open with inline error
+- [ ] Navigating to `/admin/members/new` shows create form; submitting valid data navigates to
+  the new user's detail page
+
+**Risk / rollback**: Medium. Delete call returns `200` not `204` — the axios interceptor
+handles any 2xx as success, but confirm the `api.delete(...)` call does not `.then(r => r.data)`
+in a way that throws on empty body. Pattern already established in Interviewer ExamListPage.
+
+**Depends on**: P1
+
+---
+
+### P3 — Member Detail (User Info) Page + Tests
+
+**Goal**: Build `MemberDetailPage` showing a user's profile with an inline edit form
+(full_name + role) and a separate force-reset password section; Vitest tests for
+edit validation and password-reset validation.
+
+**Risk tier**: medium
+**Use full ReAct in executor**: no
+
+**Files**:
+- `frontend/src/pages/admin/MemberDetailPage.jsx` — create; on mount fetches
+  `GET /api/v1/users/{id}` (id is UUID from URL param); renders read-only fields:
+  姓名 (full_name ?? '—'), 帳號 (username — immutable, read-only input or static text),
+  角色 (role — shown as badge in read-only view), 密碼 (always rendered as `••••••••`
+  — no password field in API); section 1 "編輯使用者資訊": form with editable full_name
+  (text input) + role (native `<select>` with Admin/Candidate/Interviewer/Questioner
+  options), calls `PATCH /api/v1/users/{id}` with `{full_name, role}` on submit;
+  section 2 "修改密碼": single new_password field (≥8 chars), calls
+  `PUT /api/v1/users/{id}/password-reset` with `{new_password}`; back button →
+  `/admin/members`
+- `frontend/src/pages/admin/MemberDetailPage.test.jsx` — create; tests: (a) page loads and
+  displays `username` as read-only (calls `GET /api/v1/users/{id}`), (b) edit submit → PATCH
+  body is `{full_name, role}` — no username field, (c) password < 8 → "密碼至少需要 8 個字元",
+  PUT not called, (d) valid password → PUT `/api/v1/users/{id}/password-reset` called with
+  `{new_password}`, (e) 404 on load → error message shown
+- `frontend/src/pages/admin/index.js` — update: replace MemberDetailPage stub with real import
+
+**API calls in this phase**:
+| Call | Method | Body / Return | Notes |
+|---|---|---|---|
+| `GET /api/v1/users/{id}` | GET | `UserRead` | `id` is UUID from URL param |
+| `PATCH /api/v1/users/{id}` | PATCH | `{full_name?, role?}` → `UserRead` | Admin-only; no `username` in body |
+| `PUT /api/v1/users/{id}/password-reset` | PUT | `{new_password}` → `{detail}` | Admin force-reset; no old password; ≥8 chars |
+
+**Acceptance criteria**:
+- [ ] `cd frontend && npm run build` exits 0
+- [ ] `cd frontend && npm run test` — `MemberDetailPage.test.jsx` passes; all prior tests pass
+- [ ] Clicking a member row from MemberListPage opens the detail page with all fields populated
+- [ ] 帳號 field is read-only (cannot be changed — username is immutable)
+- [ ] 密碼 field renders exactly `••••••••` regardless of actual password
+- [ ] Editing full_name and saving sends PATCH with `{full_name, role}` (not username)
+- [ ] Password reset with < 8 chars shows inline error; does not call the API
+- [ ] Successful password reset shows success message
+
+**Risk / rollback**: Medium. `PATCH /users/{id}` is Admin-only and `PUT /users/{id}/password-reset`
+is Admin-only — both are gated server-side. Incorrect body (e.g. including `username`) returns
+a backend validation error; the form must not include username in the PATCH body.
+
+**Depends on**: P1, P2
+
+---
+
+### P4 — Admin Exam List + Exam Detail Pages + Tests
+
+**Goal**: Build `AdminExamListPage` (all exams table with 考生/狀態/分數 columns — 考生 via
+an N+2 fan-out — status filter, delete action) and `AdminExamDetailPage` (read-only exam
+inspection view with problem list and delete), with Vitest tests for the list page's
+filter, candidate-name resolution, and delete flow.
+
+**Risk tier**: medium
+**Use full ReAct in executor**: no
+
+**Files**:
+- `frontend/src/pages/admin/AdminExamListPage.jsx` — create; on mount fetches
+  `GET /api/v1/exams/` for the exam list, then does a **fan-out**: `Promise.all` of
+  `GET /api/v1/exams/{id}` for every exam (each `ExamRead` carries `candidate_id`) **plus**
+  `GET /api/v1/users/` to build a usersMap (`{[uuid]: full_name||username}`); table columns:
+  考試名稱 (`title`), 考生 (`usersMap[candidate_id] ?? '—'` — must render the resolved name,
+  NOT the raw UUID — see L2), 狀態 (`status` via `ExamStatusBadge`), 分數 (`score`,
+  nullable → '—'); client-side status filter via native `<select>` (Draft/Published/
+  Ongoing/Finished/Archived/全部); delete button per row opens confirm Dialog →
+  `DELETE /api/v1/exams/{id}` (returns **204**); row click → `/admin/exams/{id}`; no 新增考試
+  button (admin does not create exams). The fan-out is N+2 requests for N exams — accepted
+  by the user (OQ-1 resolved) as fine at course-project scale.
+- `frontend/src/pages/admin/AdminExamDetailPage.jsx` — create; on mount calls
+  `Promise.all([GET /api/v1/exams/{id}, GET /api/v1/users/])` to fetch exam detail and
+  build usersMap (`{[uuid]: full_name||username}`); renders read-only: title, status badge,
+  duration, score (nullable → '—'), start_time, end_time, 應試者 resolved via
+  `usersMap[exam.candidate_id]??exam.candidate_id`, easy_count/medium_count/hard_count;
+  exam_problems table: 題號 (`sequence`), 題目名稱 (`title`), 難度 (`difficulty`), 配分
+  (`points`); delete button → Dialog → `DELETE /api/v1/exams/{id}` → navigate to
+  `/admin/exams` on success; back button → `/admin/exams`
+- `frontend/src/pages/admin/AdminExamListPage.test.jsx` — create; tests: (a) status filter
+  "Draft" → only Draft rows; "全部" → all rows, (b) 考生 column renders the resolved name
+  (`full_name`/`username` from usersMap), NOT the raw `candidate_id` UUID; 分數 column:
+  null → '—', numeric → displayed, (c) delete confirm → `DELETE /api/v1/exams/{id}` called
+  (204), row removed from state, (d) delete 400 (Ongoing exam) → inline error, row stays.
+  Mock `GET /exams/`, the per-exam `GET /exams/{id}` fan-out, and `GET /users/` accordingly
+- `frontend/src/pages/admin/index.js` — update barrel: replace AdminExamListPage and
+  AdminExamDetailPage stub exports with real imports
+
+**API calls in this phase**:
+| Page | Call | Field resolved | Notes |
+|---|---|---|---|
+| AdminExamListPage | `GET /api/v1/exams/` | 考試名稱=`title`, 狀態=`status`, 分數=`score` | Sparse list — no `candidate_id` |
+| AdminExamListPage | `GET /api/v1/exams/{id}` ×N (fan-out) | `candidate_id` per exam | One per exam, run via `Promise.all` |
+| AdminExamListPage | `GET /api/v1/users/` | usersMap → 考生 name | Resolves `candidate_id` UUID → display name |
+| AdminExamListPage | `DELETE /api/v1/exams/{id}` | — | Returns **204**; Ongoing → 400 |
+| AdminExamDetailPage | `GET /api/v1/exams/{id}` | all ExamRead fields incl. candidate_id, exam_problems[] | id is UUID |
+| AdminExamDetailPage | `GET /api/v1/users/` | usersMap for 應試者 name resolution | Parallel with exam fetch |
+| AdminExamDetailPage | `DELETE /api/v1/exams/{id}` | — | Returns **204** |
+
+**Acceptance criteria**:
+- [ ] `cd frontend && npm run build` exits 0
+- [ ] `cd frontend && npm run test` — `AdminExamListPage.test.jsx` passes; all prior tests pass
+- [ ] Exam list shows all exams with a 考生 column rendering the resolved candidate name
+  (not the raw UUID); status filter narrows rows without a new fetch
+- [ ] Delete of a non-Ongoing exam removes the row; delete of Ongoing exam shows error in dialog
+- [ ] Exam detail page shows 應試者 name (resolved from usersMap), not raw UUID
+- [ ] Exam detail page exam_problems table renders sequence/title/difficulty/points
+- [ ] Exam detail delete navigates back to `/admin/exams` on success
+- [ ] No edit controls on the detail page (admin is read-only oversight)
+
+**Risk / rollback**: Medium. The `DELETE /exams/{id}` for `Finished` exams does a soft-archive
+(not hard delete) — backend returns success, the row should be removed from the list. Ongoing
+→ 400. Confirm the delete API path uses UUID (exam_id is UUID per backend contract).
+
+**Depends on**: P1
+
+---
+
+### P5 — Admin Problem List + Problem Detail Pages + Tests
+
+**Goal**: Build `AdminProblemListPage` (all problems table with difficulty filter, delete) and
+`AdminProblemDetailPage` (read-only problem inspection with test-case list); Vitest tests for
+the list page's filter and delete logic.
+
+**Risk tier**: low
+**Use full ReAct in executor**: no
+
+**Files**:
+- `frontend/src/pages/admin/AdminProblemListPage.jsx` — create; fetches
+  `GET /api/v1/problems/` returning `ProblemShortRead[]` (`{id (int), title, difficulty}`);
+  table columns: 題目名稱 (`title`), 難度 (`difficulty` — display as colored badge using same
+  DIFFICULTY_COLORS/DIFFICULTY_LABELS constants as Questioner panel); client-side difficulty
+  filter via native `<select>` (Easy/Medium/Hard/全部); delete button per row → Dialog →
+  `DELETE /api/v1/problems/{id}` (returns **204**, id is int); row click →
+  `/admin/problems/{id}`; no 新增題目 button, no rejudge button (admin oversight only)
+- `frontend/src/pages/admin/AdminProblemDetailPage.jsx` — create; on mount fetches
+  `GET /api/v1/problems/{id}` (id is int from URL param); renders all ProblemRead fields
+  read-only: title, description (pre-wrapped text), difficulty, time_limit (ms), memory_limit
+  (MB), creator_id (UUID — displayed as-is), created_at; test_cases table: input_data,
+  expected_output, score_weight, is_sample (boolean); no edit controls, no rejudge button;
+  back button → `/admin/problems`
+- `frontend/src/pages/admin/AdminProblemListPage.test.jsx` — create; tests: (a) difficulty
+  filter "Easy" → only Easy rows; "全部" → all rows; filter is case-sensitive match against
+  `DifficultyLevel` enum (capitalized: `Easy|Medium|Hard`), (b) delete confirm →
+  `DELETE /api/v1/problems/{id}` called (204), row removed; mock `api.delete` resolves
+  with `{status: 204, data: ''}`, (c) delete error → inline error, row stays
+- `frontend/src/pages/admin/index.js` — update barrel: replace AdminProblemListPage and
+  AdminProblemDetailPage stubs with real imports
+
+**API calls in this phase**:
+| Page | Call | Field resolved | Notes |
+|---|---|---|---|
+| AdminProblemListPage | `GET /api/v1/problems/` | title (`title`), 難度 (`difficulty`) | Returns `ProblemShortRead[]` |
+| AdminProblemListPage | `DELETE /api/v1/problems/{id}` | — | Returns **204**; id is **int** |
+| AdminProblemDetailPage | `GET /api/v1/problems/{id}` | all ProblemRead fields + test_cases[] | id is **int** |
+
+**Acceptance criteria**:
+- [ ] `cd frontend && npm run build` exits 0
+- [ ] `cd frontend && npm run test` — `AdminProblemListPage.test.jsx` passes; all prior pass
+- [ ] Problem list shows all problems; difficulty filter narrows rows client-side
+- [ ] Delete confirms via dialog; on success row removed; on error dialog stays with inline error
+- [ ] Problem detail shows title, description, difficulty, limits, test_cases table
+- [ ] No edit controls on the detail page
+
+**Risk / rollback**: Low. Only read + delete operations. Problem id is int (not UUID) — the
+executor must use `problem_id` as an integer in the URL path (no UUID format). `DELETE /problems/{id}`
+returns 204 (differs from user DELETE's 200 — confirm `api.delete` does not error on empty body).
+
+**Depends on**: P1
+
+---
+
+### P6 — Dashboard Page + Dashboard Tests
+
+**Goal**: Build `DashboardPage` with client-side aggregated statistics cards (exam counts by
+status, submission verdict breakdown, member counts by role), a conditional Grafana link button,
+and Vitest unit tests covering the aggregation logic and env-var visibility.
+
+**Risk tier**: medium
+**Use full ReAct in executor**: no
+
+**Files**:
+- `frontend/src/pages/admin/DashboardPage.jsx` — create; on mount fires
+  `Promise.all([GET /api/v1/exams/, GET /api/v1/submissions/, GET /api/v1/users/])`;
+  renders stat cards: 考試總數 + breakdown by `ExamStatus` (Draft/Published/Ongoing/Finished/
+  Archived); 提交總數 + breakdown by `JudgeStatus` verdict (Pending/Judging/AC/WA/TLE/MLE/RE/CE)
+  using counts from `SubmissionRead.status`; 成員總數 + breakdown by `UserRole`
+  (Admin/Candidate/Interviewer/Questioner); Grafana link button reads
+  `import.meta.env.VITE_GRAFANA_URL` — renders an `<a target="_blank">` button only when
+  the value is a non-empty string; uses `Card` components from `@/components/ui/card`;
+  loading handled with `LoadingSpinner`; error per-section with `ErrorMessage`
+- `frontend/src/pages/admin/DashboardPage.test.jsx` — create; aggregation logic tests:
+  (a) exam count: mock `GET /exams/` returns 3 exams (2 Draft, 1 Ongoing) → total "3",
+  Draft card "2", Ongoing card "1"; (b) submission verdict: mock returns 5 submissions
+  (3 AC, 2 WA) → AC count "3", WA count "2", total "5"; (c) member role breakdown: mock
+  returns 4 users (2 Admin, 1 Candidate, 1 Interviewer) → correct counts per role;
+  (d) Grafana button visible when `vi.stubEnv('VITE_GRAFANA_URL', 'http://grafana:3000')`,
+  href equals the env value; (e) Grafana button absent when
+  `vi.stubEnv('VITE_GRAFANA_URL', '')` or env var unset
+- `frontend/src/pages/admin/index.js` — update barrel: replace DashboardPage stub with real
+  import
+- `frontend/.env.example` — create (or append); document `VITE_GRAFANA_URL=` with one-line
+  comment explaining it enables the Grafana link button on the admin dashboard
+
+**API calls in this phase**:
+| Call | Field used | Notes |
+|---|---|---|
+| `GET /api/v1/exams/` | `status` (ExamStatus enum) for count breakdown | Returns CandidateExamListRead[] |
+| `GET /api/v1/submissions/` | `status` (JudgeStatus enum) for verdict breakdown | Global read for Admin; may be large — no pagination in scope |
+| `GET /api/v1/users/` | `role` (UserRole enum) for member count breakdown | Returns all users |
+
+**Acceptance criteria**:
+- [ ] `cd frontend && npm run build` exits 0
+- [ ] `cd frontend && npm run test` — `DashboardPage.test.jsx` aggregation tests all pass;
+  all prior tests pass; judge by summary + exit code (not stack trace — see L1)
+- [ ] Navigating to `/admin` shows stat cards with correct totals derived from mock/live data
+- [ ] Grafana button renders and links to `VITE_GRAFANA_URL` when the env var is set;
+  button is absent from the DOM when unset or empty
+- [ ] Dashboard renders without crash when any of the 3 API calls returns an empty array
+
+**Risk / rollback**: Medium. `GET /submissions/` with no `limit` param returns all submissions —
+could be slow if many exist. For a course project this is acceptable; document with a code comment
+that a `limit` query param could be added if performance becomes an issue. No rollback complexity.
+
+**Depends on**: P1 (routing), optionally P2–P5 (nav links to other pages)
+
+---
+
+## Whole-plan acceptance
+
+- [ ] All 6 phase acceptance criteria pass in order
+- [ ] `cd frontend && npm run build` exits 0 on the final commit
+- [ ] `cd frontend && npm run test` reports 100% green; judge by `Test Files ... passed` summary
+  line + exit code; ignore any ESM-teardown stack trace that appears after a green summary (L1)
+- [ ] `StaffLayout` admin sidebar shows exactly: 儀表板 / 成員管理 / 考試管理 / 題目管理
+- [ ] 儀表板 link does not stay highlighted when navigating to sub-pages (end prop correct)
+- [ ] `AdminStubPage.jsx` is deleted; no dead import in App.jsx
+- [ ] Manual smoke: Admin user can navigate all 8 routes, all pages render without error or blank
+- [ ] PR base = `feat/interviewer-panel` (user merges — never `gh pr merge`)
+
+---
+
+## Not doing (and why)
+
+- **System metrics (CPU/memory/queue backlog)** — no backend API exists; per user direction,
+  these belong in Grafana surfaced via the link button, not in the frontend
+- **Anomaly submission feed / detail drawer** — `GET /admin/dashboard/anomalies` does not exist
+  and `SubmissionRead` has no source-IP field; descoped with user at intake
+- **Admin "new exam" / "new problem" creation** — admin oversight only; creation remains with
+  Interviewer and Questioner panels
+- **Reusing Questioner/Interviewer pages** — user explicitly chose dedicated `/admin/*` pages;
+  the admin pages are purpose-built oversight views
+- **`POST /admin/dashboard/summary`** — endpoint does not exist; dashboard is client-side
+  aggregation from existing list APIs
+- **Pagination on submissions** — `GET /submissions/` returns all; acceptable for course project
+  scale; adding `?limit=` is a future improvement documented with a code comment
+
+---
+
+## Open questions for supervisor
+
+- **OQ-1 — RESOLVED 2026-05-21** (user chose option b): the AdminExamListPage **includes**
+  the 考生 column via the N+2 fan-out (`GET /exams/` → `Promise.all` of `GET /exams/{id}`
+  + `GET /users/`). P4 above has been updated to specify the fan-out, the 考生/分數 columns,
+  the API table, the test, and the acceptance criteria. No remaining open questions.
 
 ---
 
 ## Prior lessons consulted
 
-- `f0472e9` L1 — editable lists must use stable keys (`problem.id`, not array index);
-  numeric inputs (`duration_minutes`, `*_count`, `points`) must be coerced to `Number`
-  before sending — NaN would silently 422. Pre-empted in P2/P3 acceptance criteria;
-  carried forward to P5 (create-candidate password/username fields).
-- `f0472e9` L2 — backend contract is verified in `prompt.md`; plan's acceptance criteria
-  cite real status codes (201/200/204) and schema shapes (`CandidateExamListRead` is
-  sparse; `ExamRead` adds `candidate_id` but not the candidate's name; `problem_id` is
-  int while exam/user ids are UUID; submission ids are UUID).
-- `7ca79b6` L3 — stubbed globals make spies vacuously pass. P9 must target the stub
-  object, assert exact URL+body, and include "break the impl, watch it fail" style
-  assertions for every logic-dense invariant (status-gating, presigned_url plain fetch,
-  candidate-name resolution, numeric coercion).
-
----
-
-## Phase 1 — Scaffold: directory, barrel, routing, exam list page
-
-**Goal**: Replace `InterviewerStubPage` with a real `ExamListPage` that fetches
-`GET /api/v1/exams/` and shows all exams in a table with `ExamStatusBadge`, a delete
-confirm dialog (204 on success), and a "新增考試" button.
-
-**Risk tier**: low
-**Use full ReAct in executor**: no
-**Depends on**: nothing
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/ExamListPage.jsx` | **create** | Main list page — mirrors `ProblemListPage.jsx` pattern; fetches `GET /api/v1/exams/`; shows title, status badge, candidate name (resolved from `GET /api/v1/users/`), duration, actions (detail link, delete). |
-| `frontend/src/pages/interviewer/index.js` | **create** | Barrel export — mirrors `questioner/index.js`. |
-| `frontend/src/App.jsx` | **modify** | Replace the two stub routes under `/interviewer` with real nested routes: `index` → `ExamListPage`, `exams/new` → `ExamFormPage` (stub import for now — will be wired in P2), `exams/:id` → `ExamDetailPage` (stub for P3), `exams/:id/result` → `ExamResultPage` (stub for P4). Delete `InterviewerStubPage` import. |
-| `frontend/src/pages/stubs/InterviewerStubPage.jsx` | **delete** | No longer needed once routing is wired. |
-
-### Candidate-name resolution note
-
-`GET /api/v1/exams/` returns `CandidateExamListRead[]` which has no `candidate_id`.
-Fetch `GET /api/v1/users/` in parallel; build a `Map<uuid, username>` client-side.
-Since the list schema has no `candidate_id`, show "—" in the candidate column for the
-list; the detail page (P3) has `candidate_id` from `ExamRead` and resolves from the same
-map. (This matches the verified contract: sparse list schema has no `candidate_id`.)
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` all green (existing tests unaffected; new tests not
-   required yet — that is P5).
-3. Golden path: logged-in interviewer navigates to `/interviewer` → sees a table with
-   exam title, `ExamStatusBadge`, duration, and a "新增考試" button; clicking delete opens
-   confirm dialog; confirming calls `DELETE /api/v1/exams/{uuid}` (204) and removes the row.
-4. Edge case: `GET /api/v1/exams/` returns `[]` → renders "目前沒有考試" empty state.
-5. Edge case: delete on a `Finished` exam returns `400` from backend → inline error inside
-   dialog stays visible; row is NOT removed.
-6. `InterviewerStubPage` is no longer imported anywhere (build would fail if stale import
-   remained).
-
-### Risk / rollback
-
-Low risk — additive new files; `App.jsx` change is a well-scoped route swap. If broken,
-revert `App.jsx` and keep stub routes.
-
----
-
-## Phase 2 — Create exam form
-
-**Goal**: Implement `ExamFormPage` for `POST /api/v1/exams/` — title, duration,
-easy/medium/hard quota inputs, candidate dropdown (from `GET /api/v1/users/` filtered to
-`role === 'Candidate'`), client-side validation, and 201 → redirect to exam detail.
-
-**Risk tier**: low
-**Use full ReAct in executor**: no
-**Depends on**: P1 (routing and barrel must exist)
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/ExamFormPage.jsx` | **create** | Create-only form (no edit — edit lives in P3 detail page). Fetches users on mount; filters to candidates; renders a `<select>` for `candidate_id`. Integer fields (`duration_minutes`, `easy_count`, `medium_count`, `hard_count`) use `type="number"` inputs with `min`. |
-| `frontend/src/pages/interviewer/index.js` | **modify** | Add `ExamFormPage` export. |
-| `frontend/src/App.jsx` | **modify** | Wire `exams/new` route to real `ExamFormPage` (replacing the stub placeholder from P1). |
-
-### Numeric-input footgun pre-emption
-
-`ExamCreate` requires `candidate_id` (UUID string) and integer counts. The submit handler
-must call `Number()` / `parseInt()` on all count/duration fields and guard against
-`NaN` (set to 0 / 120 respectively) before sending, matching the pattern in
-`ProblemFormPage.jsx` lines 156–179. `candidate_id` is sent as the raw UUID string from
-the dropdown value — never coerced to int.
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` green.
-3. Golden path: fill title ("Spring 2026 面試"), set duration 60, set easy 2 / medium 1 /
-   hard 0, pick a candidate from dropdown → submit → `POST /api/v1/exams/` called with
-   `{ title, duration_minutes: 60, easy_count: 2, medium_count: 1, hard_count: 0,
-   candidate_id: "<uuid>" }` → 201 → navigate to `/interviewer/exams/:newId`.
-4. Numeric coercion: clearing the duration field must NOT send `NaN` — fallback 120.
-5. Validation: empty `title` → Chinese error "請填寫考試標題", no API call.
-   No candidate selected → Chinese error "請選擇應試者", no API call.
-6. `candidate_id` in POST body is a UUID string, not an integer.
-
-### Risk / rollback
-
-Low. Form is a new file; only `App.jsx` wiring changes. Rollback = remove route wiring.
-
----
-
-## Phase 3 — Exam detail / edit page (heaviest phase)
-
-**Goal**: Implement `ExamDetailPage` mounted at `exams/:id`. This single page handles:
-viewing full exam detail (fetches `GET /api/v1/exams/{id}` for `ExamRead`), editing title
-+ duration (Draft only) via inline `PATCH`, auto-generating problems (`POST .../generate`,
-Draft only), manually adding one problem from the bank (`POST .../problems`, Draft only,
-opens a picker dialog backed by `GET /api/v1/problems/`), publishing (`POST .../publish`,
-Draft only, disabled if zero problems), and delete (via confirm dialog, same 204/400
-handling as list).
-
-**Risk tier**: high
-**Use full ReAct in executor**: yes
-**Depends on**: P1, P2
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/ExamDetailPage.jsx` | **create** | The core of the panel. Draft-gate logic controls which action buttons are enabled/visible. Resolves `candidate_id` → display name from user list (same `GET /api/v1/users/` call, filtered). |
-| `frontend/src/pages/interviewer/index.js` | **modify** | Add `ExamDetailPage` export. |
-| `frontend/src/App.jsx` | **modify** | Wire `exams/:id` route to real `ExamDetailPage`. |
-
-### Key implementation points
-
-- **Draft-gating**: Edit form fields, "自動生成題目" button, "新增題目" button, and
-  "發佈考試" button are all `disabled` (or hidden) when `exam.status !== 'Draft'`. Each
-  backend action that is Draft-only also shows the `400` detail gracefully inline if a
-  stale action slips through.
-- **Problem list keys**: `exam_problems` items are keyed by `problem_id` (int) — never by
-  array index (lesson L1 pre-emption). `problem_id` is int; exam id is UUID; do not mix.
-- **Manual-add picker**: Opens a `Dialog` listing problems from `GET /api/v1/problems/`
-  (already used by Questioner; reuse the same call style). Each row has an "加入" button
-  that calls `POST /api/v1/exams/{id}/problems` with `{ problem_id: <int>, points: 100 }`.
-  `problem_id` must be sent as an integer, not a string.
-- **Publish guard**: "發佈考試" button is disabled when `exam_problems.length === 0`.
-  Even if clicked when `length > 0`, handle backend `400` (e.g. status already Published)
-  gracefully.
-- **Edit form**: Only `title` and `duration_minutes` are sent in PATCH — do not include
-  `status` or times. `duration_minutes` coerced via `Number()`, fallback 120.
-- **Candidate name**: Use `GET /api/v1/users/` (same fetch pattern as P2 candidate
-  dropdown); `ExamRead` has `candidate_id` (UUID); map to `username` or `full_name`.
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` green.
-3. Golden path (Draft exam): navigate to `/interviewer/exams/:id` → see title, status
-   badge (草稿), candidate name (resolved, not raw UUID), duration, problem list; click
-   "自動生成題目" → `POST .../generate` → problems table refreshes; click "新增題目" →
-   picker dialog opens, click "加入" on a row → `POST .../problems` with
-   `{ problem_id: <int>, points: 100 }` → problems table refreshes; edit title and save →
-   `PATCH` called with only `{ title, duration_minutes }` → page reflects new title;
-   click "發佈考試" → `POST .../publish` → status badge changes to "已發佈", all Draft
-   action buttons become disabled.
-4. Edge case: exam in `Published` status → edit form, generate, add, and publish buttons
-   are all disabled; attempting to PATCH via keyboard submit still shows "非草稿狀態不可編輯"
-   or the 400 detail.
-5. Edge case: publish with zero `exam_problems` → "發佈考試" button is disabled (client
-   guard); if backend returns `400` regardless → inline error shown.
-6. `problem_id` in add-problem body is an int (never a string).
-7. `exam_problems` table rows use `key={problem.problem_id}` not `key={idx}`.
-
-### Risk / rollback
-
-High — most logic lives here; multiple API mutations; status-gating must be correct.
-Rollback: revert `App.jsx` wiring to stub route; the new file is standalone.
-
----
-
-## Phase 4 — Exam result page + exam-list enrichments
-
-**Goal**: (a) Implement `ExamResultPage` mounted at `exams/:id/result` — fetches
-`GET /api/v1/exams/{id}/result` (`ExamResultRead`) and renders total score banner +
-per-problem table with `JudgeStatusBadge`. (b) Enrich the existing `ExamListPage` with
-a `score` column (from `CandidateExamListRead.score`) and a status filter `<select>`.
-
-**Risk tier**: low
-**Use full ReAct in executor**: no
-**Depends on**: P1 (routing + list page exists), P3 (result link lives in ExamDetailPage)
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/ExamResultPage.jsx` | **create** | Read-only view. Fetches `GET /api/v1/exams/{id}/result`; renders `ExamResultRead`: total score banner, per-problem table (sequence, title, max_points, candidate_score, JudgeStatusBadge for submission_status). Handles `"Unsubmitted"` via the existing `JudgeStatusBadge` which already maps that string to "未提交". |
-| `frontend/src/pages/interviewer/index.js` | **modify** | Add `ExamResultPage` export. |
-| `frontend/src/App.jsx` | **modify** | Add `<Route path="exams/:id/result" element={<ExamResultPage />} />` under `/interviewer`. |
-| `frontend/src/pages/interviewer/ExamListPage.jsx` | **modify** | Add `score` column (显示 `exam.score ?? '—'` with unit 分) and a status-filter `<select>` above the table (options: 全部/草稿/已發佈/進行中/已結束/已封存). Filter is client-side: derive `filteredExams` from `exams` based on `statusFilter` state. No new API call needed. |
-
-### Key implementation notes
-
-- **ExamResultPage**: `ExamResultRead.results[]` items use `submission_status` which is a
-  string — when the candidate has not submitted, it is `"Unsubmitted"`. Pass directly to
-  `JudgeStatusBadge` (which already handles `"Unsubmitted"` → "未提交"). Do NOT render
-  `JudgeStatusBadge` for the `"Unsubmitted"` case specially — the badge handles it.
-- **Score banner**: `total_candidate_score` may be `null` (exam not yet started/finished).
-  Render `total_candidate_score ?? '—'` and `total_exam_points`. E.g. "— / 300 分".
-- **ExamListPage score column**: `CandidateExamListRead.score` is nullable. Show `—` when
-  null. The column header is "分數".
-- **Status filter**: `statusFilter` state, default `''` (全部). Derive `filteredExams =
-  statusFilter ? exams.filter(e => e.status === statusFilter) : exams`. Use the same
-  status enum values as `ExamStatusBadge` (`Draft`, `Published`, `Ongoing`, `Finished`,
-  `Archived`) for the option values; display their Chinese equivalents as option labels.
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` green.
-3. Golden path (result page): navigate to `/interviewer/exams/:id/result` → see exam title,
-   total score "135 / 300 分", per-problem table with sequence, problem title, max_points,
-   candidate_score, and `JudgeStatusBadge` for `submission_status`.
-4. Edge case (result page): `total_candidate_score === null` → shows "— / N 分", no crash.
-5. Edge case (result page): `results[]` is empty → shows "尚無結果" empty state.
-6. Golden path (list enrichment): exam list shows new "分數" column; when `score` is null
-   the cell shows "—"; when score is 150 the cell shows "150 分".
-7. Golden path (filter): selecting "草稿" from the status `<select>` → only `Draft` exams
-   appear in the table; selecting "全部" restores all rows; no extra API call is made.
-8. `ExamDetailPage`'s "查看結果" link (`/interviewer/exams/:id/result`) resolves to
-   `ExamResultPage` and no longer 404s.
-
-### Risk / rollback
-
-Low. `ExamResultPage` is a new read-only file. `ExamListPage` modification is additive
-(new column + filter state). Rollback: remove route wiring; revert ExamListPage changes.
-
----
-
-## Phase 5 — Candidate account management: list + create
-
-**Goal**: Implement two pages for managing candidate user accounts: (a) `CandidateListPage`
-at `/interviewer/candidates` — table of candidates with "新增考生" button and row → detail
-link; (b) `CandidateFormPage` at `/interviewer/candidates/new` — create-candidate form
-(姓名 + 帳號 + 密碼 → `POST /api/v1/users/` with `role: 'Candidate'`). Add sidebar nav
-entry. Note: the spec shows a delete button, but `DELETE /users/{id}` is Admin-only (403
-for Interviewer) — omit the delete button entirely and note this limitation inline.
-
-**Risk tier**: medium
-**Use full ReAct in executor**: no
-**Depends on**: P4 (App.jsx candidate route stubs added in P4)
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/CandidateListPage.jsx` | **create** | Fetches `GET /api/v1/users/` (200 `UserRead[]`); filters client-side to `role === 'Candidate'`; renders table: 考生姓名 (`full_name ?? username`), 考生帳號 (`username`), 建立時間, 操作 (查看 link to `/interviewer/candidates/:id`). "新增考生" button navigates to `/interviewer/candidates/new`. Shows "目前沒有考生" empty state. No delete button (Admin-only endpoint — show a `<p className="text-xs text-muted-foreground">` note: "刪除考生帳號需由管理員操作"). |
-| `frontend/src/pages/interviewer/CandidateFormPage.jsx` | **create** | Create-candidate form. Fields: 姓名 (`full_name`, optional, ≤100 chars), 帳號 (`username`, required, 3–50 chars), 密碼 (`password`, required, ≥8 chars, `type="password"`). Submit sends `POST /api/v1/users/` with `{ username, full_name: fullName || null, password, role: 'Candidate' }` → 201 `UserRead` → navigate to `/interviewer/candidates/:newId`. Client-side validation: username empty → "請填寫帳號"; username < 3 chars → "帳號至少需要 3 個字元"; password empty → "請填寫密碼"; password < 8 chars → "密碼至少需要 8 個字元". |
-| `frontend/src/pages/interviewer/index.js` | **modify** | Add `CandidateListPage` and `CandidateFormPage` exports. |
-| `frontend/src/App.jsx` | **modify** | Add real candidate routes under `/interviewer`: `candidates` index → `CandidateListPage`, `candidates/new` → `CandidateFormPage`. (P6 adds `candidates/:id`.) |
-| `frontend/src/layouts/StaffLayout.jsx` | **modify** | In `NAV_BY_ROLE`, add `{ to: '/interviewer/candidates', label: '考生管理' }` to BOTH the `interviewer` array and the `admin` array (admin sees interviewer links too). The existing `{ to: '/interviewer', label: '面試管理' }` entry stays. `NAV_BY_ROLE` is a flat `{ role: [{to,label}] }` map. |
-
-### Key implementation notes
-
-- **No numeric coercion needed**: `POST /users/` body fields are all strings (`username`,
-  `full_name`, `password`). `role` is sent as the string `'Candidate'`. No int fields.
-- **UserCreate schema**: `username` (3–50 chars), `full_name` (optional, ≤100),
-  `password` (≥8 chars), `role` (enum default `Candidate` — send explicitly to be safe).
-  Backend returns `201 UserRead` on success; `422` on validation failure (show
-  `err.response?.data?.detail` inline or a generic Chinese error).
-- **Delete omission**: `DELETE /api/v1/users/{id}` is `get_admin_user` — 403 for
-  Interviewer. Per the open-question resolution (carry forward): omit the delete button,
-  add a small note "刪除考生帳號需由管理員操作" below the table.
-- **StaffLayout sidebar**: `frontend/src/layouts/StaffLayout.jsx` has a flat
-  `NAV_BY_ROLE` map (`questioner` / `interviewer` / `admin` → array of `{to,label}`).
-  Add the `考生管理` entry to the `interviewer` and `admin` arrays only. Do not touch
-  `questioner`. The fallback array (role unknown) may also get the entry for consistency.
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` green.
-3. Golden path (list): navigate to `/interviewer/candidates` → table shows 考生姓名,
-   考生帳號, 建立時間; "新增考生" button navigates to `/interviewer/candidates/new`;
-   clicking "查看" on a row navigates to `/interviewer/candidates/:id`.
-4. Edge case (list): `GET /api/v1/users/` returns users but none with `role === 'Candidate'`
-   → shows "目前沒有考生".
-5. Delete button is absent from the UI; "刪除考生帳號需由管理員操作" note is visible.
-6. Golden path (create): fill 帳號 "alice123" + 密碼 "password8" → submit → `POST
-   /api/v1/users/` called with `{ username: 'alice123', password: 'password8',
-   role: 'Candidate' }` (`full_name` omitted or null when left blank) → 201 → navigate to
-   `/interviewer/candidates/:newId`.
-7. Validation: empty 帳號 → "請填寫帳號"; 帳號 "ab" → "帳號至少需要 3 個字元"; empty 密碼 →
-   "請填寫密碼"; 密碼 "1234567" (7 chars) → "密碼至少需要 8 個字元"; no API call on any fail.
-8. Sidebar shows "考生管理" link for interviewer role; clicking it navigates to
-   `/interviewer/candidates`.
-
-### Risk / rollback
-
-Medium — `POST /api/v1/users/` is a new write endpoint; StaffLayout sidebar is a shared
-component (verify the exact data structure before editing). Rollback: revert StaffLayout
-and App.jsx; the new page files are standalone.
-
----
-
-## Phase 6 — Candidate detail page
-
-**Goal**: Implement `CandidateDetailPage` at `/interviewer/candidates/:id` — shows a
-candidate's profile info (`GET /api/v1/users/{id}`) plus that candidate's exam sub-list.
-The exam sub-list requires a fan-out: `GET /api/v1/exams/` returns all exams (no
-`candidate_id` in the list schema), so each exam id must be individually fetched via
-`GET /api/v1/exams/{id}` to get `candidate_id` and filter. The fan-out is acceptable for
-this course-project scale (bounded exam count).
-
-**Risk tier**: medium
-**Use full ReAct in executor**: no
-**Depends on**: P5 (candidate routes + barrel)
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/CandidateDetailPage.jsx` | **create** | Two-section page: (1) 考生資料 card — `full_name`, `username`, `role`, `created_at` from `GET /api/v1/users/{id}` (200 `UserRead`). (2) 該考生的考試列表 — uses `GET /api/v1/exams/` to get all exam ids, then fans out to `GET /api/v1/exams/{id}` for each, filters to those whose `candidate_id === userId`, renders a sub-table (exam title, status badge, duration, "查看考試" link). |
-| `frontend/src/pages/interviewer/index.js` | **modify** | Add `CandidateDetailPage` export. |
-| `frontend/src/App.jsx` | **modify** | Add `<Route path="candidates/:id" element={<CandidateDetailPage />} />` under `/interviewer`. |
-
-### Fan-out implementation pattern
-
-```
-// Pseudocode — executor should implement in plain useEffect + useState
-const [examIds, setExamIds] = useState([])        // from GET /exams/ list
-const [candidateExams, setCandidateExams] = useState([])
-const [examsLoading, setExamsLoading] = useState(true)
-
-// Step 1: fetch list to get ids
-const listRes = await api.get('/api/v1/exams/')
-const ids = listRes.data.map(e => e.id)
-
-// Step 2: fan-out (Promise.all — all or nothing; ok for small N)
-const details = await Promise.all(ids.map(id => api.get(`/api/v1/exams/${id}`)))
-const mine = details.map(r => r.data).filter(e => e.candidate_id === userId)
-setCandidateExams(mine)
-```
-
-Guard: if `ids.length === 0`, skip fan-out and show empty state immediately. Show a
-`LoadingSpinner` while fan-out is in progress. If any `GET /exams/{id}` call fails, catch
-the error and show "無法載入考試列表" — do not crash the whole page.
-
-### Key implementation notes
-
-- `userId` comes from `useParams()` (`candidates/:id`). This is a UUID string.
-- `UserRead` shape: `id` (UUID), `username`, `full_name` (nullable), `role`, `created_at`.
-  Display `full_name ?? username` as the display name.
-- Candidate-exam sub-table columns: 考試標題, 狀態 (`ExamStatusBadge`), 時長, 操作
-  (Button "查看考試" → Link to `/interviewer/exams/:examId`).
-- Fan-out is two sequential async steps inside a single `useEffect`. Do NOT debounce or
-  abort — keep it beginner-readable.
-- Back link: "← 返回考生列表" → `/interviewer/candidates`.
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` green.
-3. Golden path: navigate to `/interviewer/candidates/:id` → see 考生資料 card (姓名,
-   帳號, 角色, 建立時間) + 考試列表 sub-table showing only exams where `candidate_id`
-   matches this candidate; each row has "查看考試" link to `/interviewer/exams/:examId`.
-4. Edge case: candidate has no exams → sub-table shows "尚無考試紀錄" empty state.
-5. Edge case: `GET /api/v1/users/{id}` returns `404` → `ErrorMessage` shown; no crash.
-6. Fan-out: if exam list is empty, fan-out is skipped and empty state renders without
-   making any `GET /exams/{id}` call (confirm via code inspection — the test phase will
-   assert this).
-
-### Risk / rollback
-
-Medium — fan-out introduces N+1 API calls (bounded, acceptable for this project scale).
-If the fan-out proves too slow or hits rate limits in a real env, descoping to "link to
-exam list" would be the rollback. The page file is standalone; rollback is removing the
-route wiring.
-
----
-
-## Phase 7 — Candidate problem-solving detail page
-
-**Goal**: Implement `SubmissionDetailPage` at `/interviewer/exams/:examId/problems/:problemId`
-— shows one candidate's submission for one problem: 題目描述 + 難度 (from
-`GET /api/v1/problems/{problemId}`), submitted source code (fetched via `presigned_url`
-using plain `fetch()` — NOT the shared `api` axios instance), per-testcase results table
-(`details[]` with `JudgeStatusBadge`), and overall judge status + score.
-
-**Risk tier**: high
-**Use full ReAct in executor**: yes
-**Depends on**: P3 (ExamDetailPage provides the drill-in link), P4 (route infra)
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/SubmissionDetailPage.jsx` | **create** | Multi-step data fetch: (1) `GET /api/v1/exams/{examId}` → `candidate_id`; (2) `GET /api/v1/submissions/?exam_id={examId}&problem_id={problemId}&user_id={candidate_id}` → take newest (index 0); (3) `GET /api/v1/submissions/{submissionId}` → full `SubmissionRead` incl. `details[]` + `presigned_url`; (4) `GET /api/v1/problems/{problemId}` for description + difficulty (parallel with step 3). Source code: if `presigned_url` is non-null, `fetch(presigned_url)` (plain fetch, no auth header) → `.text()` → display in Monaco or a `<pre>`. |
-| `frontend/src/pages/interviewer/index.js` | **modify** | Add `SubmissionDetailPage` export. |
-| `frontend/src/App.jsx` | **modify** | Add `<Route path="exams/:examId/problems/:problemId" element={<SubmissionDetailPage />} />` under `/interviewer`. |
-| `frontend/src/pages/interviewer/ExamDetailPage.jsx` | **modify** | Add "查看提交" link on each problem row in the `exam_problems` table: `<Link to={`/interviewer/exams/${id}/problems/${problem.problem_id}`}>查看提交</Link>`. Only show when `exam.status !== 'Draft'` (no submission possible on Draft exams). |
-
-### Critical implementation notes
-
-- **presigned_url footgun**: `presigned_url` is a time-limited MinIO/S3 GET URL. It MUST
-  be fetched with `fetch(presigned_url)` (plain browser fetch). Do NOT use the shared
-  `api` axios instance — `api` prepends `/api` and attaches a `Bearer` token, both of
-  which are wrong for an S3 URL and will cause the request to fail or return 403. This is
-  the single highest-risk line in the entire phase. The executor must add a comment:
-  `// S3 presigned URL — must use plain fetch(), NOT api axios instance`.
-- **presigned_url null guard**: if `presigned_url === null` (submission not yet judged, or
-  S3 unavailable), show "程式碼暫無法顯示" instead of crashing.
-- **Submission lookup**: `GET /api/v1/submissions/?exam_id=<uuid>&problem_id=<int>&user_id=<uuid>`
-  returns an array newest-first. Take `[0]`. If the array is empty, the candidate has not
-  submitted this problem — show "考生尚未提交此題" and stop (no further API calls).
-- **`problem_id` type**: URL param `problemId` from `useParams()` is a string. Coerce to
-  `Number(problemId)` before sending as the `problem_id` query param (lesson L1 applied
-  to query strings).
-- **Data flow summary**: `useParams()` gives `examId` (UUID string) and `problemId`
-  (string → Number). Step 1 fetch exam → `candidate_id`. Step 2 find submission id. Step
-  3+4 parallel: fetch full submission + fetch problem detail. Then fetch source text via
-  `presigned_url` if non-null.
-- **UI sections** (in order): 頁首 (back link + 考試 title + 考生帳號), 題目資訊 (title,
-  描述, 難度 badge), 提交資訊 (語言, 狀態 `JudgeStatusBadge`, 分數, 執行時間), 程式碼
-  (`<pre>` or Monaco read-only — use `<pre>` for simplicity to avoid async Monaco import
-  complexity), 測資結果 table (`details[]`: testcase_id, status badge, score, exec time).
-- **Monaco vs pre**: use `<pre className="bg-muted rounded p-4 text-sm overflow-auto">` for
-  the source display — plain `<pre>` avoids the Monaco async loading complexity and keeps
-  the page beginner-friendly. Monaco can be used if the executor judges it worthwhile, but
-  `<pre>` is sufficient.
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` green.
-3. Golden path: navigate to `/interviewer/exams/:examId/problems/:problemId` → see 題目標題
-   + 難度 + 描述; 考生帳號 in header; 提交狀態 `JudgeStatusBadge`; source code in `<pre>`;
-   `details[]` table with per-testcase `JudgeStatusBadge`, score, exec time.
-4. Edge case: `presigned_url === null` → "程式碼暫無法顯示" shown instead of `<pre>`, no crash.
-5. Edge case: submission list empty (candidate has not submitted) → "考生尚未提交此題" shown;
-   no calls to `GET /submissions/{id}` or `presigned_url`.
-6. Edge case: `GET /exams/{examId}` fails (404/500) → `ErrorMessage` with 返回 button.
-7. Source code is fetched with plain `fetch(presigned_url)` — NOT `api.get(...)`. The
-   executor must confirm this by code inspection; the test phase will mock `window.fetch`
-   separately from `api` to verify this invariant.
-8. `problem_id` query param is sent as a Number (e.g. `?problem_id=3`), not a string.
-9. `ExamDetailPage` shows a "查看提交" link per problem row when status is not Draft.
-
-### Risk / rollback
-
-High — multi-step async data flow; the presigned_url plain-fetch requirement is easy to
-get wrong (using `api` by muscle memory). Rollback: remove the route from App.jsx and
-remove the "查看提交" links from ExamDetailPage; both new-file and modified-file changes
-are reversible.
-
----
-
-## Phase 8 — Profile / change-password page
-
-**Goal**: Implement `ProfilePage` at `/interviewer/profile` — displays the logged-in
-interviewer's profile (`GET /api/v1/users/me`), allows editing `full_name` ONLY
-(`PATCH /api/v1/users/me` — `username` and `role` are NOT editable, shown read-only),
-and provides a password-change form (`PUT /api/v1/users/me/password`).
-
-**Risk tier**: low
-**Use full ReAct in executor**: no
-**Depends on**: P1 (App.jsx routing infra)
-
-### Files to create / modify
-
-| File | Action | Rationale |
-|---|---|---|
-| `frontend/src/pages/interviewer/ProfilePage.jsx` | **create** | Two sections: (1) 個人資料 — editable field `full_name` only; `username` + `role` shown read-only (the `UserUpdate` schema has NO `username`); save button → `PATCH /api/v1/users/me`; (2) 修改密碼 — fields `old_password` + `new_password` (≥8 chars) + `confirm_password`; submit → `PUT /api/v1/users/me/password`. Each section has its own inline error + success state. |
-| `frontend/src/pages/interviewer/index.js` | **modify** | Add `ProfilePage` export. |
-| `frontend/src/App.jsx` | **modify** | Add `<Route path="profile" element={<ProfilePage />} />` under `/interviewer`. |
-| `frontend/src/layouts/StaffLayout.jsx` | **modify** | In `NAV_BY_ROLE`, add `{ to: '/interviewer/profile', label: '個人資料' }` to the `interviewer` and `admin` arrays. There is no header profile slot — the sidebar is the place. |
-
-### Key implementation notes
-
-- **PATCH /api/v1/users/me body**: `{ full_name }` ONLY. Verified — the `UserUpdate`
-  schema is `{ full_name, role }`; it has NO `username` field, so `username` cannot be
-  changed here (the endpoint silently ignores unknown fields). Do NOT send `role`
-  (backend 403s a non-Admin role change). On `200` success update local state; no reload.
-- **PUT /api/v1/users/me/password body**: verified `UserUpdatePassword` =
-  `{ old_password, new_password }` — the field is `old_password` (NOT `current_password`);
-  `new_password` min 8 chars; returns `200`. Client-side: validate
-  `new_password.length >= 8` and `new_password === confirmPassword` before sending.
-  On success, clear the password fields; show "密碼已更新" success message.
-- **Two separate forms**: Do NOT combine profile edit and password change into one submit.
-  Each section is its own `<form>` with its own submit button and its own error/success
-  state.
-- **`GET /api/v1/users/me`**: on mount, fetch this to populate the form. `UserRead` has
-  `id`, `username`, `full_name` (nullable), `role`, `created_at`.
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` green.
-3. Golden path (profile edit): page shows 帳號 (read-only) + 姓名 pre-filled from
-   `GET /users/me`; editing 姓名 and clicking save → `PATCH /api/v1/users/me` called with
-   `{ full_name: '...' }` → 200 → form stays populated with the new value; success
-   message shown.
-4. Golden path (password change): fill 目前密碼, 新密碼 (≥8), 確認新密碼 (matches) →
-   submit → `PUT /api/v1/users/me/password` called with `{ old_password, new_password }`
-   → 200 → password fields cleared; "密碼已更新" shown.
-5. Validation: 新密碼 < 8 chars → "新密碼至少需要 8 個字元", no API call. 確認新密碼
-   mismatch → "新密碼與確認密碼不一致", no API call.
-6. Profile edit PATCH body contains ONLY `full_name` — no `role`, no `username`.
-7. Sidebar (or header) shows a navigable "個人資料" link for the interviewer.
-
-### Risk / rollback
-
-Low — two standard forms with well-defined endpoints. StaffLayout sidebar modification is
-the only shared-component touch; same pattern as P5. Rollback: remove route + sidebar link.
-
----
-
-## Phase 9 — Vitest unit tests for P4–P8 pages
-
-**Goal**: Write real Vitest unit tests for the logic-dense pieces of all pages built in
-P4–P8. Tests must meet the L3 "break the impl, watch it fail" standard: every spy
-assertion also asserts the exact URL+body; every gating/conditional test has a comment
-explaining what removing the guard would break.
-
-**Risk tier**: low
-**Use full ReAct in executor**: no
-**Depends on**: P4–P8 all complete
-
-Tests are deferred to a single final phase (rather than inlined per page) because: all
-pages need to exist before their full test surface is known; a single phase lets the
-executor apply the L3 discipline uniformly; this mirrors the Questioner loop's structure.
-
-### Files to create / modify
-
-| File | Action | Key test cases |
-|---|---|---|
-| `frontend/src/pages/interviewer/ExamResultPage.test.jsx` | **create** | (a) renders total score "135 / 300 分"; (b) `total_candidate_score === null` → "— / 300 分", no crash; (c) `results[]` empty → "尚無結果"; (d) `"Unsubmitted"` status → JudgeStatusBadge renders "未提交". |
-| `frontend/src/pages/interviewer/ExamListPage.test.jsx` | **create** | (a) status filter: selecting "Draft" → only Draft rows visible; selecting "全部" → all rows visible, no extra GET call; (b) score column: `score === null` → "—", `score === 150` → "150 分" (or similar); (c) delete confirm → `DELETE /api/v1/exams/{uuid}` called with exact UUID; delete success → row removed; (d) delete 400 → inline error, row stays. |
-| `frontend/src/pages/interviewer/CandidateListPage.test.jsx` | **create** | (a) renders table rows filtered to `role === 'Candidate'` only (mock returns mixed roles); (b) non-Candidate users do NOT appear; (c) empty → "目前沒有考生"; (d) delete button is absent from the DOM. |
-| `frontend/src/pages/interviewer/CandidateFormPage.test.jsx` | **create** | (a) empty username → "請填寫帳號", POST not called; (b) username 2 chars → "帳號至少需要 3 個字元"; (c) password 7 chars → "密碼至少需要 8 個字元"; (d) success → `POST /api/v1/users/` called with `{ username, password, role: 'Candidate' }` (exact body); (e) optional full_name omitted → body has `full_name: null` or field absent (whichever the impl does — assert the actual behavior). |
-| `frontend/src/pages/interviewer/SubmissionDetailPage.test.jsx` | **create** | (a) `presigned_url` non-null → `window.fetch` called with the presigned URL; `api.get` NOT called with the presigned URL (this is the core L3 test for the S3 footgun); (b) `presigned_url === null` → "程式碼暫無法顯示" shown, no `fetch()` called; (c) submission list empty → "考生尚未提交此題" shown, no `GET /submissions/{id}` call; (d) `details[]` table renders per-testcase rows with `JudgeStatusBadge`; (e) `problem_id` query param is a Number (assert `api.get` called with URL containing `problem_id=3` not `problem_id=3` as string — use `toHaveBeenCalledWith` with exact URL string). |
-| `frontend/src/pages/interviewer/ProfilePage.test.jsx` | **create** | (a) profile form pre-fills from `GET /users/me` response; (b) save → `PATCH /api/v1/users/me` called with `{ full_name }` only — no `username`, no `role`; (c) password < 8 → "新密碼至少需要 8 個字元", PUT not called; (d) password mismatch → "新密碼與確認密碼不一致", PUT not called; (e) password success → `PUT /api/v1/users/me/password` called with `{ old_password, new_password }`, "密碼已更新" shown, fields cleared. |
-
-### Test-quality requirements (L3 pre-emption)
-
-- Mock `@/lib/api` as `{ default: { get: vi.fn(), post: vi.fn(), delete: vi.fn(), patch: vi.fn(), put: vi.fn() } }`.
-- Mock `window.fetch` separately (via `vi.spyOn(window, 'fetch')`) for `SubmissionDetailPage`
-  tests — this is what distinguishes plain `fetch()` from `api` and makes the S3 footgun
-  test meaningful.
-- Mock shadcn `Dialog` inline (avoid Radix portal issues in jsdom) — same pattern as
-  `ProblemListPage.test.jsx`.
-- Every `toHaveBeenCalledWith` assertion must include the exact URL string.
-- Every gating test (e.g. "button disabled when not Draft") must include a comment:
-  `// This test fails if the disabled={!isDraft} guard is removed`.
-- `vi.clearAllMocks()` in `beforeEach`.
-
-### Acceptance criteria
-
-1. `cd frontend && npm run build` exits 0.
-2. `cd frontend && npm run test` 100% green; all 45 existing tests pass; ≥ 20 new test
-   cases across the 6 new files.
-3. `SubmissionDetailPage` test: `window.fetch` spy is called with the presigned URL, AND
-   `api.get` is NOT called with a URL containing the presigned URL — this directly tests
-   the S3 footgun invariant.
-4. `CandidateListPage` test: mock returns one `Candidate` and one `Interviewer` user;
-   assert only the `Candidate` row appears — this directly tests the client-side filter.
-5. Each test file has at least one test with the "break the impl" comment pattern.
-6. No test spies on `console.error` as a substitute for real assertions.
-
-### Risk / rollback
-
-Low — pure test additions. If a test cannot be made green, the bug is in P4–P8 and must
-be fixed before this phase closes. No rollback needed (test files are additive).
-
----
-
-## What was explicitly NOT planned
-
-- **`DELETE /api/v1/users/{id}` in Interviewer UI**: Admin-only endpoint (403 for
-  Interviewer). Omitted from `CandidateListPage` and `CandidateDetailPage` per verified
-  backend contract. A note in the UI explains users must ask an admin.
-- **Candidate-panel changes**: no modifications to `/candidate/*` routes or pages.
-- **Backend, judge-worker, docker-compose**: frontend-only loop.
-- **Status `start_time`/`end_time` editing**: `ExamUpdate` supports these fields but the
-  Interviewer edit form intentionally omits them (backend-managed).
-- **Pagination / server-side filtering**: not in the backend contract; client-side only.
-- **Monaco in SubmissionDetailPage**: `<pre>` is used instead for beginner-friendliness
-  (Monaco is already used in the Candidate panel's ExamPage — no need to repeat the async
-  import complexity here).
-- **Admin panel**: final loop — not touched here.
-- **i18n layer**: all UI strings hardcoded in Traditional Chinese per project convention.
-
----
-
-## Open questions
-
-1. ~~Fan-out in P6 (CandidateDetailPage)~~ — **RESOLVED 2026-05-21**: user chose the
-   N+1 fan-out (`GET /exams/` → `Promise.all` of `GET /exams/{id}` → filter by
-   `candidate_id`) for full HackMD-spec compliance. P6 stands as written.
-
-2. ~~PUT /users/me/password body shape~~ — **RESOLVED 2026-05-21** (supervisor verified
-   from `backend/app/schemas/user.py`): `UserUpdatePassword = { old_password, new_password }`
-   (`new_password` min 8). Also discovered `PATCH /me` uses `UserUpdate = { full_name, role }`
-   — there is NO `username` field, so the profile page cannot rename the account. P8 has
-   been updated: edit `full_name` only; `username` is read-only.
-
-3. ~~StaffLayout profile link placement~~ — **RESOLVED 2026-05-21**: `StaffLayout.jsx`
-   lives at `frontend/src/layouts/` (NOT `components/`) and uses a flat `NAV_BY_ROLE`
-   map. There is no header profile slot — sidebar entries are the way. P5/P8 file tables
-   updated with the correct path and exact `NAV_BY_ROLE` instructions.
+- **`63ed45b` L1 (interviewer-panel)**: Node 22 can print a fatal ESM-teardown stack trace
+  AFTER a green Vitest run; process still exits 0. Every phase's acceptance criteria here says
+  "judge by the `Test Files ... passed` summary line + exit code, not by the presence of a
+  stack trace."
+- **`63ed45b` L2 (interviewer-panel)**: Citing a spec field by its Chinese display name can
+  be satisfied with wrong data (UUID where username was expected). Every phase's API table above
+  maps each column label to its exact API field name (e.g. 帳號 = `username`, 應試者 resolved
+  via `usersMap[exam.candidate_id]`, 難度 = `difficulty` enum capitalized).
+- **questioner-panel (`f0472e9`)**: Re-deriving the backend contract from live source before
+  planning eliminated mid-phase API corrections. This plan uses the contract re-derived in
+  `prompt.md` (verified 2026-05-21 from live `backend/` source) as authoritative throughout.
