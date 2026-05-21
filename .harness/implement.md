@@ -331,6 +331,18 @@ None found.
 - No new tests in P4 (deferred to P9 per plan — expected).
 - No browser/Playwright check required: ExamResultPage is read-only; ExamListPage changes are purely additive. No existing page behavior was altered.
 
+### Commit
+
+`837dcd7` — feat(frontend): P4 — exam result page + exam-list score column & filter
+
+### Supervisor note
+
+- Reviewer nice-to-have #1 (`ExamResultPage.jsx` local function named `fetch` shadowing
+  `window.fetch`) was **fixed before commit** — renamed to `loadResult`. Build + test
+  re-confirmed green (45/45) after the rename. This removes a real footgun for the P9
+  `window.fetch` spy.
+- Reviewer nice-to-have #2 (filter-active zero-rows shows "目前沒有考試" instead of a
+  "篩選結果為空" message) — minor UX polish, carried forward; fold into P9 if cheap.
 
 ---
 
