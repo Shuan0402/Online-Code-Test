@@ -131,3 +131,13 @@ None found.
 
 - No browser/Playwright check needed — the form is additive and follows the proven `ProblemFormPage` pattern. No user-visible behavior was regressed.
 - P2 adds no new tests (plan defers tests to P5) — that is expected per plan and not a defect here.
+
+### Commit
+
+`a730e6e` — feat(frontend): P2 — Interviewer create-exam form
+
+### Supervisor note
+
+Reviewer's "raw `<select>` vs shadcn `<Select>`" nice-to-have is moot — there is no
+`select` component under `frontend/src/components/ui/` and the Questioner panel uses raw
+`<select>` too. Nothing to carry to P5.
