@@ -376,3 +376,70 @@ log" (includes the backend reality check for the new pages).
    profile / change-password page, exam-list enrichments (score column + filter),
    Vitest tests. The planner should overwrite `plan.md` from P4 onward (or renumber).
 4. Resume the execute → review → verify → commit cycle, one phase at a time.
+
+---
+
+## P5 — Candidate account management: list + create  (2026-05-21T14:12:00Z)
+
+### Files touched
+- `frontend/src/pages/interviewer/CandidateListPage.jsx` — **created**: fetches `GET /api/v1/users/`; filters client-side to `role === 'Candidate'`; renders table with 考生姓名 (`full_name ?? username`), 考生帳號, 建立時間, 操作 (查看 link to `/interviewer/candidates/:id`); empty state "目前沒有考生"; "新增考生" button → `/interviewer/candidates/new`; note "刪除考生帳號需由管理員操作" (no delete button).
+- `frontend/src/pages/interviewer/CandidateFormPage.jsx` — **created**: create-candidate form; fields: 姓名 (optional ≤100), 帳號 (required, 3–50), 密碼 (required ≥8, type=password); client-side validation with Chinese error messages; sends `POST /api/v1/users/` with `{ username, full_name: null when empty, password, role: 'Candidate' }`; 201 → navigate to `/interviewer/candidates/:newId`; inline API error handling.
+- `frontend/src/pages/interviewer/index.js` — **modified**: added `CandidateListPage` and `CandidateFormPage` exports.
+- `frontend/src/App.jsx` — **modified**: added `CandidateListPage` and `CandidateFormPage` to barrel import; added `<Route path="candidates" element={<CandidateListPage />} />` and `<Route path="candidates/new" element={<CandidateFormPage />} />` under `/interviewer`.
+- `frontend/src/layouts/StaffLayout.jsx` — **modified**: added `{ to: '/interviewer/candidates', label: '考生管理' }` to `interviewer` array, `admin` array, and the unknown-role fallback array in `NAV_BY_ROLE`.
+
+### Commands run
+- `npm run build` → exit 0 (1697 modules, 404.65 kB JS bundle)
+- `npm run test` → 45/45 green (7 test files)
+
+### Deviations from plan
+- None. All plan items implemented exactly as specified.
+
+### Adjacent findings (not fixed)
+- `CandidateListPage.jsx`: "查看" link navigates to `/interviewer/candidates/:id` which will 404 until P6 wires that route — expected mid-loop behaviour.
+
+### Blockers
+- None.
+
+### Verifier verdict
+
+```
+typecheck: skipped (JS-only project)
+lint:      skipped (no lint step configured)
+build:     pass (exit 0, 1697 modules, 404.65 kB bundle)
+test:      pass (45/45, 7 files)
+e2e:       skipped
+```
+
+React Router v7 future-flag warnings in test stderr — pre-existing advisory, not failures. No new warnings introduced by P5.
+
+**Verdict: green**
+
+### Reviewer verdict
+
+**Verdict: ship**
+
+**Criteria scorecard**
+
+1. Build exits 0 — pass (independently confirmed: exit 0, 1697 modules, 404.65 kB)
+2. Tests 100% green — pass (independently confirmed: 45/45)
+3. Golden path list — pass: `CandidateListPage.jsx:31` fetches `GET /api/v1/users/` (trailing slash); line 33 filters `role === 'Candidate'`; table columns 考生姓名/考生帳號/建立時間/操作 at lines 79–82; "新增考生" button at line 66; "查看" link at line 100.
+4. Empty state "目前沒有考生" — pass: `CandidateListPage.jsx:73` inside the `candidates.length === 0` branch.
+5. No delete button, admin note present — pass: no delete UI anywhere; "刪除考生帳號需由管理員操作" at line 111, outside the ternary so it renders in both empty and populated states.
+6. Golden path create — pass: `CandidateFormPage.jsx:40–45` builds `{ username: username.trim(), full_name: null when empty, password, role: 'Candidate' }`; `POST /api/v1/users/` at line 46; 201 → navigate to `/interviewer/candidates/${res.data.id}` at line 48.
+7. Client-side validation — pass: empty username (line 21–23) → "請填寫帳號"; `username.trim().length < 3` (line 25–27) → "帳號至少需要 3 個字元"; empty password (line 29–31) → "請填寫密碼"; `password.length < 8` (line 33–35) → "密碼至少需要 8 個字元"; all return before `api.post`.
+8. Sidebar "考生管理" — pass: `StaffLayout.jsx:27` (interviewer array), line 32 (admin array), line 44 (fallback).
+
+**Must-fix issues**
+
+None found.
+
+**Nice-to-have**
+
+- `CandidateListPage.jsx:111`: the admin-note line renders even in the empty state (candidates.length === 0), where it appears below the "目前沒有考生" message. Visually harmless and arguably correct to show it always, but could be conditionally shown only when table is populated to reduce noise. Not a defect.
+- `CandidateFormPage.jsx:25`: the length check is against `username.trim()` but the empty check at line 21 is also against `username.trim()`, so a username of "  " (only spaces) correctly triggers "請填寫帳號", not the length error. Behavior is correct; no action needed.
+
+**Verification gaps**
+
+- No new tests in P5 (deferred to P9 per plan — expected).
+- No browser/Playwright check required: both pages are additive, no existing page behavior was altered. `candidates/:id` "查看" link will 404 until P6 — expected mid-loop behavior per plan.
