@@ -304,3 +304,6 @@ e2e:       skipped
 - `AdminProblemListPage.test.jsx` — no test for Medium or Hard filter (only Easy is tested). The filter logic is a one-liner equality check so omitting Medium/Hard is low risk, but adding one assertion for a second difficulty would be more robust.
 
 **Verification gaps**: No browser/Playwright check. The detail page delete navigates to `/admin/problems` — verify in a live session that pressing delete on the detail page (not the list) also correctly removes the problem (the list page refetches on mount, so this should be fine, but is untested at the Playwright level).
+
+**Commit**: `ee2a274` feat(frontend): P5 — admin problem list & detail pages
+**Supervisor note**: both reviewer nice-to-haves re-triaged as cosmetic — the string-vs-int `id` provenance is functionally correct (backend parses the path segment as int either way; not a malformed request) and the missing Medium/Hard filter assertion covers a one-line equality check. Deferred, not blocking.
