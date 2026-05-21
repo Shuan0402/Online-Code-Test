@@ -64,6 +64,9 @@ def test_create_submission_exam_ongoing_success(mock_push, client, candidate_use
         
         assert response.status_code == 202
         assert response.json()["exam_id"] == str(exam.id)
+
+        assert "client_ip" in response.json()
+        assert response.json()["client_ip"] == "testclient"
         
     finally:
         client.app.dependency_overrides.clear()

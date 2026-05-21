@@ -39,6 +39,7 @@ class Submission(Base):
     status = Column(Enum(JudgeStatus), default=JudgeStatus.Pending, nullable=False)
     score = Column(Integer, default=0)
 
+    client_ip = Column(String(45), nullable=True)
     execution_time = Column(Integer, nullable=True)
     memory_usage = Column(Integer, nullable=True)
     judge_log = Column(Text, nullable=True)
