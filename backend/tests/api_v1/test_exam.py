@@ -5,6 +5,7 @@ from app.models.enums import ExamStatus, DifficultyLevel, UserRole
 from app.models.user import User
 from app.models.submission import Submission
 from app.models.exam import Exam, ExamProblem
+from app.models.testcase import TestCase
 
 
 # --- GET /exams (考試列表查詢) ---
@@ -786,4 +787,120 @@ def test_add_exam_problem_manual_not_in_draft_blocked(client, interviewer_user, 
 
     response = client.post(f"/api/v1/exams/{exam.id}/problems", json=payload)
     assert response.status_code == 400
-    assert "只有在 Draft (草稿) 狀態才允許修改題目清單" in response.json()["detail"]
+    assert "不允許變更題目配置" in response.json()["detail"]
+
+# --- GET /exams/{exam_id}/problems (獲得指定考試題目列表) ----
+def test_get_exam_problems_success_by_staff(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    面試主管能成功調閱任何場次的配置題目
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam()
+    prob = create_test_problem(title="應考架構測試題")
+    
+    assoc = ExamProblem(exam_id=exam.id, problem_id=prob.id)
+    db_session.add(assoc)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/problems")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["title"] == "應考架構測試題"
+
+
+def test_get_exam_problems_candidate_blocked_for_others(client, candidate_user, override_auth, create_test_exam, create_test_user):
+    """
+    考生企圖調閱「不屬於自己」的考試場次題目，系統應回傳 403
+    """
+    other_candidate = create_test_user(role=UserRole.Candidate)
+    other_exam = create_test_exam(candidate_id=other_candidate.id)
+    
+    override_auth(candidate_user)
+    
+    response = client.get(f"/api/v1/exams/{other_exam.id}/problems")
+    
+    assert response.status_code == 403
+    assert "非本人名下" in response.json()["detail"]
+
+def test_get_exam_problems_candidate_only_sees_samples(client, candidate_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    洩題漏洞防禦測試：
+    考生調閱題目時，必須看得到 is_sample=True 的範例測資，但遮蔽 is_sample=False 的隱蔽測資答案。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(candidate_id=candidate_user.id)
+    prob = create_test_problem(title="機密防線大戰")
+    
+    sample_tc = TestCase(
+        problem_id=prob.id,
+        input_data="1 1",
+        expected_output="2",
+        is_sample=True,
+        score_weight=10
+    )
+    secret_tc = TestCase(
+        problem_id=prob.id,
+        input_data="9999 9999",
+        expected_output="19998",
+        is_sample=False,
+        score_weight=90
+    )
+    db_session.add_all([sample_tc, secret_tc])
+    db_session.commit()
+
+    db_session.add(ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100))
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/problems")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert len(data) == 1
+    
+    test_cases_received = data[0]["test_cases"]
+    assert len(test_cases_received) == 1
+    assert test_cases_received[0]["input_data"] == "1 1"
+    assert test_cases_received[0]["expected_output"] == "2"
+    assert test_cases_received[0]["is_sample"] is True
+    body_text = response.text
+    assert "9999" not in body_text
+    assert "19998" not in body_text
+
+# --- DELETE /exams/{exam_id}/problems (刪除考試題目) ---
+def test_delete_exam_problem_success(client, interviewer_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    面試官成功將特定題目從考試中移除，且關係表同步抹除。
+    """
+    override_auth(interviewer_user)
+    
+    exam = create_test_exam()
+    prob = create_test_problem(title="準備被拔掉的題目")
+    
+    assoc = ExamProblem(exam_id=exam.id, problem_id=prob.id)
+    db_session.add(assoc)
+    db_session.commit()
+
+    response = client.delete(f"/api/v1/exams/{exam.id}/problems/{prob.id}")
+
+    assert response.status_code == 204
+    db_session.expire_all()
+    deleted_assoc = db_session.query(ExamProblem).filter(
+        ExamProblem.exam_id == exam.id, 
+        ExamProblem.problem_id == prob.id
+    ).first()
+    assert deleted_assoc is None
+
+
+def test_delete_exam_problem_candidate_blocked(client, candidate_user, override_auth, create_test_exam, create_test_problem, db_session):
+    """
+    考生禁止擅自移除考試中的題目
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam()
+    prob = create_test_problem()
+    
+    response = client.delete(f"/api/v1/exams/{exam.id}/problems/{prob.id}")
+
+    assert response.status_code == 403

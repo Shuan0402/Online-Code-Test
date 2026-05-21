@@ -1,7 +1,7 @@
 import uuid
 from typing import List
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
@@ -12,6 +12,9 @@ from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
+from app.schemas.problem import ProblemRead, ProblemCandidateRead
+from app.services.exam import exam_service
+
 
 router = APIRouter()
 
@@ -308,12 +311,12 @@ def generate_exam_problems(
 
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")    
-
-    if exam.status != ExamStatus.Draft:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+    
+    if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"目前考試狀態為 {exam.status}，只有草稿 (Draft) 狀態能執行自動抽題。"
+            detail=f"目前考試狀態為 {exam.status}，不允許變更題目配置。"
         )
     
     current_counts = {
@@ -556,10 +559,10 @@ def add_exam_problem_manual(
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次")
     
-    if exam.status != ExamStatus.Draft:
+    if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不允許操作：目前考場狀態為 {exam.status}，只有在 Draft (草稿) 狀態才允許修改題目清單。"
+            detail=f"目前考場狀態為 {exam.status}，不允許變更題目配置。"
         )
     
     target_problem_id = obj_in.problem_id
@@ -599,3 +602,83 @@ def add_exam_problem_manual(
     db.commit()
     db.refresh(exam)
     return exam
+
+@router.get("/{exam_id}/problems")
+def get_exam_problems(
+    exam_id: str,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    獲取特定考試場次配置的所有題目清單
+    - Admin/Interviewer 可看全域；
+    - Candidate 僅限看自己名下的場次，且只能看到 is_sample = True 的範例測資
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="找不到該筆考試場次。"
+        )
+
+    if current_user.role == UserRole.Candidate and str(exam.candidate_id) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，您無權存取此非本人名下的考試場次。"
+        )
+
+    problems = db.query(Problem)\
+        .join(ExamProblem, Problem.id == ExamProblem.problem_id)\
+        .filter(ExamProblem.exam_id == exam_id)\
+        .all()
+    
+    if current_user.role == UserRole.Candidate:
+        safe_problems = []
+        for p in problems:
+            public_test_cases = [tc for tc in p.test_cases if tc.is_sample is True]
+            
+            p_data = ProblemCandidateRead.model_validate(p)
+            p_data.test_cases = public_test_cases
+            safe_problems.append(p_data)
+            
+        return safe_problems
+
+    return [ProblemRead.model_validate(p) for p in problems]
+
+@router.delete("/{exam_id}/problems/{p_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_exam_problem(
+    exam_id: str,
+    p_id: int,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_staff_user)
+):
+    """
+    從指定考試場次中，移除特定的一道題目
+    - 僅限 Admin, Interviewer
+    - 如果考試已經開始，禁止任何人拔題
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到該筆考試場次。")
+    
+    if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"該場考試目前狀態為 [{exam.status}]，不允許變更題目配置。"
+        )
+    
+    assoc = db.query(ExamProblem).filter(
+        ExamProblem.exam_id == exam_id,
+        ExamProblem.problem_id == p_id
+    ).first()
+    
+    if not assoc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="在該場考試中找不到此題目的配置紀錄。"
+        )
+
+    db.delete(assoc)
+    db.commit()
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
