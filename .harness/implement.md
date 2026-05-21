@@ -152,3 +152,6 @@ e2e:       skipped
 - `MemberDetailPage.jsx:162-174` — The edit form's `<label htmlFor="edit-full-name">姓名</label>` coexists with an unassociated `<label>姓名</label>` in the read-only section (line 132). `getByLabelText('姓名')` resolves correctly to the input because only the `htmlFor` version is associated — but a screen-reader user will encounter two "姓名" labels, one of which is orphaned (no `for`/`id` link). Cosmetic accessibility issue.
 
 **Verification gaps**: No browser/Playwright check. The PATCH body contract (null vs. omit for cleared `full_name`) should be verified with a live Admin session before merge.
+
+**Commit**: `e47fcd5` feat(frontend): P3 — admin member detail (user info) page
+**Supervisor note**: both nice-to-haves re-triaged as cosmetic. The `full_name: null` one is benign — backend `update_user_by_id` does `if obj_in.full_name is not None: …`, so a `null` PATCH simply leaves the name unchanged (a cleared-name save is a harmless no-op, not a malformed request or data corruption). Deferred, not blocking.
