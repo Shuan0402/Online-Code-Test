@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
 import ExamListPage from './pages/candidate/ExamListPage'
 import QuestionerStubPage from './pages/stubs/QuestionerStubPage'
+import { ProblemListPage } from './pages/questioner'
 import InterviewerStubPage from './pages/stubs/InterviewerStubPage'
 import AdminStubPage from './pages/stubs/AdminStubPage'
 import TakeExamPage from './pages/candidate/TakeExamPage'
@@ -50,8 +51,14 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<QuestionerStubPage />} />
-          <Route path="*" element={<QuestionerStubPage />} />
+          {/* index and /questioner/problems both render the list page */}
+          <Route index element={<ProblemListPage />} />
+          <Route path="problems" element={<ProblemListPage />} />
+          {/* P2 implements the create / edit form — stub for now */}
+          <Route path="problems/new" element={<QuestionerStubPage />} />
+          <Route path="problems/:id/edit" element={<QuestionerStubPage />} />
+          {/* P3 implements the submissions view — stub for now */}
+          <Route path="problems/:id/submissions" element={<QuestionerStubPage />} />
         </Route>
 
         {/* Interviewer panel */}
