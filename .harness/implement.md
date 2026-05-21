@@ -800,3 +800,7 @@ The spy now watches `localStorage.setItem` — the `vi.fn()` installed by `creat
 - Fix round 1: spy changed to `vi.spyOn(localStorage, 'setItem')` so it watches the Map-backed mock the code actually calls. Executor sanity-checked by temporarily removing `clearTimeout` from `flushDraft` → test FAILED as expected → spy confirmed to have teeth. Supervisor verified `EditorPanel.test.jsx:186` + 27/27 pass.
 - Reviewer nice-to-haves (tighten cycle-boundary assertion, replace fragile `aria-label` selector, add submissionId-change test) deferred — not regressions; can fold into a later test pass if desired.
 - **Committed P4.5 as `a803f66`** on `feat/frontend-scaffold`.
+
+### Context pressure note (before P5)
+
+Phase 2.5 check fired before P5: 3+ phases done this loop (P3/P4/P4.5 incl. 2 fix rounds), context heavy. Supervisor proposed handoff; user chose to continue and finish P5 + close the loop in the same session. Recorded per harness rule so a future session can see the check was run.
