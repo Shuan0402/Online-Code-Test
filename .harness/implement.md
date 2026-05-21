@@ -244,3 +244,95 @@ None found.
 - Reviewer verdict: **ship** (no must-fix). Verifier verdict: **green**.
 - Reviewer nice-to-haves: Dialog-internal ErrorMessage lacks `onRetry` → fold into P4 polish; "返回" hardcoded path is acceptable (page only reached from the problem list) → no action.
 - **Committed P3 as `bddb5a6`** on `feat/questioner-panel`.
+
+## P4 — 潤飾 + 單元測試  (2026-05-21T11:07:00Z)
+
+### Files created / modified
+
+- `frontend/src/pages/questioner/ProblemFormPage.jsx` — (1) added `_clientKey` monotonic counter on `newTestCaseRow()`; (2) changed `useState([])` for testCases (create mode starts empty, edit mode loads from API with no blank-row fallback); (3) refactored `useEffect` into `useCallback fetchProblem` for `onRetry` support; (4) `ErrorMessage` in load-error branch now receives `onRetry={fetchProblem}`; (5) changed map `key` to `tc.id ?? tc._clientKey`; (6) guarded `score_weight`/`time_limit`/`memory_limit` at submit with `Number.isFinite` fallback to prevent NaN; (7) added `useCallback` to import; (8) `_clientKey` stripped from POST/PATCH payload via explicit row construction
+- `frontend/src/pages/questioner/ProblemListPage.jsx` — (1) added `deleteError` state; (2) replaced `alert()` on delete failure with `setDeleteError`; (3) rendered `deleteError` inline inside `DialogContent`; (4) clear `deleteError` on cancel/onOpenChange; (5) distinguished empty states: filter active → "沒有符合條件的題目", genuinely empty → "目前沒有題目"
+- `frontend/src/pages/questioner/ProblemSubmissionsPage.jsx` — (1) added `currentSubmissionId` state; (2) `handleViewDetail` stores `submissionId` in state; (3) Dialog-internal `ErrorMessage` now receives `onRetry={() => handleViewDetail(currentSubmissionId)}`
+- `frontend/src/pages/questioner/ProblemListPage.test.jsx` — new test file; 7 tests: difficulty filter (Easy+Hard → filter to Hard, filter active no match, genuinely empty), delete (success + failure), rejudge (3 submissions_triggered, 0 submissions_triggered)
+- `frontend/src/pages/questioner/ProblemFormPage.test.jsx` — new test file; 6 tests: create mode empty fields, edit mode GET 200 pre-populates, POST body has no id/no _clientKey on new row, empty title validation, no test-cases validation, 404 edit shows error message
+- `frontend/src/pages/questioner/ProblemSubmissionsPage.test.jsx` — new test file; 5 tests: renders submission rows, 查看詳情 opens dialog with judge_log, empty list shows 尚無提交紀錄, empty details shows 無詳細測試資料, null judge_log shows 無
+
+### Commands run
+
+- `npm run test` → 45/45 passed (7 test files, exit 0); 27 prior + 18 new
+- `npm run build` → exit 0 (1691 modules, 2.03 s)
+
+### Deviations from plan
+
+- Plan specified "≥15 new assertions"; delivered 18 across 3 files (6 + 7 + 5 tests).
+- `ProblemFormPage` test (c): used `getByRole('button', {name: '新增題目'})` instead of `getByText` because the h1 heading also contains that text; same for `ProblemListPage` delete confirmation button vs `DialogTitle`.
+- "No routes matched location" warning in ProblemFormPage test (c) — this is a benign stderr warning from MemoryRouter after `navigate('/questioner/problems')` is called post-submit; the test still passes correctly (POST is verified before navigation).
+
+### Adjacent findings (not fixed)
+
+- React Router v6 future-flag warnings appear in test stderr (v7_startTransition, v7_relativeSplatPath). These are informational only and do not affect test outcomes. They can be suppressed by passing `future` flags to `<MemoryRouter>` if desired — out of scope.
+- `ProblemListPage.jsx` line 251 — `rejudgeMsgs` feedback is never auto-cleared; mentioned in P1 reviewer notes as acceptable (plan does not specify auto-dismiss). No action taken.
+
+### Blockers
+
+None. All acceptance criteria met.
+
+### Verifier verdict  (2026-05-21)
+
+```
+build:     pass  (1691 modules, exit 0, 4.19 s)
+test:      pass  (45/45, 7 files, exit 0 — 27 prior green + 18 new; no regression)
+ts-files:  pass  (0 .ts/.tsx files under frontend/src)
+deps:      pass  (frontend/package.json unchanged vs HEAD — no new deps)
+lint:      skipped  (no lint script configured — expected)
+e2e:       deferred to supervisor
+```
+
+Verdict: green
+
+### Reviewer verdict  (2026-05-21)
+
+**Verdict: ship**
+
+#### Criteria scorecard
+
+| # | Criterion | Result | Note |
+|---|-----------|--------|------|
+| A1 | Stable key `tc.id ?? tc._clientKey` on test-case map | pass | ProblemFormPage.jsx:324 — `key={tc.id ?? tc._clientKey}` confirmed in diff |
+| A1b | `_clientKey` stripped from POST/PATCH payload | pass | ProblemFormPage.jsx:154-168 — explicit row construction omits `_clientKey`; `if (tc.id !== undefined) row.id = tc.id` preserves existing-row ids only |
+| A2 | `score_weight`/`time_limit`/`memory_limit` NaN guard | pass | ProblemFormPage.jsx:156-160, 172-180 — `Number.isFinite(parsed) ? parsed : default` for all three fields |
+| A3 | Empty `test_cases:[]` from GET no longer auto-inserts blank row | pass | ProblemFormPage.jsx:84-91 — `setTestCases(rows)` (no fallback); `useState([])` on line 49 |
+| A4 | Edit-load `ErrorMessage` has `onRetry` | pass | ProblemFormPage.jsx:213 — `onRetry={fetchProblem}` (diff confirms change from no-prop) |
+| A5 | Delete failure shows inline error in Dialog, no `alert()` | pass | ProblemListPage.jsx:99-100 — `setDeleteError`; :280-282 — renders inside `DialogContent`; `alert()` removed |
+| A6 | Empty state distinguishes filter-active vs genuinely empty | pass | ProblemListPage.jsx:182 — `difficultyFilter ? '沒有符合條件的題目' : '目前沒有題目'` |
+| A7 | ProblemSubmissionsPage dialog `ErrorMessage` has working `onRetry` | pass | ProblemSubmissionsPage.jsx:185 — `onRetry={() => handleViewDetail(currentSubmissionId)}`; `currentSubmissionId` set at :79 before dialog opens |
+| B1 | Assertions are meaningful, not vacuous | pass | Tests assert DOM text, spy call args with exact path strings, body property absence (`not.toHaveProperty`), and badge text content |
+| B2 | `@/lib/api` properly mocked via `vi.mock` — no real network | pass | All three test files use `vi.mock('@/lib/api', ...)` at module level; no MSW or axios-adapter |
+| B3 | Create-form test asserts POST body `test_cases[0]` has no `id` AND no `_clientKey` | pass | ProblemFormPage.test.jsx:183-189 — `expect(tc0).not.toHaveProperty('id')` + `expect(tc0).not.toHaveProperty('_clientKey')` with real call inspection via `api.post.mock.calls[0][1]` |
+| B4 | Validation test asserts `api.post` NOT called on empty title | pass | ProblemFormPage.test.jsx:214-215 — `expect(api.post).not.toHaveBeenCalled()` after `fireEvent.click` submit |
+| B5 | No false-confidence tests (mocking the stub rather than the unit) | pass | All tests drive real component UI interactions (fireEvent); assertions check resulting DOM or actual spy call args, not mock internals |
+| B6 | Components using React Router hooks wrapped in MemoryRouter/Routes | pass | ProblemFormPage.test.jsx uses `MemoryRouter + Routes + Route` with matching path for `useParams`; ProblemSubmissionsPage.test.jsx same pattern; ProblemListPage.test.jsx uses plain `MemoryRouter` (no params needed) |
+| C1 | `npm run build` exits 0 | pass | Confirmed: 1691 modules, exit 0, 1.82 s |
+| C2 | `npm run test` 45/45 — 27 prior green + 18 new | pass | Independently verified: 7 test files, 45 passed, 0 failed |
+| C3 | No TypeScript; 純中文 user-visible strings | pass | Pure JSX throughout; all user-facing strings Chinese |
+
+#### Must-fix issues
+
+None found.
+
+#### Nice-to-have
+
+- `ProblemFormPage.jsx:19` — `_clientKeyCounter` is a module-level `let` variable that is never reset between Vitest test runs within the same worker. This is benign (keys only need uniqueness, not specific values), and the tests confirm it does not cause failures. Adding a `/* @internal */` comment or a `resetForTesting()` export could improve testability if future tests depend on specific key values. Not a blocker.
+- `ProblemFormPage.test.jsx:163-165` — the `await waitFor` around "測資 #1" appearing after `fireEvent.click('新增一筆測資')` is a micro-belt-and-suspenders: `addTestCase` is a synchronous `setState`, so the DOM update is synchronous in jsdom with React's test renderer. Harmless, but slightly over-cautious.
+- `ProblemSubmissionsPage.test.jsx:24` — the Dialog mock omits `onOpenChange`, so the `setDialogOpen` path triggered by the shadcn close button is not exercised. The plan does not require a "close dialog" test, so this is not a gap against acceptance criteria — but a future test for dialog dismissal would be worth adding.
+
+#### Verification gaps
+
+- No Playwright / browser check run. The plan defers e2e to the supervisor. Given that the key stable-key fix (A1) and NaN guard (A2) are purely logic changes validated by unit tests and a successful build, no browser check is strictly needed before merge, but a manual spot-check of the form edit flow (removing a middle test-case row and re-saving) would confirm the key-stability fix works as intended in the live UI.
+- The `onRetry` path for the submissions dialog (A7) is not directly tested — the retry test is not among the 5 ProblemSubmissionsPage tests. The implementation is correct (the lambda closes over `currentSubmissionId` which is set before the dialog opens), but the test gap means a regression in `currentSubmissionId` tracking would not be caught. Low risk; calling it out for completeness.
+
+### Supervisor resolution + commit (P4)
+
+- Reviewer verdict: **ship** (no must-fix). Verifier verdict: **green** (45/45 tests: 27 prior + 18 new).
+- All 7 polish items confirmed fixed, incl. the two real latent bugs from the P2 review (stable test-case row keys; `score_weight`/`time_limit`/`memory_limit` NaN guards). Test quality confirmed meaningful (real spy-arg assertions, `vi.mock` for api, no false-confidence tests).
+- Reviewer nice-to-haves (module-level `_clientKeyCounter` not reset between test runs; `onRetry`/Dialog-close paths untested) left as-is — benign, no action.
+- **Committed P4 as `<SHA>`** on `feat/questioner-panel`.

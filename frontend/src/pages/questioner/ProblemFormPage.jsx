@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 
 import api from '@/lib/api'
@@ -15,10 +15,15 @@ const DIFFICULTY_OPTIONS = [
   { value: 'Hard', label: '困難' },
 ]
 
+// 單調遞增客戶端 key 計數器（每個 session 唯一）
+let _clientKeyCounter = 0
+
 // 建立一個空的測資列（新增測資時使用，沒有 id）
 function newTestCaseRow() {
   return {
     // 注意：不帶 id — 對應 backend 的「新建」語義
+    // _clientKey 提供穩定的 React key，不傳送至後端
+    _clientKey: ++_clientKeyCounter,
     input_data: '',
     expected_output: '',
     score_weight: 10,
@@ -39,9 +44,9 @@ export default function ProblemFormPage() {
   const [memoryLimit, setMemoryLimit] = useState(256) // MB
 
   // --- 測資列狀態 ---
-  // 每列：{ id?, input_data, expected_output, score_weight, is_sample }
-  // 現有測資帶 id；新增的不帶 id
-  const [testCases, setTestCases] = useState([newTestCaseRow()])
+  // 每列：{ id?, _clientKey, input_data, expected_output, score_weight, is_sample }
+  // 現有測資帶 id；新增的不帶 id（_clientKey 提供穩定 React key，不送至後端）
+  const [testCases, setTestCases] = useState([])
 
   // --- 載入狀態（edit 模式的初始 fetch）---
   const [loadingInit, setLoadingInit] = useState(isEditMode)
@@ -55,7 +60,7 @@ export default function ProblemFormPage() {
   const [validationError, setValidationError] = useState(null)
 
   // edit 模式：在 mount 時 fetch 題目資料
-  useEffect(() => {
+  const fetchProblem = useCallback(() => {
     if (!isEditMode) return
 
     let cancelled = false
@@ -75,14 +80,16 @@ export default function ProblemFormPage() {
 
         // 將 ProblemRead.test_cases 轉成本地 state 格式
         // 每列保留 id（用於 PATCH 語義），其餘欄位直接帶入
+        // 若後端回傳 test_cases: []，保持空陣列 — 讓「至少需要一筆測試資料」驗證觸發
         const rows = (data.test_cases ?? []).map((tc) => ({
           id: tc.id,                          // 保留 id → backend 會視為「更新」
+          _clientKey: ++_clientKeyCounter,    // 穩定 React key
           input_data: tc.input_data ?? '',
           expected_output: tc.expected_output ?? '',
           score_weight: tc.score_weight ?? 10,
           is_sample: tc.is_sample ?? false,
         }))
-        setTestCases(rows.length > 0 ? rows : [newTestCaseRow()])
+        setTestCases(rows)
       })
       .catch((err) => {
         if (cancelled) return
@@ -100,6 +107,11 @@ export default function ProblemFormPage() {
       cancelled = true
     }
   }, [id, isEditMode])
+
+  useEffect(() => {
+    const cleanup = fetchProblem()
+    return cleanup
+  }, [fetchProblem])
 
   // --- 測資列操作 ---
   const addTestCase = () => {
@@ -140,11 +152,14 @@ export default function ProblemFormPage() {
     // - 新增測資（不帶 id）→ backend 新建
     // - 被刪除的測資（不在陣列中）→ backend 刪除
     const testCasesPayload = testCases.map((tc) => {
+      // 將字串型 score_weight 轉為數字；清空時預設 10
+      const parsedScore = Number(tc.score_weight)
       const row = {
         input_data: tc.input_data,
         expected_output: tc.expected_output,
-        score_weight: Number(tc.score_weight),
+        score_weight: Number.isFinite(parsedScore) ? parsedScore : 10,
         is_sample: tc.is_sample,
+        // _clientKey 不送至後端（僅 React key 用途）
       }
       // 只有現有測資才帶 id
       if (tc.id !== undefined) {
@@ -153,12 +168,16 @@ export default function ProblemFormPage() {
       return row
     })
 
+    // 清空時的安全轉換：NaN → 預設值
+    const parsedTimeLimit = Number(timeLimit)
+    const parsedMemoryLimit = Number(memoryLimit)
+
     const body = {
       title: title.trim(),
       description,
       difficulty,
-      time_limit: Number(timeLimit),
-      memory_limit: Number(memoryLimit),
+      time_limit: Number.isFinite(parsedTimeLimit) ? parsedTimeLimit : 1000,
+      memory_limit: Number.isFinite(parsedMemoryLimit) ? parsedMemoryLimit : 256,
       test_cases: testCasesPayload,
     }
 
@@ -191,7 +210,7 @@ export default function ProblemFormPage() {
   if (loadError) {
     return (
       <div className="p-6">
-        <ErrorMessage message={loadError} />
+        <ErrorMessage message={loadError} onRetry={fetchProblem} />
         <div className="mt-4">
           <Button variant="outline" onClick={() => navigate('/questioner/problems')}>
             返回列表
@@ -302,7 +321,7 @@ export default function ProblemFormPage() {
 
           {testCases.map((tc, index) => (
             <div
-              key={index}
+              key={tc.id ?? tc._clientKey}
               className="rounded-lg border p-4 space-y-3 bg-muted/20"
             >
               {/* 測資標頭：序號 + 刪除按鈕 */}
