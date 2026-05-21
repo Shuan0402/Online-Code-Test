@@ -53,6 +53,8 @@ export default function ProblemSubmissionsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState(null)
   const [selectedSubmission, setSelectedSubmission] = useState(null)
+  // 儲存最後一次 handleViewDetail 的 submissionId，供 onRetry 使用
+  const [currentSubmissionId, setCurrentSubmissionId] = useState(null)
 
   // 載入提交列表
   const fetchSubmissions = useCallback(async () => {
@@ -74,6 +76,7 @@ export default function ProblemSubmissionsPage() {
 
   // 點擊「查看詳情」— 取得單筆詳情並開啟 Dialog
   async function handleViewDetail(submissionId) {
+    setCurrentSubmissionId(submissionId)
     setDialogOpen(true)
     setDetailLoading(true)
     setDetailError(null)
@@ -177,7 +180,10 @@ export default function ProblemSubmissionsPage() {
 
           {/* Dialog 內部錯誤 */}
           {!detailLoading && detailError && (
-            <ErrorMessage message={detailError} />
+            <ErrorMessage
+              message={detailError}
+              onRetry={() => handleViewDetail(currentSubmissionId)}
+            />
           )}
 
           {/* Dialog 詳情內容 */}

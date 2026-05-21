@@ -50,6 +50,7 @@ export default function ProblemListPage() {
   // 刪除確認 Dialog 狀態
   const [deleteTarget, setDeleteTarget] = useState(null) // { id, title }
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
 
   // 重測回饋訊息：{ [problemId]: '已觸發 N 筆重測' }
   const [rejudgeMsgs, setRejudgeMsgs] = useState({})
@@ -81,20 +82,22 @@ export default function ProblemListPage() {
 
   // --- 刪除題目 ---
   const openDeleteDialog = (problem) => {
+    setDeleteError(null)
     setDeleteTarget({ id: problem.id, title: problem.title })
   }
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
     setDeleteLoading(true)
+    setDeleteError(null)
     try {
       await api.delete(`/api/v1/problems/${deleteTarget.id}`)
       // 刪除成功後從 state 中移除該筆（不重新 fetch）
       setProblems((prev) => prev.filter((p) => p.id !== deleteTarget.id))
       setDeleteTarget(null)
     } catch (err) {
-      // 顯示錯誤但保留 Dialog 開著，讓使用者知道失敗
-      alert(err.response?.data?.detail ?? '刪除失敗，請稍後再試')
+      // 顯示 inline 錯誤，Dialog 保持開著讓使用者知道失敗
+      setDeleteError(err.response?.data?.detail ?? '刪除失敗，請稍後再試')
     } finally {
       setDeleteLoading(false)
     }
@@ -175,7 +178,9 @@ export default function ProblemListPage() {
 
       {/* 題目列表 */}
       {filteredProblems.length === 0 ? (
-        <p className="text-center text-muted-foreground py-16">目前沒有題目</p>
+        <p className="text-center text-muted-foreground py-16">
+          {difficultyFilter ? '沒有符合條件的題目' : '目前沒有題目'}
+        </p>
       ) : (
         <div className="rounded-lg border overflow-hidden">
           <table className="w-full text-sm">
@@ -263,7 +268,7 @@ export default function ProblemListPage() {
       )}
 
       {/* 刪除確認 Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) { setDeleteTarget(null); setDeleteError(null) } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>確認刪除</DialogTitle>
@@ -271,10 +276,14 @@ export default function ProblemListPage() {
               確定要刪除題目「{deleteTarget?.title}」嗎？此操作無法復原。
             </DialogDescription>
           </DialogHeader>
+          {/* 刪除失敗的 inline 錯誤訊息 */}
+          {deleteError && (
+            <p className="text-sm font-medium text-destructive">{deleteError}</p>
+          )}
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setDeleteTarget(null)}
+              onClick={() => { setDeleteTarget(null); setDeleteError(null) }}
               disabled={deleteLoading}
             >
               取消
