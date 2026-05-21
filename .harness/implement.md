@@ -778,3 +778,7 @@ None found. All critical invariants verified by direct code inspection.
 **Verification gaps**
 
 - No Vitest tests added in P8 — expected per plan (deferred to P9). The P9 test plan at `plan.md:563` already enumerates five test cases for `ProfilePage.test.jsx` including the exact-body assertion for PATCH and the PUT field-name check (`old_password` not `current_password`).
+
+### Commit
+
+`e082ba9` — feat(frontend): P8 — profile & change-password page
