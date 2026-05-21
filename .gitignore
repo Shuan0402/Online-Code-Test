@@ -9,4 +9,11 @@
 *.py[cod]
 *$py.class
 
+# Dependencies (general — covers frontend/node_modules)
 **/node_modules/
+
+# Frontend build output
+frontend/dist/
+
+# local-only — do not push
+/CLAUDE.md
