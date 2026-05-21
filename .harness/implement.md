@@ -100,3 +100,6 @@ e2e:       skipped
 - `MemberListPage.jsx:33` — `currentUser` from `useAuth()` could theoretically be `null` before the auth context is ready. The `isSelf` expression at line 155 already guards with `currentUser &&`, so the delete button defaults to enabled (not disabled) if the context is loading. This is safe but may flash briefly — cosmetic only.
 
 **Verification gaps**: No browser/Playwright check. The delete-self guard relies on `useAuth().user.id` matching the member's `id` field; if the auth context hydration is async, a very brief window could render the self-delete button enabled. Recommend a manual smoke test with a real Admin session.
+
+**Commit**: `3bfc933` feat(frontend): P2 — admin member list & create pages
+**Supervisor note**: both reviewer nice-to-haves (username upper-bound relies on `maxLength`; `isSelf` null-flash during auth hydration) re-triaged — neither corrupts data nor sends a malformed request. Genuinely cosmetic; deferred, not blocking.
