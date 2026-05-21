@@ -252,3 +252,15 @@ None found. Every borderline item assessed below:
 **Verification gaps**
 
 - No browser/Playwright check required — all mutations follow the same axios patterns proven in prior pages; the picker dialog pattern mirrors ProblemListPage. The highest-risk logic (type coercions, gating, key correctness) is all source-verifiable and passes code inspection. Tests for these invariants are deferred to P5 per plan.
+
+### Commit
+
+`07f8efb` — feat(frontend): P3 — Interviewer exam detail/edit page
+
+### Supervisor note — carried to P5
+
+Two reviewer nice-to-haves are genuine polish items for P5 (re-triaged: neither is a
+data-corruption / malformed-request / misrender bug, so not must-fix):
+1. `ExamDetailPage.jsx` `openPicker` — add `if (!isDraft) return` for defense-in-depth.
+2. `ExamDetailPage.jsx` `handleSave` — show a Chinese empty-title validation error
+   instead of silently falling back to `exam.title` (consistency with `ExamFormPage`).
