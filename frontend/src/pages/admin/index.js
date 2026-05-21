@@ -5,5 +5,5 @@ export const DashboardPage = () => null
 export { default as MemberDetailPage } from './MemberDetailPage'
 export { default as AdminExamListPage } from './AdminExamListPage'
 export { default as AdminExamDetailPage } from './AdminExamDetailPage'
-export const AdminProblemListPage = () => null
-export const AdminProblemDetailPage = () => null
+export { default as AdminProblemListPage } from './AdminProblemListPage'
+export { default as AdminProblemDetailPage } from './AdminProblemDetailPage'
