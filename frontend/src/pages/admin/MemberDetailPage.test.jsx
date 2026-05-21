@@ -26,7 +26,7 @@ vi.mock('@/lib/api', () => ({
 
 // --- mock ui/button ---
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, onClick, disabled, asChild, type, variant }) => {
+  Button: ({ children, onClick, disabled, asChild, type }) => {
     if (asChild) return <span>{children}</span>
     return (
       <button onClick={onClick} disabled={disabled} type={type ?? 'button'}>

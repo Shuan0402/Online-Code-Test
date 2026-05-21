@@ -22,7 +22,7 @@ vi.mock('@/lib/api', () => ({
 
 // --- mock shadcn Dialog to render inline (avoid Radix portal issues in jsdom) ---
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children, onOpenChange }) =>
+  Dialog: ({ open, children }) =>
     open ? <div data-testid="dialog">{children}</div> : null,
   DialogContent: ({ children }) => <div>{children}</div>,
   DialogHeader: ({ children }) => <div>{children}</div>,
@@ -33,7 +33,7 @@ vi.mock('@/components/ui/dialog', () => ({
 
 // --- mock ui/button to plain <button> ---
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, onClick, disabled, variant, size, asChild }) => {
+  Button: ({ children, onClick, disabled, variant, asChild }) => {
     if (asChild) return <span onClick={onClick}>{children}</span>
     return (
       <button onClick={onClick} disabled={disabled} data-variant={variant}>

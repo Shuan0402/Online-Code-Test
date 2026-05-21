@@ -62,7 +62,6 @@ export default function ExamTimer({ initialSeconds, onTimeout }) {
         intervalRef.current = null
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSeconds])
 
   const minutes = Math.floor(remaining / 60)

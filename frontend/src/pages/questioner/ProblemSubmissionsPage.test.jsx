@@ -30,7 +30,7 @@ vi.mock('@/components/ui/dialog', () => ({
 
 // --- mock ui/button ---
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, onClick, disabled, variant, size }) => (
+  Button: ({ children, onClick, disabled }) => (
     <button onClick={onClick} disabled={disabled}>
       {children}
     </button>
