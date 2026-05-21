@@ -64,3 +64,7 @@ None found.
 **Verification gaps**
 
 - No Playwright/browser check needed for this phase — purely a list page with standard patterns already proven in Questioner. Manual smoke test on the dev server would confirm the "查看" link resolves once P2/P3 add their routes.
+
+### Commit
+
+`620b068` — feat(frontend): P1 — Interviewer panel scaffold + exam list page
