@@ -1,0 +1,93 @@
+name: Docker CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "judge-worker/**"
+      - "judge-sandbox/**"
+      - "docker-compose.yml"
+      - ".github/workflows/docker-ci.yml"
+  pull_request:
+    paths:
+      - "judge-worker/**"
+      - "judge-sandbox/**"
+      - "docker-compose.yml"
+      - ".github/workflows/docker-ci.yml"
+
+jobs:
+  # ── 檢查 Dockerfile 的寫法(快,不用 build)──────────────
+  hadolint:
+    name: Lint Dockerfiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # failure-threshold: error → 只有 error 級問題會擋 CI;
+      # warning(如 DL3008 未釘 apt 版本)只顯示、不擋。
+      - name: Lint judge-worker/Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: judge-worker/Dockerfile
+          failure-threshold: error
+
+      - name: Lint judge-sandbox python Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: judge-sandbox/images/python/Dockerfile
+          failure-threshold: error
+
+      - name: Lint judge-sandbox cpp Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: judge-sandbox/images/cpp/Dockerfile
+          failure-threshold: error
+
+  # ── 驗證 docker-compose.yml 語法(快)─────────────────────
+  compose-config:
+    name: Validate docker-compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # --env-file .env.example:CI 沒有真正的 .env,用範例檔做變數內插
+      - name: docker compose config
+        run: docker compose --env-file .env.example -f docker-compose.yml config --quiet
+
+  # ── build 三個映像檔 + sandbox 測試 + 漏洞掃描 ───────────
+  build-test-scan:
+    name: Build, Test & Scan
+    runs-on: ubuntu-latest
+    # 安全網:正常約 5-8 分鐘;萬一再卡住,逾時自動結束,不空跑 6 小時
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Build judge-worker image
+        run: docker build -t judge-worker:ci judge-worker
+
+      - name: Build sandbox:python image
+        run: docker build -t sandbox:python judge-sandbox/images/python
+
+      - name: Build sandbox:cpp image
+        run: docker build -t sandbox:cpp judge-sandbox/images/cpp
+
+      # 功能測試(判題正確)+ 安全測試(記憶體 / 逾時 / 網路關得住)
+      - name: Sandbox functional + security tests
+        run: bash judge-sandbox/tests/run.sh
+
+      # Trivy 掃 CVE。目前只報告、不阻擋 CI(基線有大量上游未修補的漏洞);
+      # 待 triage 後再收緊成「有可修補的漏洞就擋」。
+      - name: Trivy vulnerability scan (report only)
+        continue-on-error: true
+        run: |
+          for img in sandbox:python sandbox:cpp judge-worker:ci; do
+            echo "=== Trivy: $img ==="
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:latest image \
+              --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --exit-code 0 "$img"
+          done
