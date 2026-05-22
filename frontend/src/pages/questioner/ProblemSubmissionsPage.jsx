@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 
 import api from '@/lib/api'
@@ -55,6 +55,9 @@ export default function ProblemSubmissionsPage() {
   const [selectedSubmission, setSelectedSubmission] = useState(null)
   // 儲存最後一次 handleViewDetail 的 submissionId，供 onRetry 使用
   const [currentSubmissionId, setCurrentSubmissionId] = useState(null)
+  // 記錄「最新一次點擊」的 submissionId；用 ref 而非 state，
+  // 因為閉包裡讀 ref.current 永遠是最新值，可丟棄較晚回傳的過期請求。
+  const latestRequestRef = useRef(null)
 
   // 載入提交列表
   const fetchSubmissions = useCallback(async () => {
@@ -76,6 +79,7 @@ export default function ProblemSubmissionsPage() {
 
   // 點擊「查看詳情」— 取得單筆詳情並開啟 Dialog
   async function handleViewDetail(submissionId) {
+    latestRequestRef.current = submissionId
     setCurrentSubmissionId(submissionId)
     setDialogOpen(true)
     setDetailLoading(true)
@@ -83,10 +87,14 @@ export default function ProblemSubmissionsPage() {
     setSelectedSubmission(null)
     try {
       const res = await api.get(`/api/v1/submissions/${submissionId}`)
+      // 若使用者已切換到別筆提交，丟棄這個過期回應，避免覆蓋新資料。
+      if (latestRequestRef.current !== submissionId) return
       setSelectedSubmission(res.data)
     } catch (err) {
+      if (latestRequestRef.current !== submissionId) return
       setDetailError('載入詳情失敗，請稍後再試。')
     } finally {
+      if (latestRequestRef.current !== submissionId) return
       setDetailLoading(false)
     }
   }

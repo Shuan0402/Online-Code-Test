@@ -6,9 +6,10 @@
  * (b) 點「查看詳情」→ GET /submissions/{id} → Dialog 顯示 judge_log
  * (c) 空列表 → 顯示「尚無提交紀錄」
  * (d) details 為空 → Dialog 顯示「無詳細測試資料」
+ * (e) race condition：過期的詳情請求晚回傳時，不可覆蓋新點擊的資料
  */
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -225,5 +226,55 @@ describe('ProblemSubmissionsPage', () => {
       // judge_log is null → 顯示「無」
       expect(screen.getByText('無')).toBeInTheDocument()
     })
+  })
+
+  // (e) race condition：先點 A、馬上改點 B，A 晚回傳時不可覆蓋 B 的資料
+  it('discards a stale detail response when user switches submissions', async () => {
+    // deferred：手動控制 promise 何時 resolve，以模擬請求回傳順序
+    function deferred() {
+      let resolve
+      const promise = new Promise((res) => { resolve = res })
+      return { promise, resolve }
+    }
+    const detailA = deferred()
+    const detailB = deferred()
+
+    api.get
+      .mockResolvedValueOnce({ data: MOCK_SUBMISSIONS }) // 列表
+      .mockReturnValueOnce(detailA.promise)              // 詳情 A（id 101，慢)
+      .mockReturnValueOnce(detailB.promise)              // 詳情 B（id 102，快)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument()
+    })
+
+    // 點 A 的「查看詳情」，再立刻改點 B
+    const detailButtons = screen.getAllByText('查看詳情')
+    fireEvent.click(detailButtons[0])
+    fireEvent.click(detailButtons[1])
+
+    // B 先回傳 → Dialog 顯示 B 的日誌
+    await act(async () => {
+      detailB.resolve({
+        data: { ...MOCK_SUBMISSIONS[1], judge_log: 'B 的評測日誌', details: [] },
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByText('B 的評測日誌')).toBeInTheDocument()
+    })
+
+    // A 晚回傳 → 應被丟棄，Dialog 仍顯示 B 而非 A
+    await act(async () => {
+      detailA.resolve({
+        data: { ...MOCK_SUBMISSIONS[0], judge_log: 'A 的評測日誌', details: [] },
+      })
+    })
+    expect(screen.getByText('B 的評測日誌')).toBeInTheDocument()
+    expect(screen.queryByText('A 的評測日誌')).not.toBeInTheDocument()
+
+    expect(api.get).toHaveBeenCalledWith('/api/v1/submissions/101')
+    expect(api.get).toHaveBeenCalledWith('/api/v1/submissions/102')
   })
 })
