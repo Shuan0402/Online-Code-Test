@@ -60,6 +60,8 @@ jobs:
   build-test-scan:
     name: Build, Test & Scan
     runs-on: ubuntu-latest
+    # 安全網:正常約 5-8 分鐘;萬一再卡住,逾時自動結束,不空跑 6 小時
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v5

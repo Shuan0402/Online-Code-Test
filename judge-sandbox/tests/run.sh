@@ -17,14 +17,6 @@ FIX="$(cd "$(dirname "$0")/fixtures" && pwd)"
 PASS=0
 FAIL=0
 
-# GNU timeout:Linux 叫 timeout,macOS(coreutils)叫 gtimeout;兩者皆無則略過該測試
-TIMEOUT_BIN=""
-if command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_BIN="timeout"
-elif command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_BIN="gtimeout"
-fi
-
 # check <名稱> <預期值> <實際值>
 check() {
   if [ "$2" = "$3" ]; then
@@ -66,16 +58,21 @@ else
   check "記憶體炸彈被 --memory 限制住" "contained" "survived(exit=$code)"
 fi
 
-# 5. 無窮迴圈:5 秒逾時應中斷它(GNU timeout 逾時時回傳 124)
-if [ -n "$TIMEOUT_BIN" ]; then
-  "$TIMEOUT_BIN" 5 docker run --rm -i --name sbx-infloop \
-    -v "$FIX/infloop.py:/sandbox/source.py:ro" sandbox:python >/dev/null 2>&1
-  code=$?
-  docker rm -f sbx-infloop >/dev/null 2>&1 || true
-  check "無窮迴圈被逾時中斷(exit 124)" "124" "$code"
+# 5. 無窮迴圈:確認它「跑不停、必須靠外力中斷」—— worker 逾時後就是用 docker kill。
+#    背景啟動容器,等 5 秒後檢查是否還活著;還活著 = 它不會自己停 = 須被強制中斷。
+#    註:不能用「timeout docker run」—— 容器內 python 是 PID 1,會忽略 SIGTERM,
+#        timeout 送的 SIGTERM 無效、會整個卡死。直接用 docker kill 才打得到容器。
+docker run --rm -i --name sbx-infloop \
+  -v "$FIX/infloop.py:/sandbox/source.py:ro" sandbox:python >/dev/null 2>&1 &
+sleep 5
+if docker ps --filter name=sbx-infloop --format '{{.Names}}' | grep -q sbx-infloop; then
+  still_running="yes"
 else
-  echo "  SKIP — 無窮迴圈逾時測試(本機缺 GNU timeout;CI 環境會執行)"
+  still_running="no"
 fi
+docker kill sbx-infloop >/dev/null 2>&1 || true
+wait 2>/dev/null
+check "無窮迴圈跑不停、需被 docker kill 強制中斷" "yes" "$still_running"
 
 # 6. 連網嘗試:--network=none 應擋掉所有對外連線
 out="$(docker run --rm -i --network=none \
