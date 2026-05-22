@@ -51,25 +51,14 @@ export default function CandidateDetailPage() {
     loadUser()
   }, [userId])
 
-  // Fan-out: GET /exams/ → collect ids → Promise.all GET /exams/{id} → filter by candidate_id
+  // 由後端的 ?candidate_id= 直接篩出該考生的考試，一個請求取代原本的 N+1 fan-out
   useEffect(() => {
     async function loadExams() {
       setExamsLoading(true)
       setExamsError(null)
       try {
-        const listRes = await api.get('/api/v1/exams/')
-        const ids = listRes.data.map((e) => e.id)
-
-        // Guard: if exam list is empty, skip fan-out entirely
-        if (ids.length === 0) {
-          setCandidateExams([])
-          return
-        }
-
-        // Fan-out: fetch each exam detail in parallel
-        const details = await Promise.all(ids.map((id) => api.get(`/api/v1/exams/${id}`)))
-        const mine = details.map((r) => r.data).filter((e) => e.candidate_id === userId)
-        setCandidateExams(mine)
+        const res = await api.get(`/api/v1/exams/?candidate_id=${userId}`)
+        setCandidateExams(res.data)
       } catch (err) {
         setExamsError('無法載入考試列表')
       } finally {
