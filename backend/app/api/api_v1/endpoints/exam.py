@@ -1,5 +1,5 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
@@ -18,6 +18,7 @@ router = APIRouter()
 @router.get("/", response_model=List[CandidateExamListRead])
 def get_candidate_exams(
     db: Session = Depends(deps.get_db),
+    candidate_id: Optional[uuid.UUID] = None,
     current_user = Depends(deps.get_current_user)
 ):
     """
@@ -26,15 +27,15 @@ def get_candidate_exams(
     - Candidate (一般考生): 只能看見指派給自己、且處於可檢視狀態（Published/Ongoing/Finished）的考卷。
     """
     if current_user.role in [UserRole.Interviewer, UserRole.Admin]:
-        exams = (
-            db.query(Exam)
-            .options(
-                joinedload(Exam.exam_problems).joinedload(ExamProblem.problem),
-                joinedload(Exam.candidate)
-            )
-            .order_by(Exam.created_at.desc())
-            .all()
+        query = db.query(Exam).options(
+            joinedload(Exam.exam_problems).joinedload(ExamProblem.problem),
+            joinedload(Exam.candidate)
         )
+        
+        if candidate_id:
+            query = query.filter(Exam.candidate_id == candidate_id)
+            
+        exams = query.order_by(Exam.created_at.desc()).all()
         
     else:
         exams = (
