@@ -8,18 +8,12 @@ import StaffLayout from './layouts/StaffLayout'
 import NotFoundPage from './pages/NotFoundPage'
 import LoginPage from './pages/LoginPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
+import ExamListPage from './pages/candidate/ExamListPage'
 import QuestionerStubPage from './pages/stubs/QuestionerStubPage'
 import InterviewerStubPage from './pages/stubs/InterviewerStubPage'
 import AdminStubPage from './pages/stubs/AdminStubPage'
-
-// Temporary stub for candidate pages — P3/P4/P5 will replace these.
-function CandidateStub() {
-  return (
-    <div className="p-8 text-muted-foreground text-center text-lg">
-      功能開發中
-    </div>
-  )
-}
+import TakeExamPage from './pages/candidate/TakeExamPage'
+import ResultPage from './pages/candidate/ResultPage'
 
 export default function App() {
   return (
@@ -42,9 +36,9 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="/candidate/exams" replace />} />
-          <Route path="exams" element={<CandidateStub />} />
-          <Route path="exams/:id/take" element={<CandidateStub />} />
-          <Route path="exams/:id/result" element={<CandidateStub />} />
+          <Route path="exams" element={<ExamListPage />} />
+          <Route path="exams/:id/take" element={<TakeExamPage />} />
+          <Route path="exams/:id/result" element={<ResultPage />} />
         </Route>
 
         {/* Questioner panel */}

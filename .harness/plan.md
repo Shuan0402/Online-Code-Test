@@ -161,6 +161,39 @@ The Vite proxy config will target `http://localhost:8000`; all API paths in the 
 
 ---
 
+### P4.5 — Test harness: Vitest + core hook/logic unit tests
+
+**Goal**: Stand up a Vitest test environment in `frontend/` and write focused unit tests for the logic-heavy pieces of P4 — adaptive polling, the exam timer, the localStorage draft flush, and offline recovery — so the highest-risk phase has a regression net before P5 polish lands.
+
+**Risk tier**: low
+**Use full ReAct in executor**: no
+
+**Inserted**: 2026-05-20, at user request, after P4 commit and before P5. Rationale: P4 is the most logic-dense phase (timer, adaptive polling, draft persistence, offline recovery are all pure-ish logic in custom hooks) and had 3 must-fix defects on first review — exactly the class of bug a unit test catches cheaply.
+
+**Files**:
+- `frontend/package.json` — add `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom` to devDependencies; add `"test": "vitest run"` and `"test:watch": "vitest"` scripts
+- `frontend/vite.config.js` — add a `test` block (`environment: 'jsdom'`, `globals: true`, `setupFiles`)
+- `frontend/src/test/setup.js` — test setup: import `@testing-library/jest-dom`, reset `localStorage` between tests
+- `frontend/src/hooks/useAdaptivePolling.test.js` — delay array is consumed in order then cycles on the last value; polling stops on terminal status (AC/WA/etc.); polling stops + interval cleared on unmount; `onResult` fired with the terminal submission
+- `frontend/src/components/ExamTimer.test.jsx` — counts down from `initialSeconds`; display formats MM:SS; warning style applies under 5 min; `onTimeout` fires exactly once at zero; only one interval is live (no churn)
+- `frontend/src/components/EditorPanel.test.jsx` — `flushDraft()` synchronously writes current code to the correct `draft:exam:{examId}:problem:{problemId}` key; debounced write lands after 1s; switching `problemId` reloads the draft for the new key
+- `frontend/src/hooks/useOfflineRecovery.test.js` — a `pending:{problemId}` localStorage key triggers re-polling on mount; cold restart with no pending key falls back to `GET /submissions/latest`
+
+**Acceptance criteria**:
+- [ ] `cd frontend && npm install` completes (new devDeps resolve)
+- [ ] `cd frontend && npm run test` runs Vitest and exits 0 with all tests passing
+- [ ] `cd frontend && npm run build` still exits 0 (test deps/config do not break the production build)
+- [ ] The 4 target modules each have at least one meaningful assertion (not just a smoke "renders" test)
+- [ ] `@/lib/api` is mocked in hook tests (`vi.mock`) — tests do not make real network calls
+- [ ] Fake timers (`vi.useFakeTimers()`) used for timer + polling + debounce tests
+- [ ] No TypeScript files introduced; tests are `.js` / `.jsx`
+
+**Risk / rollback**: Purely additive — new dev dependencies, config, and test files; no production source touched (except possibly tiny testability tweaks, which must be called out as deviations). Rollback = revert `package.json`/`vite.config.js` and delete `src/test/` + `*.test.*` files. Main trap: Monaco does not render in jsdom — `EditorPanel.test.jsx` must mock `@monaco-editor/react` with a lightweight stub so the test exercises the draft logic, not the editor.
+
+**Depends on**: P4. No backend dependency — all tests run offline with mocks.
+
+---
+
 ### P5 — Candidate panel: Result page + polish
 
 **Goal**: Implement the post-exam result page showing per-problem scores and overall exam score, and apply final polish (loading spinners, error boundaries, empty states) across the Candidate panel.
