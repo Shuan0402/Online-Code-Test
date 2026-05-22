@@ -642,8 +642,7 @@ def test_update_exam_session_failed_non_draft(client, interviewer_user, override
 
     response = client.patch(f"/api/v1/exams/{exam.id}", json=payload)
     assert response.status_code == 400
-    assert "目前正在考試，無法修改考試資訊" in response.json()["detail"]
-
+    assert "只有草稿 (Draft) 狀態允許變更基本設定" in response.json()["detail"]
 
 def test_update_exam_session_forbidden_for_candidate(client, candidate_user, interviewer_user, override_auth, create_test_exam):
     """

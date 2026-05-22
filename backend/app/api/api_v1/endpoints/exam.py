@@ -178,7 +178,7 @@ def get_exam_result(
     """
     exam = (
         db.query(Exam)
-        .options(joinedload(Exam.exam_problems))
+        .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
         .filter(Exam.id == exam_id)
         .first()
     )
@@ -201,6 +201,24 @@ def get_exam_result(
             detail="該場考試尚未對外發布。"
         )
 
+    subq = (
+        db.query(
+            Submission.problem_id,
+            func.max(Submission.created_at).label("max_ts")
+        )
+        .filter(Submission.exam_id == exam.id, Submission.user_id == exam.candidate_id)
+        .group_by(Submission.problem_id)
+        .subquery()
+    )
+    
+    latest_subs = (
+        db.query(Submission)
+        .join(subq, (Submission.problem_id == subq.c.problem_id) & (Submission.created_at == subq.c.max_ts))
+        .filter(Submission.exam_id == exam.id, Submission.user_id == exam.candidate_id)
+        .all()
+    )
+    sub_map = {s.problem_id: s for s in latest_subs}
+
     problem_results = []
     accumulated_exam_points = 0
     accumulated_candidate_score = 0
@@ -208,27 +226,14 @@ def get_exam_result(
     for ep in exam.exam_problems:
         accumulated_exam_points += ep.points
         
-        latest_sub = (
-            db.query(Submission)
-            .filter(
-                Submission.exam_id == exam.id,
-                Submission.user_id == exam.candidate_id,
-                Submission.problem_id == ep.problem_id
-            )
-            .order_by(Submission.created_at.desc())
-            .first()
-        )
+        latest_sub = sub_map.get(ep.problem_id)
         
         p_score = latest_sub.score if latest_sub else 0
         p_status = latest_sub.status if latest_sub else "Unsubmitted"
         
         accumulated_candidate_score += p_score
         
-        p_title = "Unknown Problem"
-        if hasattr(ep, "title") and ep.title:
-            p_title = ep.title
-        elif hasattr(ep, "problem") and ep.problem:
-            p_title = ep.problem.title
+        p_title = ep.problem.title if ep.problem else "Unknown Problem"
 
         problem_results.append(
             ExamProblemResultRead(
@@ -480,10 +485,10 @@ def update_exam_session(
             detail="找不到指定的考試項目。"
         )
 
-    if exam.status == ExamStatus.Ongoing:
+    if exam.status != ExamStatus.Draft:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"目前正在考試，無法修改考試資訊"
+            status_code=400,
+            detail=f"目前考試狀態為 {exam.status}，只有草稿 (Draft) 狀態允許變更基本設定。"
         )
 
     update_data = obj_in.model_dump(exclude_unset=True)
@@ -491,8 +496,13 @@ def update_exam_session(
         setattr(exam, field, value)
 
     db.commit()
-    db.refresh(exam)
-    return exam
+    
+    return (
+        db.query(Exam)
+        .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
+        .filter(Exam.id == exam_id)
+        .first()
+    )
 
 @router.delete("/{exam_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_exam_session(
@@ -540,26 +550,20 @@ def add_exam_problem_manual(
     exam_id: uuid.UUID,
     obj_in: ExamProblemCreate,
     db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    current_user = Depends(deps.get_interviewer_user)
 ):
     """
     面試主管手動指派加題 API
     - 僅限管理員/面試官，且考卷必須處於 Draft 狀態才允許手動塞題。
-    """    
-    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="權限不足，只有面試官或管理員可以手動指派題目。"
-        )
-    
+    """ 
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次")
+        raise HTTPException(status_code=404, detail="找不到指定的考試場次")
     
     if exam.status != ExamStatus.Draft:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"不允許操作：目前考場狀態為 {exam.status}，只有在 Draft (草稿) 狀態才允許修改題目清單。"
+            status_code=400,
+            detail=f"不允許操作：只有在 Draft (草稿) 狀態才允許修改題目清單。"
         )
     
     target_problem_id = obj_in.problem_id
@@ -574,19 +578,16 @@ def add_exam_problem_manual(
             .first()
         )
         if not random_prob:
-            raise HTTPException(status_code=400, detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選")
+            raise HTTPException(status_code=400, detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目")
         target_problem_id = random_prob.id
 
     existing_ep = db.get(ExamProblem, (exam_id, target_problem_id))
     if existing_ep:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="該題目已存在於本張試卷中，請勿重複添加。"
-        )
+        raise HTTPException(status_code=400, detail="該題目已存在於本張試卷中，請勿重複添加。")
 
     problem = db.query(Problem).filter(Problem.id == target_problem_id).first()
     if not problem:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"題庫中查無此題目 (ID: {target_problem_id})")
+        raise HTTPException(status_code=404, detail=f"題庫中查無此題目 (ID: {target_problem_id})")
 
     max_seq = db.query(func.max(ExamProblem.sequence)).filter(ExamProblem.exam_id == exam_id).scalar()
     db_exam_problem = ExamProblem(
@@ -597,5 +598,10 @@ def add_exam_problem_manual(
     )
     db.add(db_exam_problem)
     db.commit()
-    db.refresh(exam)
-    return exam
+
+    return (
+        db.query(Exam)
+        .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
+        .filter(Exam.id == exam_id)
+        .first()
+    )

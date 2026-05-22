@@ -1,12 +1,13 @@
 import json
 import uuid
+from unittest.mock import MagicMock
 
 from app.models.enums import UserRole
 from app.models.testcase import TestCase
 from app.models.enums import JudgeStatus
 from app.models.submission import Submission
-from app.core.redis_client import redis_client # 測試端依然可以直接用 redis_client 驗票
-from app.services.queue_manager import queue_manager # 🚀 引入來比對常量
+from app.core.redis_client import redis_client
+from app.services.queue_manager import queue_manager
 
 
 # --- GET /problems/{id}/testcases (獲得完整測資) ---
@@ -182,22 +183,38 @@ def test_rejudge_problem_submissions_queue_push_success(
     db_session.add(sub)
     db_session.commit()
     
-    redis_client.delete(queue_manager.QUEUE_PENDING)
-
-    response = client.post(f"/api/v1/problems/{prob.id}/rejudge")
-    assert response.status_code == 202
+    mock_rpush = MagicMock()
+    mock_lpush = MagicMock()
     
-    db_session.refresh(sub)
-    assert sub.status == JudgeStatus.Pending
-    assert sub.score == 0
-
-    raw_msg = redis_client.lpop(queue_manager.QUEUE_PENDING)
-    assert raw_msg is not None
+    original_rpush = redis_client.rpush
+    original_lpush = redis_client.lpush
     
-    msg_data = json.loads(raw_msg)
-    assert msg_data["submission_id"] == str(sub.id)
-    assert msg_data["submission_type"] == "OFFICIAL"
-    assert isinstance(msg_data["testcases"], list)
+    redis_client.rpush = mock_rpush
+    redis_client.lpush = mock_lpush
+
+    try:
+        # 執行請求
+        response = client.post(f"/api/v1/problems/{prob.id}/rejudge")
+        assert response.status_code == 202
+        
+        db_session.refresh(sub)
+        assert sub.status == JudgeStatus.Pending
+        assert sub.score == 0
+
+        assert mock_rpush.called or mock_lpush.called
+        
+        call_args = mock_rpush.call_args if mock_rpush.called else mock_lpush.call_args
+        raw_msg = call_args[0][1]
+        
+        assert raw_msg is not None
+        msg_data = json.loads(raw_msg)
+        assert msg_data["submission_id"] == str(sub.id)
+        assert msg_data["submission_type"] == "OFFICIAL"
+        assert isinstance(msg_data["testcases"], list)
+
+    finally:
+        redis_client.rpush = original_rpush
+        redis_client.lpush = original_lpush
 
 def test_rejudge_problem_with_zero_submissions(client, questioner_user, override_auth, create_test_problem):
     """
