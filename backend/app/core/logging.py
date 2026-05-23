@@ -2,8 +2,8 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, date
+from uuid import UUID
 
 class HealthCheckFilter(logging.Filter):
     """
@@ -44,7 +44,23 @@ class JSONFormatter(logging.Formatter):
             if key not in reserved_attrs:
                 log_data[key] = value
 
-        return json.dumps(log_data, ensure_ascii=False)
+        def json_serial_fallback(obj):
+            """
+            當 json.dumps 找不到對應型態時，一律安全降級轉為字串，防止日誌崩潰
+            """
+            cls_name = obj.__class__.__name__
+
+            if cls_name in ("datetime", "date"):
+                return obj.isoformat()
+            if isinstance(obj, UUID) or cls_name == "UUID":
+                return str(obj)
+                
+            return f"<Not Serializable: {type(obj).__name__}>"
+
+        try:
+            return json.dumps(log_data, default=json_serial_fallback, ensure_ascii=False)
+        except Exception:
+            return f'{{"level": "{record.levelname}", "message": "Log serialization fatal error", "raw": "{record.getMessage()}"}}'
 
 
 def setup_logging(log_level: str = "INFO") -> None:
