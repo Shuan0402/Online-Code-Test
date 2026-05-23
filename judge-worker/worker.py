@@ -221,22 +221,60 @@ def process_submission(
     msg: dict,
 ) -> None:
     sub_id = msg["submission_id"]
+
+    worker_extra = {
+        "submission_id": str(sub_id),
+        "submission_type": msg.get("submission_type"),
+        "language": msg.get("language"),
+        "action": "worker_process_submission"
+    }
+
     if msg["submission_type"] != "OFFICIAL":
+        log.warning(
+            f"評測放棄：未知的提交類型 {msg['submission_type']!r} [SubmissionID: {sub_id}]",
+            extra=worker_extra
+        )
         raise NotImplementedError(
             f"submission_type={msg['submission_type']!r} not supported in step 8"
         )
     
-    log.info(f"成功從隊列中提取任務，正在從 MinIO 下載原始碼... [SubmissionID: {sub_id}]", extra={"submission_id": sub_id})
-    source = fetch_source(http, msg["presigned_url"])
-
-    per_testcase, judge_log, max_exec_ms = run_official(
-        spawner=spawner,
-        source=source,
-        language=msg["language"],
-        testcases=msg["testcases"],
-        time_limit_ms=msg["time_limit_ms"],
+    log.info(
+        f"成功從隊列中提取任務，正在從 MinIO 下載原始碼... [SubmissionID: {sub_id}]", 
+        extra=worker_extra
     )
-    post_callback(http, sub_id, per_testcase, max_exec_ms, judge_log)
+
+    try: 
+        source = fetch_source(http, msg["presigned_url"])
+
+        log.info(
+            f"原始碼下載完成，正在啟動沙盒執行環境並擊發評測... [SubmissionID: {sub_id}]",
+            extra=worker_extra
+        )
+
+        per_testcase, judge_log, max_exec_ms = run_official(
+            submission_id=sub_id,
+            spawner=spawner,
+            source=source,
+            language=msg["language"],
+            testcases=msg["testcases"],
+            time_limit_ms=msg["time_limit_ms"],
+        )
+
+        post_callback(http, sub_id, per_testcase, max_exec_ms, judge_log)
+
+        log.info(
+            f"評測任務圓滿完成，結果已成功回傳回後端。 [SubmissionID: {sub_id}]",
+            extra=worker_extra
+        )
+    except Exception as e:
+        worker_extra["action"] = "worker_pipeline_collapsed_critical"
+        worker_extra["error_msg"] = str(e)
+        
+        log.exception(
+            f"評測突發嚴重崩潰！任務被迫中斷 [SubmissionID: {sub_id}] 原因: {e}",
+            extra=worker_extra
+        )
+        raise e
 
 
 # ── main loop ──────────────────────────────────────────────────────

@@ -38,6 +38,7 @@ services:
       PYTHONPATH: /app
       POSTGRES_HOST: pg
       REDIS_HOST: redis
+      LOG_FILE_PATH: /var/log/app/backend.log
     ports:
       - "8000:8000"
     depends_on:
@@ -48,7 +49,7 @@ services:
       minio:
         condition: service_healthy
     volumes:
-      - app_logs:/app/logs
+      - app_logs:/var/log/app
     # python -c probe: slim image has no curl/wget, but always has python.
     # Hits /health (liveness only — does not touch DB).
     healthcheck:
@@ -98,10 +99,12 @@ services:
       WORKER_SECRET: ${WORKER_SECRET}
       QUEUE_PENDING: submissions:pending
       QUEUE_PROCESSING: submissions:processing
+      LOG_FILE_PATH: /var/log/app/worker.log
     volumes:
       # DooD: worker uses host docker daemon to spawn sandbox sibling containers.
       # See judge-worker/Dockerfile header for the security trade-off.
       - /var/run/docker.sock:/var/run/docker.sock
+      - app_logs:/var/log/app
     depends_on:
       redis:
         condition: service_healthy
