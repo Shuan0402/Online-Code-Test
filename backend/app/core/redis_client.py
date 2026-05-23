@@ -30,18 +30,23 @@ pool = redis.ConnectionPool(
 
 redis_client = redis.Redis(connection_pool=pool)
 
-try:
-    if redis_client.ping():
-        logger.info(
-            "Redis 基礎設施連線測試成功！底層通訊管道狀態：GREEN",
-            extra={"redis_host": REDIS_HOST, "action": "redis_ping_success"}
-        )
-except redis.exceptions.ConnectionError as conn_err:
-    logger.critical(
-        f"嚴重基礎設施故障：無法連線至 Redis 伺服器！請立刻檢查 Docker 網路或容器狀態！原因: {conn_err}",
-        extra={
-            "redis_host": REDIS_HOST,
-            "action": "redis_ping_failed_critical",
-            "error_type": "RedisConnectionError"
-        }
+def init_redis_health_check():
+    logger.info(
+        f"正在執行 Redis 基礎設施連線測試... | Target: {REDIS_HOST}:{REDIS_PORT}",
+        extra={"redis_host": REDIS_HOST, "action": "redis_client_init"}
     )
+    try:
+        if redis_client.ping():
+            logger.info(
+                "Redis 基礎設施連線測試成功！底層通訊管道狀態：GREEN",
+                extra={"redis_host": REDIS_HOST, "action": "redis_ping_success"}
+            )
+    except redis.exceptions.RedisError as redis_err:  # 🎯 擴大防護網：接住所有 Redis 底層錯誤（含 Timeout）
+        logger.critical(
+            f"嚴重基礎設施故障：無法連線至 Redis 伺服器！原因: {redis_err}",
+            extra={
+                "redis_host": REDIS_HOST,
+                "action": "redis_ping_failed_critical",
+                "error_type": redis_err.__class__.__name__
+            }
+        )
