@@ -106,8 +106,36 @@ def test_get_dashboard_anomalies_candidate_denied(client, override_auth, candida
     一般 Candidate 考生企圖越權窺探維運流水燈，回傳 403 Forbidden 阻擋。
     """
     override_auth(candidate_user)
-    
+
     response = client.get("/api/v1/admin/dashboard/anomalies")
-    
+
     assert response.status_code == 403
     assert "權限不足" in response.json()["detail"]
+
+
+def test_get_dashboard_anomalies_includes_judge_failed_with_reason(
+    client, override_auth, admin_user, candidate_user,
+    create_test_problem, create_test_exam, create_mock_submission, db_session,
+):
+    """Step 9: JudgeFailed submission 也算 anomaly、failure_reason 完整可讀。"""
+    override_auth(admin_user)
+
+    prob = create_test_problem(title="boom problem")
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
+
+    sub = create_mock_submission(user_id=candidate_user.id, problem_id=prob.id, status="JudgeFailed")
+    sub.exam_id = exam.id
+    sub.failure_reason = "SpawnerError('docker daemon connection refused')\nTraceback ..."
+    db_session.commit()
+
+    response = client.get("/api/v1/admin/dashboard/anomalies?page=1&size=20")
+    assert response.status_code == 200
+
+    data = response.json()
+    judge_failed_items = [item for item in data["items"] if item["verdict"] == "JudgeFailed"]
+    assert len(judge_failed_items) >= 1
+
+    item = judge_failed_items[0]
+    assert item["failure_reason"] is not None
+    assert "SpawnerError" in item["failure_reason"]
+    assert "docker daemon" in item["failure_reason"]

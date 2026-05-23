@@ -1,7 +1,7 @@
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 from app.models.enums import JudgeStatus
 
 class SubmissionBase(BaseModel):
@@ -59,12 +59,25 @@ class CallbackTestcase(BaseModel):
 
 
 class JudgeCallbackPayload(BaseModel):
-    """Worker → backend POST /internal/judge-callback 的 body（合約 3）。"""
+    """Worker → backend POST /internal/judge-callback 的 body（合約 3 + Step 9）。
+
+    Step 9：加 `verdict` discriminator + `failure_reason` 支援失敗路徑。
+    - verdict="Success"（default）→ 走 Step 8 既有 per_testcase + 算分路徑
+    - verdict="JudgeFailed" → 直接寫 status=JudgeFailed + failure_reason、其他欄位忽略
+    backwards compat：default = Success、Step 8 worker 不用改也跑。
+    """
     submission_id: UUID
-    per_testcase: List[CallbackTestcase]
-    exec_time_ms: int = Field(..., description="跑過 testcase 中最慢的耗時")
+    verdict: Literal["Success", "JudgeFailed"] = "Success"
+    # Success path 欄位（verdict=Success 時）
+    per_testcase: List[CallbackTestcase] = Field(default_factory=list)
+    exec_time_ms: int = 0
     memory_mb: Optional[int] = Field(default=None, description="step 9+ 才填")
     judge_log: str = ""
+    # Failure path 欄位（verdict=JudgeFailed 時）
+    failure_reason: Optional[str] = Field(
+        default=None,
+        description="只在 verdict=JudgeFailed 時填、worker 寫 repr(e) + 完整 traceback",
+    )
 
 class SubmissionDetailRead(BaseModel):
     """

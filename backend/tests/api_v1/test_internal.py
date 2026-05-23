@@ -198,6 +198,122 @@ def test_callback_with_wrong_secret_returns_401(client: TestClient, pending_subm
     assert resp.status_code == 401
 
 
+# ── JudgeFailed path tests (Step 9 / 判題失敗處理合約) ────────────────
+
+
+def test_callback_judge_failed_writes_status_and_reason(
+    client: TestClient, pending_submission, db_session: Session
+):
+    """verdict=JudgeFailed payload → status=JudgeFailed + failure_reason 寫入。"""
+    sub, _ = pending_submission
+    payload = {
+        "submission_id": str(sub.id),
+        "verdict": "JudgeFailed",
+        "failure_reason": "SpawnerError('docker daemon not responding')\nTraceback (most recent call last):\n  ...",
+    }
+
+    resp = client.post("/api/v1/internal/judge-callback", json=payload, headers=HEADERS_OK)
+
+    assert resp.status_code == 200
+    db_session.refresh(sub)
+    assert sub.status == JudgeStatus.JudgeFailed
+    assert sub.failure_reason is not None
+    assert "SpawnerError" in sub.failure_reason
+    # 成功路徑欄位沒被動到
+    assert sub.score == 0
+    assert sub.execution_time is None
+
+
+def test_callback_judge_failed_idempotent_on_duplicate(
+    client: TestClient, pending_submission, db_session: Session
+):
+    """同 JudgeFailed callback POST 兩次：第二次 silent 200、DB failure_reason 不被覆蓋。"""
+    sub, _ = pending_submission
+    payload = {
+        "submission_id": str(sub.id),
+        "verdict": "JudgeFailed",
+        "failure_reason": "first failure",
+    }
+
+    r1 = client.post("/api/v1/internal/judge-callback", json=payload, headers=HEADERS_OK)
+    assert r1.status_code == 200
+    db_session.refresh(sub)
+    assert sub.failure_reason == "first failure"
+
+    # 第二次帶不同 reason、應被 WHERE guard 擋下
+    payload["failure_reason"] = "second failure"
+    r2 = client.post("/api/v1/internal/judge-callback", json=payload, headers=HEADERS_OK)
+    assert r2.status_code == 200
+    db_session.refresh(sub)
+    assert sub.failure_reason == "first failure"
+    assert sub.status == JudgeStatus.JudgeFailed
+
+
+def test_callback_judge_failed_on_already_finalized_ac_is_noop(
+    client: TestClient, pending_submission, db_session: Session
+):
+    """submission 已是 AC、後到的 JudgeFailed callback 不該蓋掉終態。"""
+    sub, _ = pending_submission
+    sub.status = JudgeStatus.AC
+    sub.score = 100
+    db_session.commit()
+
+    payload = {
+        "submission_id": str(sub.id),
+        "verdict": "JudgeFailed",
+        "failure_reason": "should not apply",
+    }
+    resp = client.post("/api/v1/internal/judge-callback", json=payload, headers=HEADERS_OK)
+
+    assert resp.status_code == 200
+    db_session.refresh(sub)
+    assert sub.status == JudgeStatus.AC
+    assert sub.score == 100
+    assert sub.failure_reason is None
+
+
+def test_callback_success_after_judge_failed_is_noop(
+    client: TestClient, pending_submission, db_session: Session
+):
+    """JudgeFailed 已寫入後、再來 Success callback 不該蓋掉。"""
+    sub, problem = pending_submission
+
+    # Step 1：JudgeFailed 進來
+    fail_payload = {
+        "submission_id": str(sub.id),
+        "verdict": "JudgeFailed",
+        "failure_reason": "L1 fetch error",
+    }
+    r1 = client.post("/api/v1/internal/judge-callback", json=fail_payload, headers=HEADERS_OK)
+    assert r1.status_code == 200
+    db_session.refresh(sub)
+    assert sub.status == JudgeStatus.JudgeFailed
+
+    # Step 2：晚到的 Success callback（譬如 worker 沒收到 ACK 又重送一次）
+    tc1, _ = problem.test_cases
+    success_payload = _callback_payload(sub.id, [
+        {"testcase_id": tc1.id, "case_verdict": "AC", "exec_time_ms": 1},
+    ])
+    r2 = client.post("/api/v1/internal/judge-callback", json=success_payload, headers=HEADERS_OK)
+    assert r2.status_code == 200
+    db_session.refresh(sub)
+    assert sub.status == JudgeStatus.JudgeFailed
+    assert sub.failure_reason == "L1 fetch error"
+
+
+def test_callback_judge_failed_unknown_submission_returns_200(client: TestClient):
+    """submission_id 不存在 → rowcount=0 → silent 200。"""
+    import uuid as _uuid
+
+    payload = {
+        "submission_id": str(_uuid.uuid4()),
+        "verdict": "JudgeFailed",
+        "failure_reason": "irrelevant",
+    }
+    resp = client.post("/api/v1/internal/judge-callback", json=payload, headers=HEADERS_OK)
+    assert resp.status_code == 200
+
+
 # ── judging service unit tests ──────────────────────────────────────
 
 

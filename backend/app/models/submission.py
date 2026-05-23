@@ -43,7 +43,10 @@ class Submission(Base):
     execution_time = Column(Integer, nullable=True)
     memory_usage = Column(Integer, nullable=True)
     judge_log = Column(Text, nullable=True)
-    
+    # Step 9: judge pipeline 系統失敗時、worker 把 repr(e) + 完整 traceback 寫入
+    # 只在 status=JudgeFailed 時填、其他狀態 NULL；admin only、不暴露給 user-facing endpoint
+    failure_reason = Column(Text, nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # 定義關聯
