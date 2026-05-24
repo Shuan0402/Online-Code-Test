@@ -1,21 +1,22 @@
-# Lessons — frontend-scaffold-and-panels
+# Lessons — admin-panel
 
-Loop closed 2026-05-21. Branch `feat/frontend-scaffold`. Phases P1–P5 + an inserted P4.5 test phase.
+*(Written by Opus at Phase 6, loop end. Max 3 entries. Surprising/non-obvious only.)*
 
-## 1. A plan written before the backend exists has an API contract with a short shelf life
+## L1 — A stub-barrel scaffold phase makes every later phase's scope trivially auditable
 
-The plan's P4/P5 sections were authored when no backend endpoints existed. By the time those phases ran, the backend had shipped — and several plan assumptions were simply wrong:
-- timer "restores from `exam.end_time`" — wrong; `end_time` is null until submit. Real source is `remaining_seconds` from `POST /exams/{id}/start`.
-- `POST /submissions/` returns **202**, not 200; path has a trailing slash.
-- `SubmissionRead` has **no `source_code`** field (code lives in S3 behind `presigned_url`).
-- `GET /exams/{id}/result` returns a new `ExamResultRead` schema with **no `execution_time`**, contradicting the plan's result-table spec.
+P1 wired all 8 `/admin/*` routes through a `pages/admin/index.js` barrel exporting
+`() => null` stubs, so `App.jsx` and `StaffLayout.jsx` were frozen after P1. Every
+phase P2–P6 then touched only its own page files, its own test, and the one barrel
+line it un-stubbed. Result: the reviewer's "no scope creep" check became a one-line
+`git diff` confirmation, and 6 phases ran with zero scope-creep findings and zero
+executor retries. Worth repeating for any multi-phase frontend feature that adds
+several routes at once — front-load the routing/scaffold into phase 1.
 
-**Takeaway**: when a frontend plan is built against a not-yet-existent backend, the supervisor must re-derive the contract from backend source *before dispatching each API-touching phase* and pass the corrections into the executor brief explicitly. Treat the plan's API section as a hypothesis, not ground truth.
+## L2 — The exam list endpoint's sparse shape forces a client-side fan-out, twice
 
-## 2. A long-running harness loop on a feature branch silently drifts from main
-
-Mid-loop, PR #18 (P1+P2) merged to `main`, then ~29 commits of backend work landed on `main` while the loop branch kept going with P3. The loop branch fell 29 commits behind without any signal. Browser E2E for P3+ was impossible until `main` was merged back into the loop branch. Because `frontend/` and `backend/` never overlap, the merge was zero-conflict — but it has to be done deliberately. **Takeaway**: before the read-heavy / E2E-dependent phases of a multi-session loop, merge `main` into the loop branch so work runs against the current backend.
-
-## 3. Stubbing a global makes prototype spies vacuously pass
-
-P4.5's `setup.js` replaced `localStorage` via `vi.stubGlobal('localStorage', mapBackedMock)`. A test then did `vi.spyOn(Storage.prototype, 'setItem')` — but the mock is a plain object, so `Storage.prototype.setItem` is never the function invoked. The assertion `expect(spy).not.toHaveBeenCalled()` passed *vacuously*: it would stay green even if the behavior under test were completely broken. Caught only because the reviewer was explicitly asked to hunt false-confidence tests. **Takeaway**: when a global is stubbed, spies must target the stub object (`vi.spyOn(localStorage, 'setItem')`), not the original prototype — and "break the impl, watch the test fail" is the only proof a test has teeth.
+`GET /api/v1/exams/` returns `CandidateExamListRead[]` with **no `candidate_id`**, so
+rendering a 考生/應試者 column requires N extra `GET /exams/{id}` calls plus a
+`GET /users/` map. This loop's P4 hit it; the interviewer-panel loop hit the identical
+wall. It is a recurring backend-shape gap, not a one-off — if a future loop touches
+`backend/`, adding `candidate_id` to `CandidateExamListRead` would delete the N+2
+fan-out from two separate frontend pages.

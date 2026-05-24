@@ -9,9 +9,9 @@ import NotFoundPage from './pages/NotFoundPage'
 import LoginPage from './pages/LoginPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
 import ExamListPage from './pages/candidate/ExamListPage'
-import QuestionerStubPage from './pages/stubs/QuestionerStubPage'
-import InterviewerStubPage from './pages/stubs/InterviewerStubPage'
-import AdminStubPage from './pages/stubs/AdminStubPage'
+import { ProblemListPage, ProblemFormPage, ProblemSubmissionsPage } from './pages/questioner'
+import { ExamListPage as InterviewerExamListPage, ExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage, ProfilePage } from './pages/interviewer'
+import { DashboardPage, MemberListPage, MemberCreatePage, MemberDetailPage, AdminExamListPage, AdminExamDetailPage, AdminProblemListPage, AdminProblemDetailPage } from '@/pages/admin'
 import TakeExamPage from './pages/candidate/TakeExamPage'
 import ResultPage from './pages/candidate/ResultPage'
 
@@ -50,8 +50,14 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<QuestionerStubPage />} />
-          <Route path="*" element={<QuestionerStubPage />} />
+          {/* index and /questioner/problems both render the list page */}
+          <Route index element={<ProblemListPage />} />
+          <Route path="problems" element={<ProblemListPage />} />
+          {/* P2 — create and edit form */}
+          <Route path="problems/new" element={<ProblemFormPage />} />
+          <Route path="problems/:id/edit" element={<ProblemFormPage />} />
+          {/* P3 — submissions view for a specific problem */}
+          <Route path="problems/:id/submissions" element={<ProblemSubmissionsPage />} />
         </Route>
 
         {/* Interviewer panel */}
@@ -63,8 +69,15 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<InterviewerStubPage />} />
-          <Route path="*" element={<InterviewerStubPage />} />
+          <Route index element={<InterviewerExamListPage />} />
+          <Route path="exams/new" element={<ExamFormPage />} />
+          <Route path="exams/:id" element={<ExamDetailPage />} />
+          <Route path="exams/:id/result" element={<ExamResultPage />} />
+          <Route path="exams/:examId/problems/:problemId" element={<SubmissionDetailPage />} />
+          <Route path="candidates" element={<CandidateListPage />} />
+          <Route path="candidates/new" element={<CandidateFormPage />} />
+          <Route path="candidates/:id" element={<CandidateDetailPage />} />
+          <Route path="profile" element={<ProfilePage />} />
         </Route>
 
         {/* Admin panel */}
@@ -76,8 +89,14 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<AdminStubPage />} />
-          <Route path="*" element={<AdminStubPage />} />
+          <Route index element={<DashboardPage />} />
+          <Route path="members" element={<MemberListPage />} />
+          <Route path="members/new" element={<MemberCreatePage />} />
+          <Route path="members/:id" element={<MemberDetailPage />} />
+          <Route path="exams" element={<AdminExamListPage />} />
+          <Route path="exams/:id" element={<AdminExamDetailPage />} />
+          <Route path="problems" element={<AdminProblemListPage />} />
+          <Route path="problems/:id" element={<AdminProblemDetailPage />} />
         </Route>
 
         {/* 404 catch-all */}
