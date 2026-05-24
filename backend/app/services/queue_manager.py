@@ -12,7 +12,7 @@ class TaskQueue:
     
     def __init__(self):
         self.client = redis_client
-        self.queue_name = "oj_judge_queue"
+        self.queue_name = "submissions:pending"
 
     def push_to_queue(self, queue_name: str, data: dict) -> bool:
         """
