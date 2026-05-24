@@ -1,15 +1,29 @@
-sqlalchemy
-python-dotenv
-pytest
-alembic
-pydantic
-psycopg2-binary
-fastapi
-httpx
-redis
-pydantic-settings
-python-jose[cryptography]
-python-multipart
-argon2-cffi
-boto3>=1.35
-psutil
+# 核心網頁框架與非同步通訊
+fastapi==0.136.1
+uvicorn==0.47.0
+pydantic==2.13.4
+pydantic-settings==2.14.1
+httpx==0.28.1
+python-multipart==0.0.29
+
+# 資料庫與快取基礎設施
+SQLAlchemy==2.0.49
+alembic==1.18.4
+psycopg==3.3.4
+psycopg-binary==3.3.4
+redis==7.4.0
+
+# 資安與身分驗證
+python-jose==3.5.0
+argon2-cffi==25.1.0
+
+# 雲端儲存與系統監控
+boto3==1.43.14
+psutil==7.2.2
+
+# 白盒監控與指標宇宙
+prometheus-fastapi-instrumentator==7.1.0
+
+# 環境組態
+python-dotenv==1.2.2
+PyYAML==6.0.3
