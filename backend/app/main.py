@@ -26,6 +26,7 @@ from app.core.config import settings
 from app.core.redis_client import init_redis_health_check
 from app.db.base import Base
 from app.db.session import engine
+from app.models.user import User
 
 setup_logging(log_level=getattr(settings, "LOG_LEVEL", "INFO"))
 logger = logging.getLogger("app")
@@ -36,7 +37,7 @@ from app.api.deps import get_storage
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
-    
+
     logger.info("Online Code Test Backend 正在啟動，開始執行生命週期初始化...")
     init_redis_health_check()
 
