@@ -1,7 +1,10 @@
 from fastapi import status
+import json
+from unittest.mock import MagicMock
 
 from app.core.security import SecurityManager
 from app.core.redis_client import redis_client
+from app.services.queue_manager import queue_manager
 
 
 # --- POST /login (使用者登入) ---
@@ -110,30 +113,70 @@ def test_refresh_token_rejected_if_in_blacklist(client, candidate_user):
     assert "已失效" in response.json()["detail"]
 
 # --- POST /forgot-password (忘記密碼) ---
-def test_forgot_password_user_exists(client, candidate_user):
+def test_forgot_password_user_exists(client, candidate_user, monkeypatch):
     """
     輸入真實存在的 username，應回傳 200 成功訊息
     """
+    mock_push = MagicMock()
+    monkeypatch.setattr(queue_manager, "push_to_queue", mock_push)
+
     response = client.post(
         "/api/v1/auth/forgot-password",
         json={"username": candidate_user.username}
     )
 
     assert response.status_code == 200
-    assert "郵件已成功發送" in response.json()["detail"]
+    assert "重設密碼的郵件已成功發送" in response.json()["detail"]
+
+    expected_email = candidate_user.username
+    if "@" not in expected_email:
+        expected_email = f"{expected_email}@mock-test.com"
+    
+    mock_push.assert_called_once()
+
+    args, kwargs = mock_push.call_args
+    
+    actual_queue_name = kwargs.get("queue_name") or args[0]
+    
+    actual_payload = None
+    if kwargs:
+        remaining_kwargs = {k: v for k, v in kwargs.items() if k != "queue_name"}
+        if remaining_kwargs:
+            actual_payload = list(remaining_kwargs.values())[0]
+            
+    if not actual_payload and len(args) > 1:
+        actual_payload = args[1]
+
+    assert actual_queue_name == "messages:email"
+    
+    if hasattr(actual_payload, "model_dump"):
+        payload_dict = actual_payload.model_dump()
+    elif hasattr(actual_payload, "dict"):
+        payload_dict = actual_payload.dict()
+    else:
+        payload_dict = actual_payload
+
+    assert payload_dict["task_type"] == "PASSWORD_RESET"
+    assert payload_dict["to_email"] == expected_email
+    assert "reset_url" in payload_dict["context"]
 
 
-def test_forgot_password_user_not_exists_should_still_return_200(client):
+def test_forgot_password_user_not_exists_should_still_return_200(client, monkeypatch):
     """
     輸入不存在的帳號，基於防枚舉安全原則，假裝發送成功、一樣回傳 200 OK
     """
+    mock_push = MagicMock()
+    monkeypatch.setattr(queue_manager, "push_to_queue", mock_push)
+
     response = client.post(
         "/api/v1/auth/forgot-password",
-        json={"username": "im-hacker-hax@example.com"}
+        json={"username": "nobody_exists_in_nthu@nthu.edu.tw"}
     )
     
     assert response.status_code == 200
-    assert "郵件已成功發送" in response.json()["detail"]
+    assert "重設密碼的郵件已成功發送" in response.json()["detail"]
+
+    assert mock_push.call_count == 0
 
 # --- POST /reset-password (重設密碼) ---
 def test_reset_password_success(client, db_session, candidate_user):
