@@ -12,6 +12,7 @@ from app.models.exam import Exam, ExamProblem
 from app.schemas.submission import SubmissionCreate, SubmissionRead, JudgeTaskPayload
 from app.services.queue_manager import queue_manager
 from app.models.enums import UserRole, ExamStatus
+from app.models.testcase import TestCase
 
 
 logger = logging.getLogger("app")
@@ -98,6 +99,16 @@ def create_submission(
         logger.warning(f"提交失敗：題目 ID {payload.problem_id} 根本不屬於該考場", extra=audit_extra)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="提交失敗：本題目不屬於該場考試的範疇。")
 
+    if payload.submission_type == "RUN_ONLY":
+        logger.warning(
+            f"拒絕提交：暫不支援 RUN_ONLY 類型 [用戶: {current_user.id}]", 
+            extra=audit_extra
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="交卷失敗：目前評測引擎僅支援 OFFICIAL 正式提交，不開放 RUN_ONLY 測試。"
+        )
+    
     target_lang = payload.language.lower()
 
     db_submission = Submission(
@@ -140,19 +151,30 @@ def create_submission(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"物件儲存服務異常，交卷失敗: {str(storage_err)}"
         )
+    
+    testcases = db.query(TestCase).filter(TestCase.problem_id == payload.problem_id).all()
 
     task_payload = JudgeTaskPayload(
         submission_id=db_submission.id,
         problem_id=db_submission.problem_id,
         language=db_submission.language,
+        submission_type=db_submission.submission_type,
         presigned_url=presigned_url,
         time_limit=problem.time_limit,
-        memory_limit=problem.memory_limit
+        memory_limit=problem.memory_limit,
+        testcases=[
+            {
+                "testcase_id": tc.id,
+                "input_data": tc.input_data,
+                "expected_output": tc.expected_output,
+                "is_sample": tc.is_sample
+            } for tc in testcases
+        ]
     )
 
     push_success = queue_manager.push_to_queue(
         queue_name=queue_manager.QUEUE_PENDING,
-        data=task_payload.model_dump()
+        data=task_payload.model_dump(mode="json")
     )
 
     if not push_success:
@@ -213,7 +235,10 @@ def get_latest_submission(
     
     if submission.code_s3_url and submission.code_s3_url != "PENDING_UPLOAD":
         submission.presigned_url = storage_service.sign_get_url(submission.code_s3_url)
-        
+    
+    if current_user.role == UserRole.Candidate:
+        submission.failure_reason = None
+
     return submission
 
 @router.get("/{submission_id}", response_model=SubmissionRead)
