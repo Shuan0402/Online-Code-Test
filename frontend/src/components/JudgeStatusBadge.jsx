@@ -1,7 +1,7 @@
 /**
  * JudgeStatusBadge — 評測狀態顏色標籤
  *
- * 支援的值：Pending, Judging, AC, WA, TLE, MLE, RE, CE, Unsubmitted
+ * 支援的值：Pending, Judging, AC, WA, TLE, MLE, RE, CE, JudgeFailed, Unsubmitted
  *
  * @param {string} status — JudgeStatus 字串或 "Unsubmitted"
  */
@@ -15,6 +15,7 @@ const STATUS_LABEL = {
   MLE:         'MLE',
   RE:          'RE',
   CE:          'CE',
+  JudgeFailed: '系統異常，請重新提交',
   Unsubmitted: '未提交',
 }
 
@@ -27,6 +28,7 @@ const STATUS_CLASS = {
   CE:          'bg-yellow-500 text-white',
   Pending:     'bg-blue-400 text-white',
   Judging:     'bg-blue-500 text-white animate-pulse',
+  JudgeFailed: 'bg-gray-700 text-white',
   Unsubmitted: 'bg-gray-200 text-gray-600',
 }
 

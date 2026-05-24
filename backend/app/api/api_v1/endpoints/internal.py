@@ -37,45 +37,61 @@ def judge_callback(
     payload: JudgeCallbackPayload,
     db: Session = Depends(deps.get_db),
 ):
-    # Score 用 partial credit：撈 per_testcase 對應的 score_weight
-    tc_ids = [tc.testcase_id for tc in payload.per_testcase]
-    weights_by_id = {
-        tid: w
-        for tid, w in db.query(TestCase.id, TestCase.score_weight)
-                          .filter(TestCase.id.in_(tc_ids)).all()
-    } if tc_ids else {}
+    # Step 9：根據 verdict 分兩條路徑、共用 `WHERE status IN ('Pending','Judging')` guard。
+    if payload.verdict == "JudgeFailed":
+        result = db.execute(
+            text("""
+                UPDATE submissions
+                   SET status = 'JudgeFailed',
+                       failure_reason = :reason
+                 WHERE id = :sub_id
+                   AND status IN ('Pending', 'Judging')
+            """),
+            {
+                "reason": payload.failure_reason,
+                "sub_id": payload.submission_id,
+            },
+        )
+    else:
+        # Success path（Step 8 既有邏輯）：partial credit 算分 + 推 overall verdict
+        tc_ids = [tc.testcase_id for tc in payload.per_testcase]
+        weights_by_id = {
+            tid: w
+            for tid, w in db.query(TestCase.id, TestCase.score_weight)
+                              .filter(TestCase.id.in_(tc_ids)).all()
+        } if tc_ids else {}
 
-    verdict = aggregate_verdict(payload.per_testcase)
-    score = calc_score(payload.per_testcase, weights_by_id)
+        verdict = aggregate_verdict(payload.per_testcase)
+        score = calc_score(payload.per_testcase, weights_by_id)
 
-    # SQL guard：WHERE status IN ('Pending','Judging') 才 update
-    # 重複 callback / submission 不存在 / 已 finalize 一律 rowcount=0 silent 200
-    result = db.execute(
-        text("""
-            UPDATE submissions
-               SET status = :verdict,
-                   score = :score,
-                   execution_time = :exec_ms,
-                   memory_usage = :mem_mb,
-                   judge_log = :log
-             WHERE id = :sub_id
-               AND status IN ('Pending', 'Judging')
-        """),
-        {
-            "verdict": verdict.value,
-            "score": score,
-            "exec_ms": payload.exec_time_ms,
-            "mem_mb": payload.memory_mb,
-            "log": payload.judge_log,
-            "sub_id": payload.submission_id,
-        },
-    )
+        result = db.execute(
+            text("""
+                UPDATE submissions
+                   SET status = :verdict,
+                       score = :score,
+                       execution_time = :exec_ms,
+                       memory_usage = :mem_mb,
+                       judge_log = :log
+                 WHERE id = :sub_id
+                   AND status IN ('Pending', 'Judging')
+            """),
+            {
+                "verdict": verdict.value,
+                "score": score,
+                "exec_ms": payload.exec_time_ms,
+                "mem_mb": payload.memory_mb,
+                "log": payload.judge_log,
+                "sub_id": payload.submission_id,
+            },
+        )
+
     db.commit()
 
     if result.rowcount == 0:
         log.info(
-            "callback no-op sub=%s (duplicate / unknown / already finalized)",
+            "callback no-op sub=%s verdict=%s (duplicate / unknown / already finalized)",
             payload.submission_id,
+            payload.verdict,
         )
 
     return Response(status_code=status.HTTP_200_OK)

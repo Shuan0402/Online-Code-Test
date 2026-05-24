@@ -1,20 +1,23 @@
 """
-Judge Worker 主流程（Step 8）。
+Judge Worker 主流程（Step 9 / 判題失敗處理合約）。
 
-跟 Step 6 的差別：
-- 不再吃 hardcoded SUBMISSIONS、改從 Redis BLMOVE pop queue
-- at-least-once：BLMOVE pending → processing、callback 成功才 LREM
-- Startup sweep：撈 processing 孤兒回 pending（worker 上次中途死掉留下的）
-- 從 MinIO pre-signed URL 抓 source、stdin = testcase input
-- callback POST backend /internal/judge-callback（X-Worker-Secret）
+跟 Step 8 的差別：
+- 任何 L1+L2 失敗（fetch_source / SpawnerError / unexpected）→ 不再 ACK + drop、改送
+  failure callback (verdict=JudgeFailed + repr(e) + 完整 traceback)、user UI 看「系統
+  異常請重交」。
+- L3 callback 失敗 → in-worker 1 retry @1s（Step 8 是 NOT ACK 靠 sweep 重做）；2 次都失敗
+  log stderr 收工、submission 維持 Pending、admin 從 docker logs 撈來人工 reconcile
+  （見 docs/judge-failure-handling.md §3c）。
+- consume_once **永遠 ACK**——permanent callback failure 仍 ACK 是刻意的（doc §3b invariant）。
 
-Exception → ACK 真值表（合約 4 對齊）：
-| Exception                 | ACK (LREM) | 理由                                          |
-| JSONDecodeError           | ✅         | 壞訊息留著也沒用                              |
-| NotImplementedError       | ✅         | RUN_ONLY 不擋 queue（step 8 OFFICIAL only）   |
-| SpawnerError              | ✅         | sandbox 壞、retry 沒用、靠監控                |
-| requests.HTTPError        | ❌         | callback 失敗 → sweep 重做                    |
-| Exception (unexpected)    | ✅         | 避免 poison message 堵 queue；step 9+ retry   |
+Exception → 行為真值表（Step 9）：
+| 情境                              | 處理                                              |
+| JSONDecodeError (parse 前)         | log + ACK + 不送 callback                         |
+| submission_type != "OFFICIAL"      | log + ACK + 不送 callback（backend 應已 reject）   |
+| L1/L2 任何 Exception              | 送 failure callback (verdict=JudgeFailed) + ACK   |
+| Callback 5xx / network err (≤1次)  | retry @1s                                         |
+| Callback 5xx / network (2次失敗)   | log stderr permanent failure、return + ACK         |
+| Callback 4xx                       | log stderr、return + ACK（retry 無意義）            |
 """
 
 import json
@@ -22,6 +25,7 @@ import logging
 import os
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 
 import redis
@@ -68,6 +72,10 @@ QUEUE_PROCESSING = os.getenv("QUEUE_PROCESSING", "submissions:processing")
 
 # 給 container 啟動 + cpp 編譯 buffer，避免合法程式被 sandbox timeout 誤判 TLE
 SAFETY_MARGIN_SEC = 2
+
+# Step 9: callback retry 設定。100 學生 scale 不做指數 backoff、1 retry @1s 就夠
+CALLBACK_TIMEOUT_SEC = 5
+CALLBACK_BACKOFF_SEC = 1.0
 
 SOURCE_FILENAME_BY_LANGUAGE = {
     "python": "source.py",
@@ -185,31 +193,72 @@ def run_official(
     return per_testcase, "\n".join(judge_log_parts), max_exec_ms
 
 
-# ── callback ───────────────────────────────────────────────────────
+# ── callback (Step 9: 1 retry, never raise) ────────────────────────
 
 
-def post_callback(
-    http: requests.Session,
-    sub_id: str,
-    per_testcase: list,
-    exec_time_ms: int,
-    judge_log: str,
-) -> None:
-    log.info(f"正在將評測結果回傳給 Backend... [SubmissionID: {sub_id}]", extra={"submission_id": sub_id})
-    resp = http.post(
-        f"{BACKEND_URL}/internal/judge-callback",
-        json={
+def post_callback_with_retry(http: requests.Session, payload: dict) -> None:
+    """POST /internal/judge-callback、含 1 retry @1s、永不 raise。
+
+    結果處理：
+    - 2xx：return（成功）
+    - 4xx：log + return（retry 無意義、backend 永遠不會接受）
+    - 5xx / Timeout / ConnectionError：等 1 秒重試一次；仍失敗 → log permanent
+      failure + return（caller 仍 ACK、submission 維持 Pending、靠 admin reconcile）
+    """
+    sub_id = payload.get("submission_id", "?")
+    url = f"{BACKEND_URL}/internal/judge-callback"
+    headers = {"X-Worker-Secret": WORKER_SECRET or ""}
+    last_error = None
+
+    for attempt in (1, 2):   # 初試 + 1 retry
+        try:
+            resp = http.post(url, json=payload, headers=headers, timeout=CALLBACK_TIMEOUT_SEC)
+            if 200 <= resp.status_code < 300:
+                log.info(
+                    f"callback 成功回傳 backend [SubmissionID: {sub_id}]",
+                    extra={"submission_id": sub_id, "action": "callback_success", "attempt": attempt}
+                )
+                return  # 成功
+            if 400 <= resp.status_code < 500:
+                log.error(
+                    f"sub={sub_id}: callback rejected 4xx, no retry; "
+                    f"status={resp.status_code} body={resp.text[:500]!r}",
+                    extra={
+                        "submission_id": sub_id,
+                        "action": "callback_4xx_rejected",
+                        "status_code": resp.status_code,
+                        "response_body": resp.text[:500],
+                    }
+                )
+                return
+            # 5xx → 進 retry 路徑
+            last_error = f"5xx {resp.status_code}"
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_error = f"{type(e).__name__}: {e}"
+
+        if attempt == 1:
+            log.warning(
+                f"callback 第 {attempt} 次失敗 ({last_error})、{CALLBACK_BACKOFF_SEC}s 後重試 [SubmissionID: {sub_id}]",
+                extra={
+                    "submission_id": sub_id,
+                    "action": "callback_retry",
+                    "attempt": attempt,
+                    "last_error": last_error,
+                }
+            )
+            time.sleep(CALLBACK_BACKOFF_SEC)
+
+    # 2 次都失敗——log permanent + return（caller 仍 ACK、見 doc §3b invariant）
+    log.error(
+        f"sub={sub_id}: callback failed permanently after retry; "
+        f"last_error={last_error}",
+        extra={
             "submission_id": sub_id,
-            "per_testcase": per_testcase,
-            "exec_time_ms": exec_time_ms,
-            "memory_mb": None,   # step 8 不填、step 9 sandbox 加 cgroup memory 才能填
-            "judge_log": judge_log,
-        },
-        headers={"X-Worker-Secret": WORKER_SECRET or ""},
-        timeout=10,
+            "action": "callback_failed_permanently",
+            "last_error": last_error,
+            "payload": payload,
+        }
     )
-    resp.raise_for_status()   # 4xx/5xx propagate → main loop 不 ACK
-    log.info(f"評測結果回傳成功，合約確認。 [SubmissionID: {sub_id}]", extra={"submission_id": sub_id, "action": "callback_success"})
 
 
 # ── submission orchestration ───────────────────────────────────────
@@ -220,61 +269,56 @@ def process_submission(
     http: requests.Session,
     msg: dict,
 ) -> None:
-    sub_id = msg["submission_id"]
+    """跑判題 + 送 callback。**絕不 raise**——L1/L2 exception 轉成 failure callback。
 
+    Invariant：本函式 return 後、caller (consume_once) 一律 ACK。permanent callback
+    failure 仍 ACK 是刻意的（見 docs/judge-failure-handling.md §3b invariant）。
+    """
+    sub_id = msg["submission_id"]
     worker_extra = {
         "submission_id": str(sub_id),
         "submission_type": msg.get("submission_type"),
         "language": msg.get("language"),
-        "action": "worker_process_submission"
     }
 
-    if msg["submission_type"] != "OFFICIAL":
-        log.warning(
-            f"評測放棄：未知的提交類型 {msg['submission_type']!r} [SubmissionID: {sub_id}]",
-            extra=worker_extra
-        )
-        raise NotImplementedError(
-            f"submission_type={msg['submission_type']!r} not supported in step 8"
-        )
-    
     log.info(
-        f"成功從隊列中提取任務，正在從 MinIO 下載原始碼... [SubmissionID: {sub_id}]", 
-        extra=worker_extra
+        f"成功從隊列中提取任務、開始判題 pipeline [SubmissionID: {sub_id}]",
+        extra={**worker_extra, "action": "worker_process_start"}
     )
 
-    try: 
+    try:
         source = fetch_source(http, msg["presigned_url"])
-
-        log.info(
-            f"原始碼下載完成，正在啟動沙盒執行環境並擊發評測... [SubmissionID: {sub_id}]",
-            extra=worker_extra
-        )
-
         per_testcase, judge_log, max_exec_ms = run_official(
-            submission_id=sub_id,
             spawner=spawner,
             source=source,
             language=msg["language"],
             testcases=msg["testcases"],
             time_limit_ms=msg["time_limit_ms"],
-        )
-
-        post_callback(http, sub_id, per_testcase, max_exec_ms, judge_log)
-
-        log.info(
-            f"評測任務圓滿完成，結果已成功回傳回後端。 [SubmissionID: {sub_id}]",
-            extra=worker_extra
+            submission_id=sub_id,
         )
     except Exception as e:
-        worker_extra["action"] = "worker_pipeline_collapsed_critical"
-        worker_extra["error_msg"] = str(e)
-        
+        # L1/L2 任何錯 → failure callback（不分 exception class、senior audit 砍掉）
+        # repr(e) 已含 class 名 + message；traceback.format_exc() 給 admin debug
+        reason = f"{repr(e)}\n{traceback.format_exc()}"
         log.exception(
-            f"評測突發嚴重崩潰！任務被迫中斷 [SubmissionID: {sub_id}] 原因: {e}",
-            extra=worker_extra
+            f"pre-callback failure (L1/L2)、送 JudgeFailed callback [SubmissionID: {sub_id}]",
+            extra={**worker_extra, "action": "pre_callback_failure", "error_repr": repr(e)}
         )
-        raise e
+        post_callback_with_retry(http, {
+            "submission_id": sub_id,
+            "verdict": "JudgeFailed",
+            "failure_reason": reason,
+        })
+        return
+
+    # 成功路徑（verdict default = "Success"、backwards compat、不用顯式送）
+    post_callback_with_retry(http, {
+        "submission_id": sub_id,
+        "per_testcase": per_testcase,
+        "exec_time_ms": max_exec_ms,
+        "memory_mb": None,   # cgroup memory measurement is step 10+
+        "judge_log": judge_log,
+    })
 
 
 # ── main loop ──────────────────────────────────────────────────────
@@ -293,32 +337,45 @@ def consume_once(
     spawner: SandboxSpawner,
     http: requests.Session,
 ) -> bool:
-    """處理一筆 message。Returns True if ACK'd (LREM), False if NACK left in processing.
+    """處理一筆 message、無論成功失敗都 ACK（LREM）。
 
-    分離出來給 unit test 跑單筆、不用無窮迴圈。
+    Returns True 永遠。Step 9：永遠 ACK——permanent callback failure 由
+    post_callback_with_retry log stderr 處理、不靠 redelivery（docker-compose worker
+    不會被 evict、k8s 後再加 redelivery / message claim）。
     """
     raw = r.blmove(QUEUE_PENDING, QUEUE_PROCESSING, timeout=0, src="LEFT", dest="RIGHT")
-    msg = None
-    sub_id = "?"
+
+    # JSON parse 失敗 → ACK 丟掉（壞訊息留也沒用）、不送 callback
     try:
         msg = json.loads(raw)
-        sub_id = msg.get("submission_id", "?")
-        process_submission(spawner, http, msg)
     except json.JSONDecodeError:
-        log.error(f"bad payload, ACK to clear: {raw!r}", extra={"action": "bad_payload_ack"})
-    except NotImplementedError as e:
-        log.warning(f"sub={sub_id}: {e}, ACK (step 8 OFFICIAL only)", extra={"submission_id": sub_id, "error_type": "NotImplementedError"})
-    except SpawnerError as e:
-        log.error(f"sub={sub_id}: spawner fail: {e}, ACK", extra={"submission_id": sub_id, "verdict": "SE", "error_type": "SpawnerError"})
-    except requests.HTTPError as e:
-        log.critical(
-            f"嚴重錯誤：Callback 回傳給後端失敗！[SubmissionID: {sub_id}] 原因: {e} | 任務保留於 processing 隊列，等待 Sweep 重試。", 
-            extra={"submission_id": sub_id, "action": "callback_failed_nack"}
+        log.error(
+            f"bad payload, ACK to clear: {raw!r}",
+            extra={"action": "bad_payload_ack"}
         )
-        return False
-    except Exception as e:
-        log.exception(f"sub={sub_id}: unexpected: {e}, ACK", extra={"submission_id": sub_id, "error_type": "UnexpectedException"})
-    
+        r.lrem(QUEUE_PROCESSING, 1, raw)
+        return True
+
+    sub_id = msg.get("submission_id", "?")
+    sub_type = msg.get("submission_type")
+
+    # RUN_ONLY: backend `POST /submissions` 應已 reject、不該到 queue；這裡是 fallback
+    # （合約 5a）。不送 failure callback——backend 已決定這 submission 不該存在判題流程
+    if sub_type != "OFFICIAL":
+        log.warning(
+            f"sub={sub_id}: submission_type={sub_type!r} not supported, ACK without callback "
+            f"(backend should reject before queue)",
+            extra={
+                "submission_id": sub_id,
+                "submission_type": sub_type,
+                "action": "unsupported_type_ack",
+            }
+        )
+        r.lrem(QUEUE_PROCESSING, 1, raw)
+        return True
+
+    # process_submission 永不 raise、failure 內部處理成 JudgeFailed callback
+    process_submission(spawner, http, msg)
     r.lrem(QUEUE_PROCESSING, 1, raw)
     return True
 
@@ -326,12 +383,12 @@ def consume_once(
 def main() -> None:
     stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setFormatter(WorkerJSONFormatter())
-    
+
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     root_logger.handlers = []
     root_logger.addHandler(stdout_handler)
-    
+
     if not WORKER_SECRET:
         log.error("WORKER_SECRET env var not set, exiting")
         sys.exit(1)
@@ -343,7 +400,10 @@ def main() -> None:
     log.info(f"Worker 評測大腦正在啟動；redis={REDIS_URL} backend={BACKEND_URL}")
     swept = startup_sweep(r)
     if swept > 0:
-        log.warning(f"偵測到上次異常關機！開機掃描（Startup Sweep）成功將 {swept} 筆孤兒任務移回 PENDING 頂部。", extra={"swept_count": swept, "action": "startup_sweep"})
+        log.warning(
+            f"偵測到上次異常關機！開機掃描（Startup Sweep）成功將 {swept} 筆孤兒任務移回 PENDING 頂部。",
+            extra={"swept_count": swept, "action": "startup_sweep"}
+        )
     else:
         log.info("開機掃描完成，PROCESSING 隊列清空，無孤兒任務。")
 

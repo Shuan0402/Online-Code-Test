@@ -52,7 +52,13 @@ def get_dashboard_anomalies(
     - 限 Admin 角色存取
     - 過濾出 RE/TLE/MLE 等耗損系統資源或引發崩潰的異常提交
     """
-    anomaly_statuses = [JudgeStatus.RE, JudgeStatus.TLE, JudgeStatus.MLE]
+    # Step 9：JudgeFailed 也算異常（系統錯誤、需 admin 介入）
+    anomaly_statuses = [
+        JudgeStatus.RE,
+        JudgeStatus.TLE,
+        JudgeStatus.MLE,
+        JudgeStatus.JudgeFailed,
+    ]
 
     query = db.query(
         Exam.title.label("exam_name"),
@@ -64,7 +70,8 @@ def get_dashboard_anomalies(
         User.full_name.label("candidate_name"),
         Submission.status.label("verdict"),
         Submission.client_ip.label("client_ip"),
-        Submission.judge_log.label("error_detail")
+        Submission.judge_log.label("error_detail"),
+        Submission.failure_reason.label("failure_reason"),
     ).join(User, Submission.user_id == User.id)\
      .join(Exam, Submission.exam_id == Exam.id)\
      .join(Problem, Submission.problem_id == Problem.id)\
@@ -87,7 +94,8 @@ def get_dashboard_anomalies(
             "candidate_name": r.candidate_name or "未填寫姓名",
             "verdict": r.verdict,
             "client_ip": r.client_ip or "Unknown IP",
-            "error_detail": r.error_detail or "無詳細錯誤日誌"
+            "error_detail": r.error_detail or "無詳細錯誤日誌",
+            "failure_reason": r.failure_reason,
         })
 
     return {

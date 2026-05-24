@@ -32,6 +32,8 @@ class AnomalySubmissionItem(BaseModel):
     verdict: JudgeStatus
     client_ip: Optional[str] = None
     error_detail: Optional[str] = None
+    # Step 9：JudgeFailed 時 worker 寫的 repr(e) + 完整 traceback；其他 verdict 為 None
+    failure_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

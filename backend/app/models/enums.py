@@ -27,6 +27,7 @@ class JudgeStatus(str, enum.Enum):
     MLE = "MLE"
     RE = "RE"
     CE = "CE"
+    JudgeFailed = "JudgeFailed"  # Step 9: judge pipeline 系統錯誤、非 user code 錯誤
 
 class SubmissionType(str, enum.Enum):
     RUN_ONLY = "RUN_ONLY"
