@@ -3,6 +3,7 @@ import logging
 import sys
 import os
 from sqlalchemy.orm import Session
+from app.db.session import engine
 
 sys.path.append(os.getcwd())
 
@@ -28,6 +29,8 @@ FIXED_TEST_USERS = [
 ]
 
 def init_development_data(db: Session) -> None:
+    Base.metadata.create_all(bind=engine)
+    
     logger.info("正在檢查並灌入固定開發測試用帳密...")
     
     for user_info in FIXED_TEST_USERS:
