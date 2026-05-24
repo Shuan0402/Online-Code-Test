@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 
 import psycopg
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.logging import setup_logging
 from app.core.config import settings
@@ -27,9 +28,6 @@ from app.core.redis_client import init_redis_health_check
 setup_logging(log_level=getattr(settings, "LOG_LEVEL", "INFO"))
 logger = logging.getLogger("app")
 
-from app.db.session import engine
-from app.db.base import Base
-from app.models import user, problem, submission, exam, testcase
 from app.api.api_v1.api import api_router
 from app.api.deps import get_storage
 
@@ -91,3 +89,17 @@ def db_check():
     except Exception as exc:
         logger.exception("錯誤：無法連接到 PostgreSQL 資料庫，請檢查 Docker 網路或環境變數！")
         return {"status": "error", "error": str(exc)}
+
+try:
+    print("正在初始化 Prometheus 儀表板並註冊 /metrics 端點...")
+    
+    instrumentator = Instrumentator(
+        should_group_status_codes=False,
+        should_instrument_requests_inprogress=True
+    )
+    
+    instrumentator.instrument(app).expose(app, endpoint="/metrics")
+    
+    print("Prometheus /metrics 端點已成功掛載至全域路由！")
+except Exception as debug_err:
+    print(f"儀表板註冊失敗！原因: {debug_err}")
