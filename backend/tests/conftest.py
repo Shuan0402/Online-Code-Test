@@ -19,6 +19,7 @@ from app.models.enums import UserRole, DifficultyLevel, JudgeStatus
 from app.api import deps
 from app.models.submission import Submission, SubmissionDetail
 from app.core.security import SecurityManager
+from app.services.queue_manager import queue_manager
 
 
 @pytest.fixture(scope="session")
@@ -232,3 +233,17 @@ def create_test_exam(db_session, interviewer_user, candidate_user):
         return exam
         
     return _create
+
+@pytest.fixture(scope="function")
+def test_queue_client():
+    """
+    給單元測試撈取 Redis 隊列的專用客戶端
+    直接借用 queue_manager 當前在記憶體裡咬住的那個實體 client
+    """
+    queue_manager.client.delete(queue_manager.QUEUE_PENDING)
+    queue_manager.client.delete(queue_manager.queue_name)
+    
+    yield queue_manager.client
+    
+    queue_manager.client.delete(queue_manager.QUEUE_PENDING)
+    queue_manager.client.delete(queue_manager.queue_name)

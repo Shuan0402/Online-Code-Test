@@ -1,13 +1,52 @@
 import redis
+import logging
 import os
 
+logger = logging.getLogger("app")
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
 
-# 建立全域共享的 Redis 客戶端
-redis_client = redis.Redis(
-    host=REDIS_HOST,
-    port=6379,
-    db=0,
-    decode_responses=True
+logger.info(
+    f"正在初始化 Redis 全域連線池... | Target: {REDIS_HOST}:{REDIS_PORT} (DB: {REDIS_DB})",
+    extra={
+        "redis_host": REDIS_HOST,
+        "redis_port": REDIS_PORT,
+        "redis_db": REDIS_DB,
+        "action": "redis_client_init"
+    }
 )
+
+pool = redis.ConnectionPool(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    db=REDIS_DB,
+    decode_responses=True,
+    socket_timeout=5.0,
+    socket_keepalive=True,
+    health_check_interval=30
+)
+
+redis_client = redis.Redis(connection_pool=pool)
+
+def init_redis_health_check():
+    logger.info(
+        f"正在執行 Redis 基礎設施連線測試... | Target: {REDIS_HOST}:{REDIS_PORT}",
+        extra={"redis_host": REDIS_HOST, "action": "redis_client_init"}
+    )
+    try:
+        if redis_client.ping():
+            logger.info(
+                "Redis 基礎設施連線測試成功！底層通訊管道狀態：GREEN",
+                extra={"redis_host": REDIS_HOST, "action": "redis_ping_success"}
+            )
+    except redis.exceptions.RedisError as redis_err:  # 🎯 擴大防護網：接住所有 Redis 底層錯誤（含 Timeout）
+        logger.critical(
+            f"嚴重基礎設施故障：無法連線至 Redis 伺服器！原因: {redis_err}",
+            extra={
+                "redis_host": REDIS_HOST,
+                "action": "redis_ping_failed_critical",
+                "error_type": redis_err.__class__.__name__
+            }
+        )

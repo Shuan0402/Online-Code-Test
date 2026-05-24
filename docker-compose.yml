@@ -38,6 +38,7 @@ services:
       PYTHONPATH: /app
       POSTGRES_HOST: pg
       REDIS_HOST: redis
+      LOG_FILE_PATH: /var/log/app/backend.log
     ports:
       - "8000:8000"
     depends_on:
@@ -47,6 +48,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    volumes:
+      - app_logs:/var/log/app
     # python -c probe: slim image has no curl/wget, but always has python.
     # Hits /health (liveness only — does not touch DB).
     healthcheck:
@@ -96,10 +99,12 @@ services:
       WORKER_SECRET: ${WORKER_SECRET}
       QUEUE_PENDING: submissions:pending
       QUEUE_PROCESSING: submissions:processing
+      LOG_FILE_PATH: /var/log/app/worker.log
     volumes:
       # DooD: worker uses host docker daemon to spawn sandbox sibling containers.
       # See judge-worker/Dockerfile header for the security trade-off.
       - /var/run/docker.sock:/var/run/docker.sock
+      - app_logs:/var/log/app
     depends_on:
       redis:
         condition: service_healthy
@@ -109,6 +114,42 @@ services:
     # No healthcheck — no HTTP endpoint exposed; rely on docker restart policy.
     restart: unless-stopped
 
+  loki:
+    image: grafana/loki:2.8.2
+    user: "root"
+    volumes:
+      - ./infrastructure/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+      # 先不要掛載，開發階段掛載會讓硬碟爆掉
+      # - loki_data:/var/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready | grep -q 'ready' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  promtail:
+    image: grafana/promtail:2.8.2
+    user: "root"
+    volumes:
+      - ./infrastructure/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - app_logs:/var/log/app:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:9.5.2-ubuntu
+    ports:
+      - "0.0.0.0:3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    depends_on:
+      - loki
+
 volumes:
   pg_data:
   minio_data:
+  app_logs:
+  # loki_data:

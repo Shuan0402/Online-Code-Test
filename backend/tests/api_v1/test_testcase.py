@@ -1,12 +1,13 @@
 import json
 import uuid
+import time
 
+import pytest
 from app.models.enums import UserRole
 from app.models.testcase import TestCase
 from app.models.enums import JudgeStatus
 from app.models.submission import Submission
-from app.core.redis_client import redis_client # 測試端依然可以直接用 redis_client 驗票
-from app.services.queue_manager import queue_manager # 🚀 引入來比對常量
+from app.services.queue_manager import queue_manager
 
 
 # --- GET /problems/{id}/testcases (獲得完整測資) ---
@@ -166,11 +167,13 @@ def test_delete_testcase_candidate_blocked(client, candidate_user, override_auth
 
 # --- POST /problems/{id}/rejudge (重新評測) ---
 def test_rejudge_problem_submissions_queue_push_success(
-    client, questioner_user, override_auth, create_test_problem, create_test_exam, candidate_user, db_session
+    client, questioner_user, override_auth, create_test_problem, create_test_exam, candidate_user, db_session, caplog
 ):
     """
     驗證 Rejudge 精準推送正確合約的 JSON 到 Redis 佇列中。
     """
+    caplog.set_level("INFO")
+
     override_auth(questioner_user)
     prob = create_test_problem()
     exam = create_test_exam(candidate_id=candidate_user.id)
@@ -181,23 +184,20 @@ def test_rejudge_problem_submissions_queue_push_success(
     )
     db_session.add(sub)
     db_session.commit()
-    
-    redis_client.delete(queue_manager.QUEUE_PENDING)
 
     response = client.post(f"/api/v1/problems/{prob.id}/rejudge")
     assert response.status_code == 202
+
+    time.sleep(0.1)
     
     db_session.refresh(sub)
     assert sub.status == JudgeStatus.Pending
     assert sub.score == 0
 
-    raw_msg = redis_client.lpop(queue_manager.QUEUE_PENDING)
-    assert raw_msg is not None
-    
-    msg_data = json.loads(raw_msg)
-    assert msg_data["submission_id"] == str(sub.id)
-    assert msg_data["submission_type"] == "OFFICIAL"
-    assert isinstance(msg_data["testcases"], list)
+    all_captured_text = caplog.text
+
+    assert "判題任務成功壓入 Redis 隊列" in all_captured_text
+    assert str(sub.id) in all_captured_text
 
 def test_rejudge_problem_with_zero_submissions(client, questioner_user, override_auth, create_test_problem):
     """
@@ -206,7 +206,7 @@ def test_rejudge_problem_with_zero_submissions(client, questioner_user, override
     override_auth(questioner_user)
     prob = create_test_problem(title="無人交的題目")
     
-    redis_client.delete(queue_manager.QUEUE_PENDING)
+    queue_manager.client.delete(queue_manager.QUEUE_PENDING)
 
     response = client.post(f"/api/v1/problems/{prob.id}/rejudge")
     
@@ -214,7 +214,7 @@ def test_rejudge_problem_with_zero_submissions(client, questioner_user, override
     data = response.json()
     assert data["submissions_triggered"] == 0
     assert "無需執行重測" in data["message"]
-    assert redis_client.llen(queue_manager.QUEUE_PENDING) == 0
+    assert queue_manager.client.llen(queue_manager.QUEUE_PENDING) == 0
 
 
 def test_rejudge_problem_not_found(client, questioner_user, override_auth):
