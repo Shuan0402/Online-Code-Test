@@ -39,15 +39,38 @@ docker compose up -d --build backend          # requirements.txt 改了
 docker compose down [-v]                      # 停（-v 砍 DB）
 ```
 
+### 測試與開發環境分流
+專案採用環境感知建置：正式環境維持極致精簡與資安加固；本地開發與 CI 測試階段則會自動注入 `pytest` 等開發期工具。
+#### 變更套件依賴
+- 核心業務套件（如新框架、驅動）：請寫入 `backend/requirements.txt`
+- 輔助開發套件（如測試、Linter）：請寫入 `backend/requirements-dev.txt`
+#### 開發期建置與測試
+```bash
+# 編譯帶有開發期依賴（BUILD_ENV=development）的後端映像檔
+docker build --build-arg BUILD_ENV=development -t backend:dev ./backend
+
+# 全服務重啟建置
+docker compose down && docker compose up -d
+
+# 執行本地單元測試
+docker compose exec backend pytest
+```
+
 ### 系統觀測與日誌
 - 訪問
   Grafana 入口：`http://localhost:3001`
   預設帳密：`admin` / `admin` (或讀取 .env 中的 GRAFANA_PASSWORD)
 - 第一次設定
-  1. 進入左側選單 Connections ➔ Data sources ➔ 點擊 Add data source 選擇 Loki。
-  2. 在 URL 欄位輸入 Docker 內部通透域名：http://loki:3100。
-  3. 滾動到最下方點擊 Save & test，看見綠色勾勾即連線成功。
-  4. 進入左側選單 Explore，左上角 `--Grafana--` 改為 Loki 即可透過 LogQL 追蹤與檢索 FastAPI/Worker 的 JSON 結構化日誌與錯誤堆疊。
+  - Loki (Log 日誌觀測)
+    1. 進入左側選單 Connections ➔ Data sources ➔ 點擊 Add data source 選擇 Loki。
+    2. 在 URL 欄位輸入 Docker 內部通透域名：http://loki:3100。
+    3. 滾動到最下方點擊 Save & test，看見綠色勾勾即連線成功。
+  - Prometheus (Metric 指標觀測)
+    1. 進入左側選單 Connections ➔ Data sources ➔ 點擊 Add data source 選擇 Prometheus。
+    2. 在 URL 欄位輸入 Docker 內部通透域名：http://prometheus:9090。
+    3. 滾動到最下方點擊 Save & test，看見綠色勾勾即連線成功。
+- 查詢
+  進入左側選單 Explore，左上角 `--Grafana--` 選取 Loki、Prometheus 即可查詢。
 
 
 ### 測 sandbox（手動，沒進 compose）
