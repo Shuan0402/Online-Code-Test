@@ -39,6 +39,23 @@ docker compose up -d --build backend          # requirements.txt 改了
 docker compose down [-v]                      # 停（-v 砍 DB）
 ```
 
+### 測試與開發環境分流
+專案採用環境感知建置：正式環境維持極致精簡與資安加固；本地開發與 CI 測試階段則會自動注入 `pytest` 等開發期工具。
+#### 變更套件依賴
+- 核心業務套件（如新框架、驅動）：請寫入 `backend/requirements.txt`
+- 輔助開發套件（如測試、Linter）：請寫入 `backend/requirements-dev.txt`
+#### 開發期建置與測試
+```bash
+# 編譯帶有開發期依賴（BUILD_ENV=development）的後端映像檔
+docker build --build-arg BUILD_ENV=development -t backend:dev ./backend
+
+# 全服務重啟建置
+docker compose down && docker compose up -d
+
+# 執行本地單元測試
+docker compose exec backend pytest
+```
+
 ### 系統觀測與日誌
 - 訪問
   Grafana 入口：`http://localhost:3001`

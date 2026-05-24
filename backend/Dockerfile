@@ -2,12 +2,17 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ARG BUILD_ENV=production
+
 # Copy ONLY the dependency manifest first, install, THEN copy the rest of the source.
 # Frequently-changing files (source code) live at the bottom so they don't
 # invalidate the expensive pip-install layer above them.
 COPY requirements.txt .
+COPY requirements-dev.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
- && pip install --no-cache-dir fastapi "uvicorn[standard]" "psycopg[binary]"
+ && if [ "$BUILD_ENV" = "development" ] || [ "$BUILD_ENV" = "test" ]; then \
+        pip install --no-cache-dir -r requirements-dev.txt; \
+    fi
 
 # Source code last — this layer is the only one that rebuilds on code edits.
 COPY . .

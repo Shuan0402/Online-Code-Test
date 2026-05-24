@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# 測試與開發套件（只在 CI 與本地測試時注入）
+pytest==9.0.3
+iniconfig==2.3.0
+pluggy==1.6.0
