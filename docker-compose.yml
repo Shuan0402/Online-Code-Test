@@ -41,6 +41,9 @@ services:
       LOG_FILE_PATH: /var/log/app/backend.log
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app:ro  
+      - app_logs:/var/log/app
     depends_on:
       pg:
         condition: service_healthy
@@ -48,8 +51,6 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    volumes:
-      - app_logs:/var/log/app
     # python -c probe: slim image has no curl/wget, but always has python.
     # Hits /health (liveness only — does not touch DB).
     healthcheck:
@@ -62,8 +63,6 @@ services:
   redis:
     image: redis:alpine
     command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -131,7 +130,6 @@ services:
 
   promtail:
     image: grafana/promtail:2.8.2
-    user: "root"
     volumes:
       - ./infrastructure/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
       - app_logs:/var/log/app:ro
@@ -139,14 +137,28 @@ services:
     depends_on:
       - loki
 
+  prometheus:
+    build:
+      context: ./infrastructure/prometheus
+      dockerfile: Dockerfile
+    user: "root"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      backend:
+        condition: service_healthy
+
   grafana:
     image: grafana/grafana:9.5.2-ubuntu
     ports:
-      - "0.0.0.0:3001:3000"
+      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
     depends_on:
       - loki
+      - prometheus
 
 volumes:
   pg_data:
