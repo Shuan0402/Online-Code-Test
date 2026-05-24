@@ -57,20 +57,14 @@ docker compose exec backend pytest
 ```
 
 ### 系統觀測與日誌
-- 訪問
-  Grafana 入口：`http://localhost:3001`
-  預設帳密：`admin` / `admin` (或讀取 .env 中的 GRAFANA_PASSWORD)
-- 第一次設定
-  - Loki (Log 日誌觀測)
-    1. 進入左側選單 Connections ➔ Data sources ➔ 點擊 Add data source 選擇 Loki。
-    2. 在 URL 欄位輸入 Docker 內部通透域名：http://loki:3100。
-    3. 滾動到最下方點擊 Save & test，看見綠色勾勾即連線成功。
-  - Prometheus (Metric 指標觀測)
-    1. 進入左側選單 Connections ➔ Data sources ➔ 點擊 Add data source 選擇 Prometheus。
-    2. 在 URL 欄位輸入 Docker 內部通透域名：http://prometheus:9090。
-    3. 滾動到最下方點擊 Save & test，看見綠色勾勾即連線成功。
-- 查詢
-  進入左側選單 Explore，左上角 `--Grafana--` 選取 Loki、Prometheus 即可查詢。
+已整合 Grafana 全自動預配置（Provisioning），`docker compose up -d` 啟動時會自動綁定資料源並掛載儀表板。
+- **實時觀測入口**： `http://localhost:3001`
+  - 預設帳密：`admin` / `admin` (或讀取 `.env` 中的 `GRAFANA_PASSWORD`)
+- **Dashboards 儀錶板**
+  - 登入後點擊左側選單 **Dashboards**，選擇 `Online Code Test - FastAPI Backend Matrix` 看板，實時監控 QPS 流量山峰與 P95 Latency 效能防線。
+- **Explore 追蹤查詢**
+  - 點擊左側選單 **Explore**，左上角數據源下拉選單直接切換至 **Loki**，於查詢列輸入 LogQL `{service="backend"}`，即可免進終端機、實時滾動刨出後端結構化 JSON 日誌流。
+
 
 
 ### 測 sandbox（手動，沒進 compose）
