@@ -138,12 +138,12 @@ export default function AdminProblemDetailPage() {
 
           <div className="space-y-1">
             <p className="text-muted-foreground font-medium">時間限制</p>
-            <p>{problem.time_limit != null ? `${problem.time_limit} ms` : '—'}</p>
+            <p>{problem.time_limit_ms != null ? `${problem.time_limit_ms} ms` : '—'}</p>
           </div>
 
           <div className="space-y-1">
             <p className="text-muted-foreground font-medium">記憶體限制</p>
-            <p>{problem.memory_limit != null ? `${problem.memory_limit} MB` : '—'}</p>
+            <p>{problem.memory_limit_mb != null ? `${problem.memory_limit_mb} MB` : '—'}</p>
           </div>
 
           <div className="space-y-1">

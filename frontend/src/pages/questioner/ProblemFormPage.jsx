@@ -75,8 +75,8 @@ export default function ProblemFormPage() {
         setTitle(data.title ?? '')
         setDescription(data.description ?? '')
         setDifficulty(data.difficulty ?? 'Easy')
-        setTimeLimit(data.time_limit ?? 1000)
-        setMemoryLimit(data.memory_limit ?? 256)
+        setTimeLimit(data.time_limit_ms ?? 1000)
+        setMemoryLimit(data.memory_limit_mb ?? 256)
 
         // 將 ProblemRead.test_cases 轉成本地 state 格式
         // 每列保留 id（用於 PATCH 語義），其餘欄位直接帶入
@@ -176,8 +176,8 @@ export default function ProblemFormPage() {
       title: title.trim(),
       description,
       difficulty,
-      time_limit: Number.isFinite(parsedTimeLimit) ? parsedTimeLimit : 1000,
-      memory_limit: Number.isFinite(parsedMemoryLimit) ? parsedMemoryLimit : 256,
+      time_limit_ms: Number.isFinite(parsedTimeLimit) ? parsedTimeLimit : 1000,
+      memory_limit_mb: Number.isFinite(parsedMemoryLimit) ? parsedMemoryLimit : 256,
       test_cases: testCasesPayload,
     }
 

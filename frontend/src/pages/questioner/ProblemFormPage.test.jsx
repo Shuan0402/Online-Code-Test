@@ -121,8 +121,8 @@ describe('ProblemFormPage', () => {
         title: '已存在的題目',
         description: '詳細描述',
         difficulty: 'Medium',
-        time_limit: 2000,
-        memory_limit: 512,
+        time_limit_ms: 2000,
+        memory_limit_mb: 512,
         test_cases: [
           { id: 10, input_data: '1 2', expected_output: '3', score_weight: 20, is_sample: true },
         ],
