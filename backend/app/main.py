@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 import psycopg
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.logging import setup_logging
 from app.core.config import settings
@@ -56,6 +57,14 @@ async def lifespan(app: FastAPI):
     logger.info("Online Code Test Backend 正在關閉，釋放所有系統資源...")
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # 物理咬合前端 React 的本地埠
+    allow_credentials=True,
+    allow_methods=["*"],                      # 允許 GET, POST, OPTIONS 等所有方法
+    allow_headers=["*"],                      # 允許所有自訂或標準 HTTP Headers
+)
 
 app.include_router(api_router, prefix="/api/v1")
 

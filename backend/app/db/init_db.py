@@ -16,7 +16,7 @@ logger = logging.getLogger("app")
 FIXED_TEST_USERS = [
     {
         "username": "admin@nthu.edu.tw",
-        "full_name": "NTHU 管理員",
+        "full_name": "管理員",
         "password": "password123",
         "role": UserRole.Admin,
     },
@@ -25,6 +25,18 @@ FIXED_TEST_USERS = [
         "full_name": "測試考生",
         "password": "password123",
         "role": UserRole.Candidate,
+    },
+        {
+        "username": "interviewer@nthu.edu.tw",
+        "full_name": "面試主管",
+        "password": "password123",
+        "role": UserRole.Interviewer,
+    },
+    {
+        "username": "questioner@nthu.edu.tw",
+        "full_name": "出題主管",
+        "password": "password123",
+        "role": UserRole.Questioner,
     }
 ]
 
