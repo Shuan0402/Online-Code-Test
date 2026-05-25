@@ -111,11 +111,13 @@ def create_submission(
     
     target_lang = payload.language.lower()
 
+    resolved_sub_type = payload.submission_type if payload.submission_type else "OFFICIAL"
+
     db_submission = Submission(
         user_id=current_user.id,
         problem_id=payload.problem_id,
         exam_id=payload.exam_id,
-        submission_type=payload.submission_type,
+        submission_type=resolved_sub_type,
         language=target_lang,
         code_s3_url="PENDING_UPLOAD",
         status="Pending",
@@ -160,8 +162,8 @@ def create_submission(
         language=db_submission.language,
         submission_type=db_submission.submission_type,
         presigned_url=presigned_url,
-        time_limit=problem.time_limit,
-        memory_limit=problem.memory_limit,
+        time_limit_ms=problem.time_limit_ms,
+        memory_limit_mb=problem.memory_limit_mb,
         testcases=[
             {
                 "testcase_id": tc.id,
