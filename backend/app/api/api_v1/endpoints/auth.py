@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from jose import jwt, JWTError
@@ -9,7 +9,9 @@ from app.api import deps
 from app.core.security import SecurityManager
 from app.models.user import User
 from app.schemas.token import Token, TokenRefreshInput, TokenRefreshResponse, ForgotPasswordInput, ResetPasswordInput
+from app.schemas.email import EmailTaskPayload, EmailTaskType
 from app.core.redis_client import redis_client
+from app.services.queue_manager import queue_manager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -105,13 +107,26 @@ def refresh_token(
 @router.post("/forgot-password")
 def forgot_password(
     payload: ForgotPasswordInput,
+    request: Request,
     db: Session = Depends(deps.get_db)
 ):
     """
     忘記密碼請求
     - User Enumeration Prevention (不論帳號是否存在，一律回傳 200 OK，防止駭客枚舉使用者)
     - 生成 15 分鐘短效 reset token，並在本地 Console/Log 中模擬發送郵件
+    - 將發信任務打包成標準 JSON 灌入 Redis messages:email 佇列，交由獨立 Email Worker 發信
     """
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else (request.client.host if request.client else "0.0.0.0")
+
+    audit_extra = {
+        "client_ip": client_ip,
+        "requested_username": payload.username,
+        "action": "password_reset_request"
+    }
+
+    logger.info(f"[Forgot Password] 收到忘記密碼請求 | 帳號: {payload.username} | IP: {client_ip}", extra=audit_extra)
+
     user = db.query(User).filter(User.username == payload.username).first()
     
     if not user or not user.is_active:
@@ -119,10 +134,37 @@ def forgot_password(
         return {"detail": "若此帳號存在於系統中，重設密碼的郵件已成功發送。"}
 
     reset_token = SecurityManager.create_password_reset_token(subject=str(user.id))
-
     reset_url = f"{settings.FRONTEND_HOST}/reset-password?token={reset_token}"
+
+    target_email = user.username
+    if "@" not in target_email:
+        target_email = f"{target_email}@mock-test.com"
+
+    email_payload = EmailTaskPayload(
+        to_email=target_email,
+        task_type=EmailTaskType.PASSWORD_RESET,
+        context={
+            "username": user.full_name or user.username,
+            "reset_url": reset_url,
+            "expire_minutes": 15
+        }
+    )
+
+    push_success = queue_manager.push_to_queue(
+        queue_name=queue_manager.QUEUE_EMAIL,
+        data=email_payload.model_dump(mode="json")
+    )
+
+    if not push_success:
+        audit_extra["action"] = "email_queue_push_failed"
+        logger.critical(f"[Forgot Password] 嚴重故障：無法將郵件任務推入 Redis！[用戶: {user.username}]", extra=audit_extra)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="系統郵件調度伺服器繁忙，請稍後再試。"
+        )
     
-    logger.info("\n" + "="*80 + f"\n[SIMULATED EMAIL SERVICE] 發送重設密碼信件給: {user.username}\n" + f"請點擊以下連結重設密碼 (15分鐘內有效):\n{reset_url}\n" + "="*80)
+    audit_extra["action"] = "email_task_queued_successfully"
+    logger.info(f"[Forgot Password] 郵件任務已成功進入非同步管線 [收件人: {user.username}]", extra=audit_extra)
 
     return {"detail": "若此帳號存在於系統中，重設密碼的郵件已成功發送。"}
 

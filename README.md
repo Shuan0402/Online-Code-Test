@@ -6,9 +6,11 @@ backend 排隊送進判題 sandbox、回傳 verdict。
 ## Architecture
 
 ```
-browser → frontend → nginx → backend (FastAPI) ─┬─ pg
-                                                ├─ queue → worker → docker run sandbox:{python,cpp}
-                                                └─ (app_logs Volume) ➔ Promtail ➔ Loki ➔ Grafana
+browser → frontend → nginx → backend (FastAPI) ─┬─ pg (PostgreSQL)
+                                                ├─ (app_logs Volume) → Promtail → Loki ───┬➔ Grafana
+                                                ├─ Metrics / Exporter → Prometheus ───────┘
+                                                └─ Redis Queue ─┬─ [submissions:pending] → judge-worker → docker run sandbox:{python,cpp}
+                                                                └─ [messages:email] → email-worker → SMTP → mailhog (Web UI: :8025)
 ```
 
 ## Roles
@@ -50,7 +52,8 @@ docker compose down [-v]                      # 停（-v 砍 DB）
 docker build --build-arg BUILD_ENV=development -t backend:dev ./backend
 
 # 全服務重啟建置
-docker compose down && docker compose up -d
+docker compose down
+docker compose up -d
 
 # 執行本地單元測試
 docker compose exec backend pytest
