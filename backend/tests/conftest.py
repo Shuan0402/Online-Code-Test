@@ -112,8 +112,8 @@ def create_test_problem(db_session, admin_user):
         defaults = {
             "description": "Default test description",
             "difficulty": DifficultyLevel.Medium,
-            "time_limit": 1000,
-            "memory_limit": 256,
+            "time_limit_ms": 1000,
+            "memory_limit_mb": 256,
             "creator_id": creator.id
         }
         defaults.update(kwargs)

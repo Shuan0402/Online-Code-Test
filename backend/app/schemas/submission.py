@@ -1,7 +1,7 @@
 from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Dict, Any
 from app.models.enums import JudgeStatus
 
 class SubmissionBase(BaseModel):
@@ -43,9 +43,11 @@ class JudgeTaskPayload(BaseModel):
     submission_id: UUID
     problem_id: int
     language: str
+    submission_type: str = Field(default="OFFICIAL", description="提交類型")
     presigned_url: str = Field(..., description="時效性高的 S3 預簽章下載連結")
-    time_limit: int = Field(..., description="時間限制 (ms)")
-    memory_limit: int = Field(..., description="記憶體限制 (MB)")
+    time_limit_ms: int = Field(..., description="時間限制 (ms)")
+    memory_limit_mb: int = Field(..., description="記憶體限制 (MB)")
+    testcases: List[Dict[str, Any]] = Field(default_factory=list, description="測資清單")
 
 class CallbackTestcase(BaseModel):
     """Worker callback 中每筆 testcase 的結果。

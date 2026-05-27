@@ -14,8 +14,8 @@ class Problem(Base):
     - creator_id(FK):UUID，出題者編號。
     - description: Text，題目敘述。
     - difficulty: Enum (Easy / Medium / Hard)。
-    - time_limit: Integer，執行時間上限（ms）。
-    - memory_limit: Integer，記憶體使用上限（MB）。
+    - time_limit_ms: Integer，執行時間上限（ms）。
+    - memory_limit_mb: Integer，記憶體使用上限（MB）。
     - created_at: DateTime，建立時間。
     """
     __tablename__ = "problems"
@@ -28,8 +28,8 @@ class Problem(Base):
     description = Column(Text, nullable=False)
     difficulty = Column(Enum(DifficultyLevel), nullable=False)
 
-    time_limit = Column(Integer, default=1000)   # 毫秒 (ms)
-    memory_limit = Column(Integer, default=256)  # MB
+    time_limit_ms = Column(Integer, default=1000)   # 毫秒 (ms)
+    memory_limit_mb = Column(Integer, default=256)  # MB
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     is_deleted = Column(Boolean, default=False, nullable=False)

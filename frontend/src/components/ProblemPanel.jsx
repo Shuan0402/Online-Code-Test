@@ -83,8 +83,8 @@ export default function ProblemPanel({ problemId, points, sequence }) {
 
       {/* 時間 / 記憶體限制 */}
       <div className="flex gap-4 text-xs text-muted-foreground">
-        <span>時間限制：{problem.time_limit} ms</span>
-        <span>記憶體限制：{problem.memory_limit} MB</span>
+        <span>時間限制：{problem.time_limit_ms} ms</span>
+        <span>記憶體限制：{problem.memory_limit_mb} MB</span>
       </div>
 
       {/* 題目描述 */}

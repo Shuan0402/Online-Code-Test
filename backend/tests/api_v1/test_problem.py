@@ -28,8 +28,8 @@ def test_read_problems_schema_filtering(client: TestClient, questioner_user: Use
         title="Test Problem",
         description="This is a secret description", # 這不應該出現在回傳結果中
         difficulty=DifficultyLevel.Easy,
-        time_limit=1000,
-        memory_limit=256,
+        time_limit_ms=1000,
+        memory_limit_mb=256,
         creator_id=questioner_user.id
     )
     db_session.add(test_problem)
@@ -143,8 +143,8 @@ def test_create_problem_success_as_admin(client: TestClient, admin_user: User, o
         "title": "New Problem",
         "description": "Desc",
         "difficulty": "Medium",
-        "time_limit": 1000,
-        "memory_limit": 256,
+        "time_limit_ms": 1000,
+        "memory_limit_mb": 256,
         "test_cases": [
             {"input_data": "1", "expected_output": "2", "is_sample": True}
         ]
@@ -164,8 +164,8 @@ def test_create_problem_success_as_questioner(client: TestClient, questioner_use
         "title": "Questioner's Challenge",
         "description": "Prove your logic",
         "difficulty": "Medium",
-        "time_limit": 2000,
-        "memory_limit": 512,
+        "time_limit_ms": 2000,
+        "memory_limit_mb": 512,
         "test_cases": [
             {"input_data": "start", "expected_output": "end", "is_sample": True}
         ]

@@ -35,7 +35,7 @@ export default function ExamListPage() {
     setLoading(true)
     setError(null)
 
-    api.get('/api/v1/exams')
+    api.get('/api/v1/exams/')
       .then((res) => {
         setExams(res.data)
       })

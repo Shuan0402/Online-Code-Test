@@ -53,13 +53,7 @@ def get_candidate_exams(
             .order_by(Exam.created_at.desc())
             .all()
         )
-
-    for exam in exams:
-        for ep in exam.exam_problems:
-            if ep.problem:
-                ep.title = ep.problem.title
-                ep.difficulty = ep.problem.difficulty
-
+        
     return exams
 
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)

@@ -18,8 +18,8 @@ def test_problem_schema_with_test_cases():
         "title": "A + B",
         "description": "Calculate sum",
         "difficulty": "Easy",
-        "time_limit": 1000,
-        "memory_limit": 256,
+        "time_limit_ms": 1000,
+        "memory_limit_mb": 256,
         "test_cases": [
             {"input_data": "1 2", "expected_output": "3", "score_weight": 50},
             {"input_data": "10 20", "expected_output": "30", "score_weight": 50}
@@ -38,8 +38,8 @@ def test_problem_invalid_limits():
     payload = {
         "title": "Limit Test",
         "description": "...",
-        "time_limit": -1,
-        "memory_limit": 0
+        "time_limit_ms": -1,
+        "memory_limit_mb": 0
     }
     with pytest.raises(ValidationError):
         ProblemCreate(**payload)
