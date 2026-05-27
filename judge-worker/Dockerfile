@@ -9,14 +9,16 @@
 # Step 9+ should migrate to a K8s Job spawner (or sysbox / rootless docker)
 # to remove the host-root-equivalent privilege the docker.sock mount carries.
 #
-# Image only ships docker CLI (no daemon). docker.io debian package bundles
-# both but we only invoke the CLI — daemon is never started inside this
-# container.
+# Image only ships docker CLI (no daemon). Use the docker-cli debian package
+# directly — docker.io used to bundle daemon+CLI, but Debian 13 (trixie) split
+# the CLI into its own package, so installing docker.io alone now leaves the
+# image without /usr/bin/docker and spawner subprocess.run(["docker", ...])
+# fails with FileNotFoundError.
 
 FROM python:3.13-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends docker.io \
+ && apt-get install -y --no-install-recommends docker-cli \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
