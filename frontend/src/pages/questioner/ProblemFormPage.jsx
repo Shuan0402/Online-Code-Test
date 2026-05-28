@@ -146,6 +146,17 @@ export default function ProblemFormPage() {
       setValidationError('至少需要一筆測試資料')
       return
     }
+    // 每筆測資的「預期輸出」必填（防止 expected_output 為空）
+    const emptyOutputIdx = testCases.findIndex((tc) => !String(tc.expected_output ?? '').trim())
+    if (emptyOutputIdx >= 0) {
+      setValidationError(`第 ${emptyOutputIdx + 1} 筆測資的「預期輸出」不可為空`)
+      return
+    }
+    // 至少要有一筆是「範例測資」
+    if (!testCases.some((tc) => tc.is_sample)) {
+      setValidationError('至少需要勾選一筆「範例測資」（讓考生看得到題目範例）')
+      return
+    }
 
     setSubmitting(true)
 

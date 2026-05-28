@@ -180,6 +180,26 @@ export default function ExamDetailPage() {
   const handleAddProblem = async (problemId) => {
     setAddingId(problemId)
     setAddError(null)
+
+    // 前端擋：不可超過建立考試時設定的各難度題數上限
+    const target = problemBank.find((p) => p.id === problemId)
+    if (target && exam) {
+      const quotaKey = {
+        Easy: 'easy_count',
+        Medium: 'medium_count',
+        Hard: 'hard_count',
+      }[target.difficulty]
+      const quota = exam[quotaKey] ?? 0
+      const currentCount = (exam.exam_problems ?? []).filter(
+        (ep) => ep.difficulty === target.difficulty
+      ).length
+      if (quota > 0 && currentCount >= quota) {
+        setAddError(`已達${DIFFICULTY_LABELS[target.difficulty]}題數上限（${quota}）`)
+        setAddingId(null)
+        return
+      }
+    }
+
     try {
       // problem_id 是題庫的 int id；points 預設 100
       const res = await api.post(`/api/v1/exams/${id}/problems`, {
