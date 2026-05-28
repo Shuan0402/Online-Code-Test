@@ -37,7 +37,12 @@ class DockerSpawner(SandboxSpawner):
         stdin: str,
         timeout: int,
     ) -> CompletedRun:
-        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-"))
+        # DooD path 一致性：tempdir 必須建在 host 跟 worker 共掛的同名路徑下，
+        # docker daemon spawn sibling container 時才能用同一個 host path mount 進去。
+        # 對應 docker-compose worker 的 /tmp/oct-sandbox-work bind mount。
+        sandbox_root = "/tmp/oct-sandbox-work"
+        Path(sandbox_root).mkdir(parents=True, exist_ok=True)
+        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-", dir=sandbox_root))
         try:
             (host_dir / source_filename).write_text(source)
 

@@ -36,6 +36,17 @@ storage_config:
 limits_config:
   reject_old_samples: false
   creation_grace_period: 10m
+  # dev 環境下，dashboard 多 panel 同時 refresh 會把 query 切太細塞爆預設 queue
+  split_queries_by_interval: 24h
+  max_query_parallelism: 32
+
+query_range:
+  # 關閉自動 shard，避免單一 query 被切成 32 個 sub-query 灌爆 queue
+  parallelise_shardable_queries: false
+
+frontend:
+  # 預設 100 太小，多 panel dashboard 容易爆；放大到 2048 給點空間
+  max_outstanding_per_tenant: 2048
 
 chunk_store_config:
   max_look_back_period: 0s
