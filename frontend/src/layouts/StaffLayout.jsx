@@ -26,7 +26,7 @@ function SidebarLink({ to, label, end }) {
 const NAV_BY_ROLE = {
   questioner: [{ to: '/questioner', label: '出題管理' }],
   interviewer: [
-    { to: '/interviewer', label: '面試管理' },
+    { to: '/interviewer', label: '面試管理', end: true },
     { to: '/interviewer/candidates', label: '考生管理' },
     { to: '/interviewer/profile', label: '個人資料' },
   ],

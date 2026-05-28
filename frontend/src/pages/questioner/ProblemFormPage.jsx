@@ -288,6 +288,7 @@ export default function ProblemFormPage() {
               id="time-limit"
               type="number"
               min={1}
+              max={30000}
               value={timeLimit}
               onChange={(e) => setTimeLimit(e.target.value)}
             />
@@ -300,6 +301,7 @@ export default function ProblemFormPage() {
               id="memory-limit"
               type="number"
               min={1}
+              max={1024}
               value={memoryLimit}
               onChange={(e) => setMemoryLimit(e.target.value)}
             />
@@ -379,6 +381,7 @@ export default function ProblemFormPage() {
                     id={`score-${index}`}
                     type="number"
                     min={0}
+                    max={100}
                     value={tc.score_weight}
                     onChange={(e) =>
                       updateTestCase(index, 'score_weight', e.target.value)

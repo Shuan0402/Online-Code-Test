@@ -1,13 +1,11 @@
 // Layer 2 regression — HackMD bug #1
 // 症狀：Questioner 建立題目時，時間/記憶體限制給超大值會讓頁面崩潰
 // 期望：時間限制 / 記憶體限制欄位應該有 max 屬性（HTML5 native 驗證），讓瀏覽器在送出前擋下
-//
-// 修好之後請移掉 test.fail()
 import { test, expect } from '@playwright/test'
 
 const USER = { username: 'demo_questioner', password: 'password123' }
 
-test.fail('Questioner 建立題目頁：時間/記憶體限制欄位有合理上限（max 屬性）', async ({ page }) => {
+test('Questioner 建立題目頁：時間/記憶體限制欄位有合理上限（max 屬性）', async ({ page }) => {
   await page.goto('/login')
   await page.locator('#username').fill(USER.username)
   await page.locator('#password').fill(USER.password)
