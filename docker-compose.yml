@@ -99,6 +99,8 @@ services:
       QUEUE_PENDING: submissions:pending
       QUEUE_PROCESSING: submissions:processing
       LOG_FILE_PATH: /var/log/app/worker.log
+      S3_ENDPOINT_EXTERNAL: ${S3_ENDPOINT_EXTERNAL}
+      S3_ENDPOINT_INTERNAL: ${S3_ENDPOINT_INTERNAL}
     volumes:
       # DooD: worker uses host docker daemon to spawn sandbox sibling containers.
       # See judge-worker/Dockerfile header for the security trade-off.
