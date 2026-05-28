@@ -112,8 +112,9 @@ export default function ExamDetailPage() {
   const isDraft = exam?.status === 'Draft'
 
   // --- 儲存編輯（PATCH，只送 title + duration_minutes，不含 status/times） ---
+  // e 為 optional，讓底部「儲存設定」按鈕（不在 form 內）也能直接呼叫
   const handleSave = async (e) => {
-    e.preventDefault()
+    if (e?.preventDefault) e.preventDefault()
     if (!isDraft) {
       setSaveError('非草稿狀態不可編輯')
       return
@@ -308,9 +309,6 @@ export default function ExamDetailPage() {
           {saveError && (
             <p className="text-sm font-medium text-destructive">{saveError}</p>
           )}
-          <Button type="submit" disabled={!isDraft || saving}>
-            {saving ? '儲存中…' : '儲存設定'}
-          </Button>
         </form>
       </section>
 
@@ -395,8 +393,17 @@ export default function ExamDetailPage() {
         )}
       </section>
 
-      {/* 操作按鈕列 */}
+      {/* 操作按鈕列 — 儲存設定 / 發佈考試 / 刪除考試 同行 */}
       <div className="flex items-center gap-3 flex-wrap">
+        {/* 儲存設定（Draft 才能改） */}
+        <Button
+          variant="outline"
+          onClick={() => handleSave()}
+          disabled={!isDraft || saving}
+        >
+          {saving ? '儲存中…' : '儲存設定'}
+        </Button>
+
         {/* 發佈考試（Draft 且有題目才啟用） */}
         <Button
           onClick={handlePublish}
