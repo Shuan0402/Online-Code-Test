@@ -287,10 +287,17 @@ def process_submission(
     )
 
     try:
-        source = fetch_source(http, msg["presigned_url"])
+        source_url = msg["presigned_url"]
+
+        s3_ext = os.getenv("S3_ENDPOINT_EXTERNAL", "")
+        s3_int = os.getenv("S3_ENDPOINT_INTERNAL", "")
+        
+        if s3_ext and (s3_ext in source_url):
+            source_url = source_url.replace(s3_ext, s3_int)
+            
         per_testcase, judge_log, max_exec_ms = run_official(
             spawner=spawner,
-            source=source,
+            source=source_url,
             language=msg["language"],
             testcases=msg["testcases"],
             time_limit_ms=msg["time_limit_ms"],

@@ -37,40 +37,49 @@ class DockerSpawner(SandboxSpawner):
         stdin: str,
         timeout: int,
     ) -> CompletedRun:
-        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-"))
+        
+        container_name = f"sandbox-{uuid.uuid4().hex[:12]}"
+        
+        python_inline_download_and_run = (
+            f"import urllib.request; "
+            f"code = urllib.request.urlopen('{source}').read().decode('utf-8'); "
+            f"exec(code)"
+        )
+        cmd = [
+            "docker", "run", "--rm", "-i",
+            "--name", container_name,
+            "--entrypoint", "python3",
+            "--network", "online-code-test_default",
+            image,
+            "-c", python_inline_download_and_run
+        ]
+
+        start = time.monotonic()
+
         try:
-            (host_dir / source_filename).write_text(source)
-
-            container_name = f"sandbox-{uuid.uuid4().hex[:12]}"
-            cmd = self._build_run_cmd(image, container_name, host_dir)
-
-            start = time.monotonic()
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    input=stdin,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                )
-                return CompletedRun(
-                    stdout=proc.stdout,
-                    stderr=proc.stderr,
-                    exit_code=proc.returncode,
-                    duration_sec=time.monotonic() - start,
-                    timed_out=False,
-                )
-            except subprocess.TimeoutExpired as e:
-                self._kill_container(container_name)
-                return CompletedRun(
-                    stdout="",
-                    stderr=self._decode(e.stderr),
-                    exit_code=-1,
-                    duration_sec=time.monotonic() - start,
-                    timed_out=True,
-                )
-        finally:
-            shutil.rmtree(host_dir, ignore_errors=True)
+            proc = subprocess.run(
+                cmd,
+                input=stdin,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            return CompletedRun(
+                stdout=proc.stdout,
+                stderr=proc.stderr,
+                exit_code=proc.returncode,
+                duration_sec=time.monotonic() - start,
+                timed_out=False,
+            )
+        except subprocess.TimeoutExpired as e:
+            self._kill_container(container_name)
+            return CompletedRun(
+                stdout="",
+                stderr=self._decode(e.stderr),
+                exit_code=-1,
+                duration_sec=time.monotonic() - start,
+                timed_out=True,
+            )
 
     def _build_run_cmd(
         self,
