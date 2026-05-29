@@ -44,6 +44,26 @@ def test_problem_invalid_limits():
     with pytest.raises(ValidationError):
         ProblemCreate(**payload)
 
+def test_problem_limits_too_large():
+    """
+    測試時限、記憶體限制或配分超出合理上限時應失敗。
+    """
+    # 測試時間限制超出 (max 30000)
+    with pytest.raises(ValidationError):
+        ProblemCreate(title="Test", description="...", time_limit_ms=30001, memory_limit_mb=256)
+        
+    # 測試記憶體限制超出 (max 1024)
+    with pytest.raises(ValidationError):
+        ProblemCreate(title="Test", description="...", time_limit_ms=1000, memory_limit_mb=1025)
+
+    # 測試測資佔分限制超出 (max 100)
+    with pytest.raises(ValidationError):
+        ProblemCreate(
+            title="Test",
+            description="...",
+            test_cases=[{"input_data": "1", "expected_output": "2", "score_weight": 101}]
+        )
+
 # User Schema Tests
 def test_user_create_success():
     payload = {
@@ -90,6 +110,22 @@ def test_exam_valid_creation():
     exam = ExamCreate(**payload)
     assert exam.easy_count == 5
     assert exam.medium_count == 0
+
+def test_exam_limits_too_large():
+    """
+    測試考試時長與題數超出上限時應失敗。
+    """
+    # 測試考試時長超出 (max 480)
+    with pytest.raises(ValidationError):
+        ExamCreate(title="Test", candidate_id=uuid4(), duration_minutes=481)
+        
+    # 測試題數限制超出 (max 20)
+    with pytest.raises(ValidationError):
+        ExamCreate(title="Test", candidate_id=uuid4(), easy_count=21)
+    with pytest.raises(ValidationError):
+        ExamCreate(title="Test", candidate_id=uuid4(), medium_count=21)
+    with pytest.raises(ValidationError):
+        ExamCreate(title="Test", candidate_id=uuid4(), hard_count=21)
 
 # Submission Schema Tests
 def test_submission_read_uuid_handling():

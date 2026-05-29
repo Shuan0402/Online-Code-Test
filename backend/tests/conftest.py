@@ -25,6 +25,7 @@ from app.services.queue_manager import queue_manager
 @pytest.fixture(scope="session")
 def setup_db():
     engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield engine
     Base.metadata.drop_all(bind=engine)

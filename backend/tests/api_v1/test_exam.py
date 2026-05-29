@@ -655,7 +655,7 @@ def test_update_exam_session_forbidden_for_candidate(client, candidate_user, int
 
     override_auth(candidate_user)
     payload = {
-        "duration_minutes": 999
+        "duration_minutes": 180
     }
 
     response = client.patch(f"/api/v1/exams/{exam.id}", json=payload)

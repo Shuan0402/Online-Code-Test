@@ -41,11 +41,11 @@ class ExamProblemCreate(BaseModel):
 # Exam
 class ExamBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "2026 後端實作測驗"})
-    duration_minutes: int = Field(default=120, gt=0, description="考試時長 (分鐘)")
+    duration_minutes: int = Field(default=120, gt=0, le=480, description="考試時長 (分鐘)")
     
-    easy_count: int = Field(default=0, ge=0)
-    medium_count: int = Field(default=0, ge=0)
-    hard_count: int = Field(default=0, ge=0)
+    easy_count: int = Field(default=0, ge=0, le=20)
+    medium_count: int = Field(default=0, ge=0, le=20)
+    hard_count: int = Field(default=0, ge=0, le=20)
 
 class ExamCreate(ExamBase):
     """
@@ -59,7 +59,7 @@ class ExamUpdate(BaseModel):
     更新考試狀態（例如：發布、歸檔，或考生開始作答）。
     """
     title: Optional[str] = None
-    duration_minutes: Optional[int] = Field(None, gt=0)
+    duration_minutes: Optional[int] = Field(None, gt=0, le=480)
     status: Optional[ExamStatus] = None
     
     start_time: Optional[datetime] = None
