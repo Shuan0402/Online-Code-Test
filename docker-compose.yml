@@ -104,6 +104,10 @@ services:
       # See judge-worker/Dockerfile header for the security trade-off.
       - /var/run/docker.sock:/var/run/docker.sock
       - app_logs:/var/log/app
+      # Sandbox source code 用：worker 跟 sandbox sibling 都掛同一個 host 路徑，
+      # 路徑名稱在容器內外一致，docker daemon 才能用同一個 host path mount 給 sandbox。
+      # 對應 judge-worker/spawner/docker_spawner.py 的 sandbox_root。
+      - /tmp/oct-sandbox-work:/tmp/oct-sandbox-work
     depends_on:
       redis:
         condition: service_healthy

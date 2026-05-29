@@ -389,6 +389,16 @@ def main() -> None:
     root_logger.handlers = []
     root_logger.addHandler(stdout_handler)
 
+    file_path = os.environ.get("LOG_FILE_PATH", "/var/log/app/worker.log")
+    log_dir = os.path.dirname(file_path) or "."
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = logging.FileHandler(file_path, encoding="utf-8")
+        file_handler.setFormatter(WorkerJSONFormatter())
+        root_logger.addHandler(file_handler)
+    except Exception as e:
+        print(f"[Logging Setup] Failed to create worker FileHandler: {e}", file=sys.stderr)
+
     if not WORKER_SECRET:
         log.error("WORKER_SECRET env var not set, exiting")
         sys.exit(1)
