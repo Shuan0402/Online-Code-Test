@@ -159,6 +159,7 @@ export default function ExamFormPage() {
             id="duration-minutes"
             type="number"
             min="1"
+            max="480"
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(e.target.value)}
           />
@@ -172,6 +173,7 @@ export default function ExamFormPage() {
               id="easy-count"
               type="number"
               min="0"
+              max="20"
               value={easyCount}
               onChange={(e) => setEasyCount(e.target.value)}
             />
@@ -182,6 +184,7 @@ export default function ExamFormPage() {
               id="medium-count"
               type="number"
               min="0"
+              max="20"
               value={mediumCount}
               onChange={(e) => setMediumCount(e.target.value)}
             />
@@ -192,6 +195,7 @@ export default function ExamFormPage() {
               id="hard-count"
               type="number"
               min="0"
+              max="20"
               value={hardCount}
               onChange={(e) => setHardCount(e.target.value)}
             />

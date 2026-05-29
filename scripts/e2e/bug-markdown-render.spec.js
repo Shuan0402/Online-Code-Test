@@ -3,13 +3,11 @@
 // 期望：description 中的 markdown 語法應該被渲染（例如 inline code `3 5` 變成 <code> 元素）
 //
 // 用 Candidate 端的考試頁驗證，因為敘述渲染元件 (ProblemPanel) 是兩個 role 共用
-//
-// 修好之後請移掉 test.fail()
 import { test, expect } from '@playwright/test'
 
 const USER = { username: 'demo_candidate', password: 'password123' }
 
-test.fail('Candidate 看到的題目敘述會渲染 Markdown（例如 inline code）', async ({ page }) => {
+test('Candidate 看到的題目敘述會渲染 Markdown（例如 inline code）', async ({ page }) => {
   await page.goto('/login')
   await page.locator('#username').fill(USER.username)
   await page.locator('#password').fill(USER.password)
