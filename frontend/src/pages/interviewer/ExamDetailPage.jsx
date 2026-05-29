@@ -193,7 +193,7 @@ export default function ExamDetailPage() {
       const currentCount = (exam.exam_problems ?? []).filter(
         (ep) => ep.difficulty === target.difficulty
       ).length
-      if (quota > 0 && currentCount >= quota) {
+      if (quota !== undefined && quota !== null && currentCount >= quota) {
         setAddError(`已達${DIFFICULTY_LABELS[target.difficulty]}題數上限（${quota}）`)
         setAddingId(null)
         return
