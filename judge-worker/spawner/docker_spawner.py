@@ -41,10 +41,18 @@ class DockerSpawner(SandboxSpawner):
         # docker daemon spawn sibling container 時才能用同一個 host path mount 進去。
         # 對應 docker-compose worker 的 /tmp/oct-sandbox-work bind mount。
         sandbox_root = "/tmp/oct-sandbox-work"
-        Path(sandbox_root).mkdir(parents=True, exist_ok=True)
-        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-", dir=sandbox_root))
+        sandbox_path = Path(sandbox_root)
+        sandbox_path.mkdir(parents=True, exist_ok=True)
         try:
-            (host_dir / source_filename).write_text(source)
+            sandbox_path.chmod(0o755)
+        except Exception:
+            pass
+        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-", dir=sandbox_root))
+        host_dir.chmod(0o755)
+        try:
+            source_file = host_dir / source_filename
+            source_file.write_text(source)
+            source_file.chmod(0o644)
 
             container_name = f"sandbox-{uuid.uuid4().hex[:12]}"
             cmd = self._build_run_cmd(image, container_name, host_dir)

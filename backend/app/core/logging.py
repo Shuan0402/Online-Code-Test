@@ -83,10 +83,10 @@ def setup_logging(log_level: str = "INFO") -> None:
     stdout_handler.addFilter(health_filter)
     root_logger.addHandler(stdout_handler)
 
-    log_dir = "/app/logs"
+    file_path = os.environ.get("LOG_FILE_PATH", "/app/logs/backend.log")
+    log_dir = os.path.dirname(file_path) or "."
     try:
         os.makedirs(log_dir, exist_ok=True)
-        file_path = os.path.join(log_dir, "backend.log")
         
         file_handler = logging.FileHandler(file_path, encoding="utf-8")
         file_handler.setFormatter(json_formatter)

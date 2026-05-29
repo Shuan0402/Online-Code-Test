@@ -57,8 +57,8 @@ def get_or_create_problem(db, creator_id) -> Problem:
             "例如：輸入 `3 5`，輸出 `8`。"
         ),
         difficulty=DifficultyLevel.Easy,
-        time_limit=1000,
-        memory_limit=128,
+        time_limit_ms=1000,
+        memory_limit_mb=128,
     )
     db.add(problem)
     db.commit()

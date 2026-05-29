@@ -11,7 +11,7 @@ from app.models.problem import Problem
 from app.models.exam import Exam, ExamProblem
 from app.schemas.submission import SubmissionCreate, SubmissionRead, JudgeTaskPayload
 from app.services.queue_manager import queue_manager
-from app.models.enums import UserRole, ExamStatus
+from app.models.enums import UserRole, ExamStatus, JudgeStatus
 from app.models.testcase import TestCase
 
 
@@ -185,7 +185,7 @@ def create_submission(
             f"嚴重基礎設施故障：無法將任務塞入 Redis 隊列！將 Submission {db_submission.id} 狀態標記為 SE",
             extra=audit_extra
         )
-        db_submission.status = "SE"
+        db_submission.status = JudgeStatus.JudgeFailed
         db_submission.judge_log = "系統發送判題佇列失敗，請聯絡系統管理員。"
         db.commit()
         raise HTTPException(

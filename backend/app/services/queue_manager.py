@@ -1,6 +1,8 @@
 # app/services/queue_manager.py
 import json
 import logging
+from uuid import UUID
+from datetime import datetime, date
 from app.core.redis_client import redis_client
 
 log = logging.getLogger("app")
@@ -44,8 +46,15 @@ class TaskQueue:
             }
         
 
+        def json_serial_fallback(obj):
+            if isinstance(obj, UUID):
+                return str(obj)
+            if isinstance(obj, (datetime, date)):
+                return obj.isoformat()
+            raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
         try:
-            payload = json.dumps(data)
+            payload = json.dumps(data, default=json_serial_fallback)
             self.client.rpush(queue_name, payload)
             
             log.info(log_msg_success, extra=extra_data)
