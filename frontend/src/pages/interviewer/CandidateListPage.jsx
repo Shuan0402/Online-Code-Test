@@ -88,7 +88,10 @@ export default function CandidateListPage() {
                   key={candidate.id}
                   className="border-t hover:bg-muted/30 transition-colors"
                 >
-                  <td className="px-4 py-3 font-medium">
+                  <td
+                    className="px-4 py-3 font-medium max-w-[220px] truncate"
+                    title={candidate.full_name ?? candidate.username}
+                  >
                     {candidate.full_name ?? candidate.username}
                   </td>
                   <td className="px-4 py-3">{candidate.username}</td>

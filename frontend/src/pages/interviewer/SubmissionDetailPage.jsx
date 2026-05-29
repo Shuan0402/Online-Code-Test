@@ -247,7 +247,7 @@ export default function SubmissionDetailPage() {
           <h2 className="text-base font-semibold">提交程式碼</h2>
         </div>
         {sourceUnavailable ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">程式碼暫無法顯示</p>
+          <p className="px-4 py-6 text-sm text-muted-foreground text-center">程式碼暫無法顯示</p>
         ) : sourceCode !== null ? (
           <pre className="bg-muted rounded p-4 text-sm overflow-auto whitespace-pre-wrap break-words">
             {sourceCode}

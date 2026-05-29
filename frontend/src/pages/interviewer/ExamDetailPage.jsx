@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -57,6 +58,8 @@ export default function ExamDetailPage() {
   // --- 手動新增題目 Dialog ---
   const [pickerOpen, setPickerOpen] = useState(false)
   const [problemBank, setProblemBank] = useState([])
+  // 預覽中的題目 ID（picker dialog 內展開顯示完整 description）
+  const [previewId, setPreviewId] = useState(null)
   const [bankLoading, setBankLoading] = useState(false)
   const [bankError, setBankError] = useState(null)
   // 正在加入中的 problem_id（int），防止重複點擊
@@ -109,8 +112,9 @@ export default function ExamDetailPage() {
   const isDraft = exam?.status === 'Draft'
 
   // --- 儲存編輯（PATCH，只送 title + duration_minutes，不含 status/times） ---
+  // e 為 optional，讓底部「儲存設定」按鈕（不在 form 內）也能直接呼叫
   const handleSave = async (e) => {
-    e.preventDefault()
+    if (e?.preventDefault) e.preventDefault()
     if (!isDraft) {
       setSaveError('非草稿狀態不可編輯')
       return
@@ -176,6 +180,26 @@ export default function ExamDetailPage() {
   const handleAddProblem = async (problemId) => {
     setAddingId(problemId)
     setAddError(null)
+
+    // 前端擋：不可超過建立考試時設定的各難度題數上限
+    const target = problemBank.find((p) => p.id === problemId)
+    if (target && exam) {
+      const quotaKey = {
+        Easy: 'easy_count',
+        Medium: 'medium_count',
+        Hard: 'hard_count',
+      }[target.difficulty]
+      const quota = exam[quotaKey] ?? 0
+      const currentCount = (exam.exam_problems ?? []).filter(
+        (ep) => ep.difficulty === target.difficulty
+      ).length
+      if (quota !== undefined && quota !== null && currentCount >= quota) {
+        setAddError(`已達${DIFFICULTY_LABELS[target.difficulty]}題數上限（${quota}）`)
+        setAddingId(null)
+        return
+      }
+    }
+
     try {
       // problem_id 是題庫的 int id；points 預設 100
       const res = await api.post(`/api/v1/exams/${id}/problems`, {
@@ -305,9 +329,6 @@ export default function ExamDetailPage() {
           {saveError && (
             <p className="text-sm font-medium text-destructive">{saveError}</p>
           )}
-          <Button type="submit" disabled={!isDraft || saving}>
-            {saving ? '儲存中…' : '儲存設定'}
-          </Button>
         </form>
       </section>
 
@@ -392,8 +413,17 @@ export default function ExamDetailPage() {
         )}
       </section>
 
-      {/* 操作按鈕列 */}
+      {/* 操作按鈕列 — 儲存設定 / 發佈考試 / 刪除考試 同行 */}
       <div className="flex items-center gap-3 flex-wrap">
+        {/* 儲存設定（Draft 才能改） */}
+        <Button
+          variant="outline"
+          onClick={() => handleSave()}
+          disabled={!isDraft || saving}
+        >
+          {saving ? '儲存中…' : '儲存設定'}
+        </Button>
+
         {/* 發佈考試（Draft 且有題目才啟用） */}
         <Button
           onClick={handlePublish}
@@ -453,33 +483,55 @@ export default function ExamDetailPage() {
                 <tr>
                   <th className="px-3 py-2 text-left font-medium">題目名稱</th>
                   <th className="px-3 py-2 text-left font-medium w-20">難度</th>
-                  <th className="px-3 py-2 text-left font-medium w-16">操作</th>
+                  <th className="px-3 py-2 text-left font-medium w-32">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {availableProblems.map((p) => (
-                  <tr key={p.id} className="border-t hover:bg-muted/30 transition-colors">
-                    <td className="px-3 py-2 font-medium">{p.title}</td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          DIFFICULTY_COLORS[p.difficulty] ?? 'bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        {DIFFICULTY_LABELS[p.difficulty] ?? p.difficulty}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAddProblem(p.id)}
-                        disabled={addingId !== null}
-                      >
-                        {addingId === p.id ? '加入中…' : '加入'}
-                      </Button>
-                    </td>
-                  </tr>
+                  <Fragment key={p.id}>
+                    <tr className="border-t hover:bg-muted/30 transition-colors">
+                      <td className="px-3 py-2 font-medium">{p.title}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            DIFFICULTY_COLORS[p.difficulty] ?? 'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {DIFFICULTY_LABELS[p.difficulty] ?? p.difficulty}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setPreviewId(previewId === p.id ? null : p.id)}
+                          >
+                            {previewId === p.id ? '收合' : '預覽'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleAddProblem(p.id)}
+                            disabled={addingId !== null}
+                          >
+                            {addingId === p.id ? '加入中…' : '加入'}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                    {previewId === p.id && (
+                      <tr className="border-t bg-muted/20">
+                        <td colSpan={3} className="px-4 py-3">
+                          <div className="prose prose-sm max-w-none text-sm">
+                            {p.description
+                              ? <ReactMarkdown>{p.description}</ReactMarkdown>
+                              : <p className="text-muted-foreground italic">（此題目沒有描述）</p>}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

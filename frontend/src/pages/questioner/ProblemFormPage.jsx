@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -39,6 +40,7 @@ export default function ProblemFormPage() {
   // --- 表單欄位狀態 ---
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [showPreview, setShowPreview] = useState(false)
   const [difficulty, setDifficulty] = useState('Easy')
   const [timeLimit, setTimeLimit] = useState(1000)   // ms
   const [memoryLimit, setMemoryLimit] = useState(256) // MB
@@ -142,6 +144,17 @@ export default function ProblemFormPage() {
     }
     if (testCases.length === 0) {
       setValidationError('至少需要一筆測試資料')
+      return
+    }
+    // 每筆測資的「預期輸出」必填（防止 expected_output 為空）
+    const emptyOutputIdx = testCases.findIndex((tc) => !String(tc.expected_output ?? '').trim())
+    if (emptyOutputIdx >= 0) {
+      setValidationError(`第 ${emptyOutputIdx + 1} 筆測資的「預期輸出」不可為空`)
+      return
+    }
+    // 至少要有一筆是「範例測資」
+    if (!testCases.some((tc) => tc.is_sample)) {
+      setValidationError('至少需要勾選一筆「範例測資」（讓考生看得到題目範例）')
       return
     }
 
@@ -249,9 +262,18 @@ export default function ProblemFormPage() {
           />
         </div>
 
-        {/* 題目描述 */}
+        {/* 題目描述（含 Markdown 預覽切換） */}
         <div className="space-y-1">
-          <Label htmlFor="description">題目描述</Label>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="description">題目描述</Label>
+            <button
+              type="button"
+              onClick={() => setShowPreview((p) => !p)}
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+            >
+              {showPreview ? '隱藏預覽' : '預覽 Markdown'}
+            </button>
+          </div>
           <textarea
             id="description"
             value={description}
@@ -260,6 +282,14 @@ export default function ProblemFormPage() {
             rows={6}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
           />
+          {showPreview && (
+            <div className="mt-2 rounded-md border bg-muted/30 p-3 prose prose-sm max-w-none">
+              <p className="text-xs text-muted-foreground mb-2">預覽：</p>
+              {description.trim()
+                ? <ReactMarkdown>{description}</ReactMarkdown>
+                : <p className="text-sm text-muted-foreground italic">（尚無內容）</p>}
+            </div>
+          )}
         </div>
 
         {/* 難度、時間限制、記憶體限制（橫排） */}

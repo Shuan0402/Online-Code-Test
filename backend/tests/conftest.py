@@ -104,11 +104,14 @@ def create_test_problem(db_session, admin_user):
     """
     def _create_problem(
         user=None, 
-        title="Default Title", 
+        title=None, 
         test_cases_data=None, 
         **kwargs
     ):
         creator = user or admin_user
+        # 預設 title 加上隨機後綴，防止同一測試內多次呼叫發生 UniqueViolation
+        unique_suffix = uuid.uuid4().hex[:6]
+        default_title = title or f"Default Title {unique_suffix}"
 
         defaults = {
             "description": "Default test description",
@@ -119,7 +122,7 @@ def create_test_problem(db_session, admin_user):
         }
         defaults.update(kwargs)
         
-        db_problem = Problem(title=title, **defaults)
+        db_problem = Problem(title=default_title, **defaults)
         db_session.add(db_problem)
         db_session.flush()
 
