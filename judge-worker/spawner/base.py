@@ -58,6 +58,7 @@ class SandboxSpawner(ABC):
         source_filename: str,
         stdin: str,
         timeout: int,
+        memory_limit_mb: int | None = None,
     ) -> CompletedRun:
         """跑一次 sandbox。
 
@@ -67,6 +68,8 @@ class SandboxSpawner(ABC):
             source_filename: 容器內 source 檔名（例：'source.py', 'source.cpp'）
             stdin: 餵程式 process 的 stdin —— 即 testcase input_data
             timeout: 執行時間上限（秒）；超過視為 TLE
+            memory_limit_mb: cgroup 記憶體上限（MB）；None → spawner 用 default。
+                對應 Questioner spec「沙箱資源限制」的 Y MB 上限。
 
         Returns:
             CompletedRun，含 stdout / stderr / exit_code / duration_sec / timed_out

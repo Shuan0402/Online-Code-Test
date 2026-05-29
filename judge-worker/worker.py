@@ -124,6 +124,7 @@ def run_official(
     testcases: list,
     time_limit_ms: int,
     submission_id: str,
+    memory_limit_mb: int | None = None,
 ) -> tuple[list, str, int]:
     """跑 OFFICIAL submission 的所有 testcases、fail-fast。
 
@@ -159,6 +160,7 @@ def run_official(
             source_filename=source_filename,
             stdin=tc["input_data"],
             timeout=timeout_sec,
+            memory_limit_mb=memory_limit_mb,
         )
         case_verdict = decide_case_verdict(result, tc["expected_output"], language)
         exec_ms = int(result.duration_sec * 1000)
@@ -295,6 +297,7 @@ def process_submission(
             testcases=msg["testcases"],
             time_limit_ms=msg["time_limit_ms"],
             submission_id=sub_id,
+            memory_limit_mb=msg.get("memory_limit_mb"),
         )
     except Exception as e:
         # L1/L2 任何錯 → failure callback（不分 exception class、senior audit 砍掉）
