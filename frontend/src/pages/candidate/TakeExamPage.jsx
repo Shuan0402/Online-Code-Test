@@ -240,6 +240,7 @@ export default function TakeExamPage() {
           return (
             <button
               key={p.problem_id}
+              data-problem-id={p.problem_id}
               onClick={() => handleTabSwitch(idx)}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-t border-b-2 transition-colors ${
                 isActive

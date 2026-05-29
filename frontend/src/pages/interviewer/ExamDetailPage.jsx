@@ -383,6 +383,7 @@ export default function ExamDetailPage() {
                 // 鍵使用 problem_id（int），絕不用陣列索引（L1 pre-emption）
                 <tr
                   key={problem.problem_id}
+                  data-problem-id={problem.problem_id}
                   className="border-t hover:bg-muted/30 transition-colors"
                 >
                   <td className="px-4 py-3 text-muted-foreground">{problem.sequence}</td>
