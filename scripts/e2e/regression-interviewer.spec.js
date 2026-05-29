@@ -273,9 +273,23 @@ test('I-3.2：interviewer 進結果頁點題目能看到 testcase 明細表', as
     .click()
   await page.waitForURL(/\/interviewer\/exams\/[0-9a-f-]{36}\/problems\/\d+$/)
 
-  // SubmissionDetailPage：應出現「測資結果」表 + 至少 2 列
+  // SubmissionDetailPage 必須完整呈現 spec 三項：總分、程式碼、testcase 明細
+  // 1) 總分（Easy-1 seed score=100，顯示在「提交資訊」section）
+  const infoSection = page.locator('section').filter({ hasText: '提交資訊' })
+  await expect(infoSection).toContainText('分數')
+  await expect(infoSection).toContainText('100')
+
+  // 2) 程式碼區塊（S3 mock URL fetch 可能失敗 → 顯示 placeholder；
+  //    spec 要求的是 UI 區塊必須渲染，所以只 assert section heading）
+  await expect(page.getByRole('heading', { name: '提交程式碼' })).toBeVisible()
+
+  // 3) testcase 明細表 + 每筆執行時間欄
   await expect(page.getByRole('heading', { name: '測資結果' })).toBeVisible()
-  await expect(page.locator('section').filter({ hasText: '測資結果' }).locator('tbody tr')).toHaveCount(2)
+  const detailsSection = page.locator('section').filter({ hasText: '測資結果' })
+  await expect(detailsSection.locator('tbody tr')).toHaveCount(2)
+  // Easy-1 seed details：execution_time = 20 ms / 22 ms
+  await expect(detailsSection).toContainText('20 ms')
+  await expect(detailsSection).toContainText('22 ms')
 })
 
 // I-3.3：CE / 未繳交時，後台 UI 仍正常渲染
