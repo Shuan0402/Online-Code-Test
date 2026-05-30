@@ -47,8 +47,8 @@ export default function ResultPage() {
   const toggleRow = (problemId) => {
     setExpanded((prev) => ({ ...prev, [problemId]: !prev[problemId] }))
 
-    // 第一次展開才打 API；之後切換不重打
-    if (!details[problemId]) {
+    // 第一次展開才打 API；之後切換不重打 (但如果上次失敗有 error 則允許重試)
+    if (!details[problemId] || details[problemId].error) {
       setDetails((prev) => ({ ...prev, [problemId]: { loading: true } }))
       api.get('/api/v1/submissions/latest', { params: { problem_id: problemId, exam_id: examId } })
         .then((res) => setDetails((prev) => ({ ...prev, [problemId]: { data: res.data } })))
