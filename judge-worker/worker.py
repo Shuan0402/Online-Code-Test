@@ -96,6 +96,8 @@ def decide_case_verdict(result: CompletedRun, expected_output: str, language: st
     """
     if result.timed_out:
         return "TLE"
+    if result.exit_code == 137:
+        return "MLE"
     if result.exit_code == 100 and language == "cpp":
         return "CE"
     if result.exit_code != 0:

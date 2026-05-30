@@ -378,3 +378,9 @@ def test_decide_case_verdict_stdout_mismatch_is_wa():
 def test_decide_case_verdict_match_is_ac():
     result = _make_completed_run(stdout="3\n", exit_code=0)
     assert worker.decide_case_verdict(result, "3\n", "python") == "AC"
+
+
+def test_decide_case_verdict_exit_137_is_mle():
+    result = _make_completed_run(stdout="", exit_code=137)
+    assert worker.decide_case_verdict(result, "anything", "python") == "MLE"
+    assert worker.decide_case_verdict(result, "anything", "cpp") == "MLE"
