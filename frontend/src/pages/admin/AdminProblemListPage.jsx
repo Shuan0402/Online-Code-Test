@@ -156,6 +156,7 @@ export default function AdminProblemListPage() {
               {filteredProblems.map((problem, idx) => (
                 <tr
                   key={problem.id}
+                  data-problem-id={problem.id}
                   className="border-t hover:bg-muted/30 cursor-pointer transition-colors"
                   onClick={() => navigate(`/admin/problems/${problem.id}`)}
                 >

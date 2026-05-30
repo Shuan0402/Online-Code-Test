@@ -112,7 +112,7 @@ describe('ExamResultPage', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(api.get).toHaveBeenCalledWith(`/api/v1/exams/${EXAM_UUID}/result`)
+      expect(api.get).toHaveBeenCalledWith(`/api/v1/exams/${EXAM_UUID}/result`, { params: {} })
     })
 
     // score banner shows 135 and max 300 分
@@ -182,6 +182,50 @@ describe('ExamResultPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Spring 2026 面試')).toBeInTheDocument()
+    })
+  })
+
+  // I-3.1: score_gte / score_lte / order_by params are passed
+  it('sends score_gte, score_lte, and order_by query parameters to the backend', async () => {
+    api.get.mockResolvedValue({
+      data: { ...MOCK_RESULT_BASE, total_candidate_score: 135 },
+    })
+    
+    const { container } = renderPage()
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenCalledWith(`/api/v1/exams/${EXAM_UUID}/result`, { params: {} })
+    })
+
+    const gteInput = container.querySelector('#score-gte')
+    const lteInput = container.querySelector('#score-lte')
+    const orderSelect = container.querySelector('#order-by')
+
+    api.get.mockClear()
+    api.get.mockResolvedValue({
+      data: { ...MOCK_RESULT_BASE, total_candidate_score: 135 },
+    })
+
+    const { fireEvent } = await import('@testing-library/react')
+    fireEvent.change(gteInput, { target: { value: '60' } })
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith(`/api/v1/exams/${EXAM_UUID}/result`, {
+        params: { score_gte: 60 },
+      })
+    })
+
+    fireEvent.change(lteInput, { target: { value: '100' } })
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith(`/api/v1/exams/${EXAM_UUID}/result`, {
+        params: { score_gte: 60, score_lte: 100 },
+      })
+    })
+
+    fireEvent.change(orderSelect, { target: { value: 'finished_at' } })
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith(`/api/v1/exams/${EXAM_UUID}/result`, {
+        params: { score_gte: 60, score_lte: 100, order_by: 'finished_at' },
+      })
     })
   })
 })
