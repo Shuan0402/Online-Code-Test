@@ -189,4 +189,44 @@ describe('EditorPanel', () => {
     expect(setItemSpy).not.toHaveBeenCalled()
     setItemSpy.mockRestore()
   })
+
+  it('handles language changes and saves draft', () => {
+    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}`
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={vi.fn()}
+        submitting={false}
+      />
+    )
+
+    const textarea = screen.getByTestId('monaco-stub')
+    fireEvent.change(textarea, { target: { value: 'some code' } })
+
+    const select = screen.getByLabelText('語言：')
+    fireEvent.change(select, { target: { value: 'cpp' } })
+
+    expect(localStorage.getItem(draftKey)).toBe('some code')
+  })
+
+  it('calls onSubmit when the submit button is clicked', () => {
+    const onSubmitSpy = vi.fn()
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={onSubmitSpy}
+        submitting={false}
+      />
+    )
+
+    const textarea = screen.getByTestId('monaco-stub')
+    fireEvent.change(textarea, { target: { value: 'my code' } })
+
+    const button = screen.getByRole('button', { name: '提交本題' })
+    fireEvent.click(button)
+
+    expect(onSubmitSpy).toHaveBeenCalledWith('my code', 'python')
+  })
 })
