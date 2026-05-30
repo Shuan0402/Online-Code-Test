@@ -56,21 +56,25 @@ def get_candidate_exams(
         # 對應 spec：candidate 只看「答對幾題」、不看分數。逐場 exam 算每題「最新一筆
         # submission」的 status；status=AC 才算答對（對齊 ResultPage 顯示的 latest 邏輯）。
         # 不能用「歷史曾經 AC」算，否則先前跑成功、之後重交 fail 還是會被算進去。
-        for ex in exams:
-            ex.total_problems = len(ex.exam_problems)
-            row = db.execute(
+        if exams:
+            exam_ids = [ex.id for ex in exams]
+            rows = db.execute(
                 text("""
-                    SELECT COUNT(*) FROM (
-                        SELECT DISTINCT ON (problem_id) status
+                    SELECT exam_id, COUNT(*) FROM (
+                        SELECT DISTINCT ON (exam_id, problem_id) exam_id, status
                           FROM submissions
-                         WHERE exam_id = :exam_id AND user_id = :user_id
-                         ORDER BY problem_id, created_at DESC
+                         WHERE exam_id = ANY(:exam_ids) AND user_id = :user_id
+                         ORDER BY exam_id, problem_id, created_at DESC
                     ) latest
                     WHERE status = 'AC'
+                    GROUP BY exam_id
                 """),
-                {"exam_id": ex.id, "user_id": current_user.id},
-            ).first()
-            ex.correct_count = int(row[0]) if row else 0
+                {"exam_ids": exam_ids, "user_id": current_user.id},
+            ).all()
+            correct_counts = {r[0]: int(r[1]) for r in rows}
+            for ex in exams:
+                ex.total_problems = len(ex.exam_problems)
+                ex.correct_count = correct_counts.get(ex.id, 0)
 
     return exams
 
