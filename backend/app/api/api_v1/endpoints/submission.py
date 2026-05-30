@@ -289,6 +289,9 @@ def get_submissions(
     problem_id: Optional[int] = None,
     exam_id: Optional[UUID] = None,
     user_id: Optional[UUID] = None,
+    score_gte: Optional[int] = None,
+    score_lte: Optional[int] = None,
+    order_by: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(deps.get_db),
@@ -314,14 +317,33 @@ def get_submissions(
     if exam_id:
         query = query.filter(Submission.exam_id == exam_id)
 
+    if score_gte is not None:
+        query = query.filter(Submission.score >= score_gte)
+
+    if score_lte is not None:
+        query = query.filter(Submission.score <= score_lte)
+
+    if order_by:
+        if order_by == "finished_at":
+            query = query.order_by(Submission.created_at.asc())
+        elif order_by == "-finished_at":
+            query = query.order_by(Submission.created_at.desc())
+        elif order_by == "score":
+            query = query.order_by(Submission.score.asc())
+        elif order_by == "-score":
+            query = query.order_by(Submission.score.desc())
+        else:
+            query = query.order_by(Submission.created_at.desc())
+    else:
+        query = query.order_by(Submission.created_at.desc())
+
     logger.info(
         f"用戶 {current_user.username} 正在調閱提交紀錄列表 (Limit: {limit})",
         extra={"user_id": str(current_user.id), "user_role": current_user.role.value, "action": "view_submissions_list"}
     )
 
     return (
-        query.order_by(Submission.created_at.desc())
-        .offset(skip)
+        query.offset(skip)
         .limit(limit)
         .all()
     )

@@ -231,15 +231,42 @@ test('I-2.3：candidate 透過 API 對未指派 problemId 提交會被擋', asyn
 // ║  Story 3 — 全局成績調閱與過濾                                          ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-// I-3.1：% 篩選 — spec 自標未完成；確認後端無 score_gte 參數、前端無 UI
-test.fixme(
-  'I-3.1：考試結果頁可用 % 區間篩選並以完成時間排序（後端 + 前端皆未實作）',
-  async () => {
-    // 待後端 GET /api/v1/exams/{id}/result 或 /api/v1/submissions/ 加上
-    // score_gte / score_lte / order_by=finished_at query param，前端 ExamResultPage
-    // 加分數區間下拉/輸入框後再撰寫 assertion。
-  }
-)
+// I-3.1：% 篩選 — score range filtering and ordering
+test('I-3.1：考試結果頁可用 % 區間篩選並以完成時間排序', async ({ page }) => {
+  await login(page, INTERVIEWER)
+  await page.waitForURL('**/interviewer**')
+
+  // 從考試列表進 seeded exam 結果頁
+  await page.goto('/interviewer')
+  await page
+    .getByRole('row', { name: new RegExp(SEEDED_EXAM_TITLE) })
+    .getByRole('link', { name: '查看' })
+    .click()
+  await page.waitForURL(/\/interviewer\/exams\/[0-9a-f-]{36}$/i)
+  await page.getByRole('link', { name: '查看結果' }).click()
+  await page.waitForURL(/\/interviewer\/exams\/[0-9a-f-]{36}\/result$/i)
+
+  // 初始狀態下，結果表格有 4 題 (Easy-1, Easy-2, Medium-1, Hard-1)
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-1' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-2' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Medium-1' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Hard-1' })).toBeVisible()
+
+  // 測試分數篩選: 最小 50%
+  await page.locator('#score-gte').fill('50')
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-1' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-2' })).toBeHidden()
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Medium-1' })).toBeHidden()
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Hard-1' })).toBeHidden()
+
+  // 測試重設篩選
+  await page.getByRole('button', { name: '重設篩選' }).click()
+  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-2' })).toBeVisible()
+
+  // 測試排序依據
+  await page.locator('#order-by').selectOption('-score')
+  await expect(page.locator('#order-by')).toHaveValue('-score')
+})
 
 // I-3.2：ExamResultPage → SubmissionDetail → 看到 testcase 明細
 test('I-3.2：interviewer 進結果頁點題目能看到 testcase 明細表', async ({ page }) => {

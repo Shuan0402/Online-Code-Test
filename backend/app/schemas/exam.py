@@ -125,6 +125,7 @@ class ExamProblemResultRead(BaseModel):
     max_points: int = Field(..., description="本題總配分")
     candidate_score: int = Field(0, description="考生在該題取得的最高分數")
     submission_status: str = Field("Unsubmitted", description="最新一筆提交的評測狀態")
+    finished_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
