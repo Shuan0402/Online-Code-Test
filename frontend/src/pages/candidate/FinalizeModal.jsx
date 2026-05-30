@@ -65,6 +65,13 @@ export default function FinalizeModal({ open, isTimeout, problems, statuses, exa
     setError(null)
     try {
       await api.post(`/api/v1/exams/${examId}/submit`)
+      // 交卷成功 → 把這場 exam 所有題目的本地 draft 清掉。
+      // EditorPanel 的 localStorage key 模式：draft:exam:{examId}:problem:{problemId}
+      // 不清的話下次進入同一場 exam（reseed / admin 開重考）會跳出舊 code。
+      const prefix = `draft:exam:${examId}:problem:`
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith(prefix))
+        .forEach((k) => localStorage.removeItem(k))
       onDone()
     } catch (err) {
       setError(err?.response?.data?.detail || '交卷失敗，請稍後再試。')

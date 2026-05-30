@@ -79,6 +79,10 @@ class CandidateExamListRead(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     created_at: datetime
+    # 對應 spec：candidate 只看「答對幾題」、不看分數。endpoint 在 candidate role
+    # 分支計算 + 注入；interviewer/admin 視角這兩欄為 None（他們用 ExamResultRead）。
+    total_problems: Optional[int] = Field(None, description="本場考試題目總數（給 candidate 列表用）")
+    correct_count: Optional[int] = Field(None, description="本場考試考生答對題數（任一筆 submission status=AC）")
 
     model_config = ConfigDict(from_attributes=True)
 

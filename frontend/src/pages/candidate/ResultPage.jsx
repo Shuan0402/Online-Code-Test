@@ -44,6 +44,16 @@ export default function ResultPage() {
     fetchResult()
   }, [fetchResult])
 
+  // 後備清 draft：自動 timeout 交卷 / 直接打 url 進 ResultPage 都會走到這裡。
+  // FinalizeModal 在 handleConfirm 已清過、這條是 belt-and-suspenders。
+  useEffect(() => {
+    if (!examId) return
+    const prefix = `draft:exam:${examId}:problem:`
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(prefix))
+      .forEach((k) => localStorage.removeItem(k))
+  }, [examId])
+
   const toggleRow = (problemId) => {
     setExpanded((prev) => ({ ...prev, [problemId]: !prev[problemId] }))
 
@@ -83,13 +93,14 @@ export default function ResultPage() {
 
       {!loading && !error && result && (
         <div className="space-y-6">
-          {/* 考試標題與總分 */}
+          {/* 考試標題與「答對 X / 共 Y 題」摘要
+              spec：candidate 只看答對題數、不看分數 */}
           <div className="rounded-lg border bg-white shadow-sm p-5">
             <h2 className="text-lg font-bold mb-2">{result.title}</h2>
             <p className="text-3xl font-semibold text-primary">
-              {result.total_candidate_score}
+              答對 {result.results.filter((r) => r.submission_status === 'AC').length}
               <span className="text-base text-muted-foreground font-normal">
-                {' '}/ {result.total_exam_points} 分
+                {' '}/ 共 {result.results.length} 題
               </span>
             </p>
           </div>
@@ -102,7 +113,7 @@ export default function ResultPage() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground w-16">題號</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">題目</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">狀態</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground w-24">得分</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground w-24">結果</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground w-20">明細</th>
                 </tr>
               </thead>
@@ -142,7 +153,8 @@ function FragmentRow({ item, isOpen, detailState, onToggle }) {
           <JudgeStatusBadge status={item.submission_status} />
         </td>
         <td className="px-4 py-3 text-right">
-          {item.candidate_score} / {item.max_points}
+          {/* spec：candidate 只看「已答對 / 未答對」、不看分數數字 */}
+          {item.submission_status === 'AC' ? '已答對' : '未答對'}
         </td>
         <td className="px-4 py-3 text-right">
           <button

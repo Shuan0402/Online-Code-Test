@@ -174,9 +174,12 @@ test('Q-1.3：提交僅通過 1/2 testcase 時 score 為通過權重總和（par
     sourceCode: 'print("hello A")\n',
   })
 
-  // 整體狀態不是 AC（因為有測資沒過），但 score 必須是通過的 50
+  // 整體狀態不是 AC（因為有測資沒過）。
+  // partial credit 算法：round(AC_weight_sum / total_weight * exam_problem.points)
+  //   = round(50 / 100 * 25) = 12（Python banker's rounding）
+  // exam_problem.points 來自 seed_e2e_questioner._upsert_exam：100 // 4 = 25。
   expect(final.status).not.toBe('AC')
-  expect(final.score).toBe(50)
+  expect(final.score).toBe(12)
 })
 
 // ╔══════════════════════════════════════════════════════════════════════╗

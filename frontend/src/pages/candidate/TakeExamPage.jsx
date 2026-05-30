@@ -112,6 +112,19 @@ export default function TakeExamPage() {
       .then((res) => {
         setExam(res.data)
         setRemainingSeconds(res.data.remaining_seconds ?? 0)
+        // 若 exam.start_time 變了（reseed / admin 重新開放重考）→ 視為「新一次 attempt」、
+        // 清掉本場 exam 所有 draft，避免上次的 code 殘留到新 attempt。
+        // 同 start_time 進來不清（保留斷線 recovery 設計）。
+        const startKey = `lastStartTime:exam:${examId}`
+        const currentStart = res.data.start_time ?? ''
+        const lastStart = localStorage.getItem(startKey)
+        if (currentStart && lastStart !== currentStart) {
+          const draftPrefix = `draft:exam:${examId}:problem:`
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith(draftPrefix))
+            .forEach((k) => localStorage.removeItem(k))
+          localStorage.setItem(startKey, currentStart)
+        }
       })
       .catch((err) => {
         const status = err?.response?.status
