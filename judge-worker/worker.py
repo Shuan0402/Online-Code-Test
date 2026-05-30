@@ -101,6 +101,11 @@ def decide_case_verdict(result: CompletedRun, expected_output: str, language: st
     if result.exit_code == 100 and language == "cpp":
         return "CE"
     if result.exit_code != 0:
+        if language == "python" and result.stderr and any(
+            err in result.stderr
+            for err in ["SyntaxError", "IndentationError", "TabError"]
+        ):
+            return "CE"
         return "RE"
     if result.stdout != expected_output:
         return "WA"

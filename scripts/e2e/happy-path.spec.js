@@ -15,7 +15,8 @@ test('candidate 透過前端送 happy path 拿到 AC', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '我的考試' })).toBeVisible()
 
   // ── 2. 點開始作答 → 確認 ──────────────────────────────────────────────
-  const startButton = page.getByRole('button', { name: '開始作答' }).first()
+  const card = page.locator('div.border.rounded-lg').filter({ hasText: 'E2E 進行中考試' })
+  const startButton = card.getByRole('button', { name: '開始作答' })
   await expect(startButton).toBeVisible({ timeout: 10_000 })
   await startButton.click()
   await page.getByRole('button', { name: '確認開始' }).click()

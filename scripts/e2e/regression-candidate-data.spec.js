@@ -259,7 +259,8 @@ test('E2：結果頁點「展開」會顯示 testcase 明細表（含 status / �
   await expect(page.getByText('兩數相加 (demo)')).toBeVisible()
 
   // 點「展開 ▼」
-  const expandBtn = page.getByRole('button', { name: '展開明細' })
+  const row = page.getByRole('row', { name: '兩數相加 (demo)' })
+  const expandBtn = row.getByRole('button', { name: '展開明細' })
   await expandBtn.click()
 
   // testcase 表格出現（合成 submission 有 AC + WA 兩筆）
@@ -270,7 +271,7 @@ test('E2：結果頁點「展開」會顯示 testcase 明細表（含 status / �
   await expect(page.getByText('18 ms')).toBeVisible()
 
   // 收合
-  await page.getByRole('button', { name: '收合明細' }).click()
+  await row.getByRole('button', { name: '收合明細' }).click()
   await expect(page.getByText('Expected: 7')).not.toBeVisible()
 })
 
