@@ -92,6 +92,13 @@ services:
 
   worker:
     image: judge-worker:dev
+    # 併發上限對應 OJ Story 1 AC2「Worker 應依照配置的併發上限控制」。
+    # 不改 worker code（while True: consume_once 仍是 serial），靠多開 container
+    # 達成「N 條一樣的生產線並排跑」— redis BLMOVE 原子，N 個 worker 不會搶到同一筆。
+    # 預設 1，要拉高就在 .env 設 WORKER_CONCURRENCY=N 再 docker compose up -d worker。
+    deploy:
+      mode: replicated
+      replicas: ${WORKER_CONCURRENCY:-1}
     environment:
       REDIS_URL: redis://redis:6379/0
       BACKEND_URL: http://backend:8000/api/v1
@@ -153,6 +160,11 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   grafana:
     image: grafana/grafana:9.5.2-ubuntu
@@ -167,6 +179,11 @@ services:
     depends_on:
       - loki
       - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   mailhog:
     image: mailhog/mailhog:latest
@@ -177,6 +194,12 @@ services:
     logging:
       options:
         tag: "mailhog"
+    # mailhog image 是 alpine，busybox wget 可以走 web UI port 當 liveness probe
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8025/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   email-worker:
     build:
