@@ -29,7 +29,8 @@ def get_candidate_exams(
 ):
     """
     考試場次列表調閱 API (多角色權限分流一體化)
-    - Interviewer / Admin (面試官/管理員): 撈取全系統所有考卷（含 Draft 草稿）。
+    - Interviewer / Admin (面試官/管理員): 預設撈取全系統所有考卷（含 Draft 草稿）。
+      傳入 mine=true 時，只回傳自己建立的考試。
     - Candidate (一般考生): 只能看見指派給自己、且處於可檢視狀態（Published/Ongoing/Finished）的考卷。
     """
     if current_user.role in [UserRole.Interviewer, UserRole.Admin]:

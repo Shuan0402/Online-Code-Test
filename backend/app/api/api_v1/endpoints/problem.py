@@ -65,6 +65,14 @@ def create_problem(
     新增題目（含測試案例）。
     僅限 Admin 或 Questioner 執行。
     """
+    # 檢查是否已存在同名且未刪除的題目
+    existing = db.query(Problem).filter(Problem.title == problem_in.title, Problem.is_deleted == False).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="題目名稱已重複，請使用其他名稱。"
+        )
+
     db_problem = Problem(
         **problem_in.model_dump(exclude={"test_cases"}),
         creator_id=current_user.id,
@@ -90,6 +98,18 @@ def update_problem(
     db_problem = db.query(Problem).filter(Problem.id == problem_id, Problem.is_deleted == False).first()
     if not db_problem:
         raise HTTPException(status_code=404, detail="題目不存在")
+
+    if problem_in.title is not None:
+        existing = db.query(Problem).filter(
+            Problem.title == problem_in.title,
+            Problem.id != problem_id,
+            Problem.is_deleted == False
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="題目名稱已重複，請使用其他名稱。"
+            )
 
     update_data = problem_in.model_dump(exclude_unset=True, exclude={"test_cases"})
     for field, value in update_data.items():
