@@ -3,6 +3,7 @@ import uuid
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 
+import pytest
 from app.main import app
 from app.api import deps
 from app.services.queue_manager import queue_manager
@@ -392,3 +393,165 @@ def test_get_latest_submission_not_found(client, candidate_user, override_auth, 
     response = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}")
     assert response.status_code == 404
     assert "尚未有任何提交紀錄" in response.json()["detail"]
+
+
+def test_create_submission_x_forwarded_for(client, candidate_user, override_auth, create_test_problem, create_test_exam, db_session):
+    override_auth(candidate_user)
+    prob = create_test_problem()
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+    
+    mock_storage = MagicMock()
+    mock_storage.upload_source.return_value = "s3://bucket/test.py"
+    mock_storage.sign_get_url.return_value = "http://mock-minio/presigned-url"
+    client.app.dependency_overrides[deps.get_storage] = lambda: mock_storage
+
+    payload = {
+        "problem_id": prob.id,
+        "language": "python",
+        "source_code": "print('hello')",
+        "submission_type": "OFFICIAL",
+        "exam_id": str(exam.id)
+    }
+    response = client.post("/api/v1/submissions/", json=payload, headers={"X-Forwarded-For": "1.2.3.4, 5.6.7.8"})
+    assert response.status_code == 202
+    assert response.json()["client_ip"] == "1.2.3.4"
+    client.app.dependency_overrides.clear()
+
+
+def test_create_submission_problem_not_found(client, candidate_user, override_auth):
+    override_auth(candidate_user)
+    payload = {
+        "problem_id": 999999,
+        "language": "python",
+        "source_code": "print('hello')",
+        "submission_type": "OFFICIAL",
+        "exam_id": str(uuid.uuid4())
+    }
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 404
+    assert "找不到指定的題目" in response.json()["detail"]
+
+
+def test_create_submission_exam_not_found(client, candidate_user, override_auth, create_test_problem):
+    override_auth(candidate_user)
+    prob = create_test_problem()
+    payload = {
+        "problem_id": prob.id,
+        "language": "python",
+        "source_code": "print('hello')",
+        "submission_type": "OFFICIAL",
+        "exam_id": str(uuid.uuid4())
+    }
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 404
+    assert "找不到指定的考試場次" in response.json()["detail"]
+
+
+def test_get_submissions_list_filters(client, candidate_user, override_auth, create_test_problem, create_test_exam, create_mock_submission, db_session):
+    override_auth(candidate_user)
+    prob = create_test_problem()
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Finished)
+    
+    sub = create_mock_submission(user_id=candidate_user.id, problem_id=prob.id, score=80)
+    sub.exam_id = exam.id
+    db_session.add(sub)
+    db_session.commit()
+
+    # Query with filters
+    response = client.get(f"/api/v1/submissions/?problem_id={prob.id}&exam_id={exam.id}&score_gte=70&score_lte=90")
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+    # Query with sorting
+    for sort_param in ["finished_at", "-finished_at", "score", "-score", "invalid_sort"]:
+        response = client.get(f"/api/v1/submissions/?order_by={sort_param}")
+        assert response.status_code == 200
+
+
+def test_create_submission_storage_exception(client, candidate_user, override_auth, create_test_problem, create_test_exam, db_session):
+    override_auth(candidate_user)
+    prob = create_test_problem()
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+    
+    mock_storage = MagicMock()
+    mock_storage.upload_source.side_effect = Exception("Storage upload failed")
+    client.app.dependency_overrides[deps.get_storage] = lambda: mock_storage
+
+    payload = {
+        "problem_id": prob.id,
+        "language": "python",
+        "source_code": "print('hello')",
+        "submission_type": "OFFICIAL",
+        "exam_id": str(exam.id)
+    }
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 500
+    assert "物件儲存服務異常" in response.json()["detail"]
+    client.app.dependency_overrides.clear()
+
+
+@patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=False)
+def test_create_submission_queue_push_failed(mock_push, client, candidate_user, override_auth, create_test_problem, create_test_exam, db_session):
+    override_auth(candidate_user)
+    prob = create_test_problem()
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+    
+    mock_storage = MagicMock()
+    mock_storage.upload_source.return_value = "s3://bucket/test.py"
+    mock_storage.sign_get_url.return_value = "http://mock-minio/presigned-url"
+    client.app.dependency_overrides[deps.get_storage] = lambda: mock_storage
+
+    payload = {
+        "problem_id": prob.id,
+        "language": "python",
+        "source_code": "print('hello')",
+        "submission_type": "OFFICIAL",
+        "exam_id": str(exam.id)
+    }
+    response = client.post("/api/v1/submissions/", json=payload)
+    assert response.status_code == 503
+    assert "評測佇列伺服器異常" in response.json()["detail"]
+    client.app.dependency_overrides.clear()
+
+
+def test_create_submission_run_only_direct(db_session, candidate_user, create_test_problem, create_test_exam):
+    from app.api.api_v1.endpoints.submission import create_submission
+    from app.schemas.submission import SubmissionCreate
+    
+    prob = create_test_problem()
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+
+    payload = MagicMock(spec=SubmissionCreate)
+    payload.problem_id = prob.id
+    payload.exam_id = exam.id
+    payload.language = "python"
+    payload.submission_type = "RUN_ONLY"
+    
+    request = MagicMock()
+    request.headers = {}
+    request.client = MagicMock()
+    request.client.host = "127.0.0.1"
+
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        create_submission(
+            payload=payload,
+            request=request,
+            db=db_session,
+            current_user=candidate_user,
+            storage_service=MagicMock()
+        )
+    assert exc_info.value.status_code == 400
+    assert "不開放 RUN_ONLY 測試" in exc_info.value.detail

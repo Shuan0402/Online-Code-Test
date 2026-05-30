@@ -14,6 +14,7 @@
 
 # Frontend build output
 frontend/dist/
+frontend/coverage/
 
 # local-only — do not push
 /CLAUDE.md

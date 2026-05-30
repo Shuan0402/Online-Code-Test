@@ -16,7 +16,6 @@ import { execSync } from 'node:child_process'
 
 // Repo-relative paths — package.json is CommonJS, so import.meta.url isn't
 // available; resolve from cwd of `scripts/e2e/` (where npx playwright runs).
-const HASH_HELPER = './helpers/verify-password-hash.sh'
 const REPO_ROOT_CWD = '../..'
 
 const INTERVIEWER = { username: 'interviewer@nthu.edu.tw', password: 'password123' }
@@ -72,8 +71,9 @@ test('I-1.1：建立 candidate 後 DB 密碼是 hash 且 verify_password 通過'
   // 201 → /interviewer/candidates/<uuid>
   await page.waitForURL(/\/interviewer\/candidates\/[0-9a-f-]{36}$/i)
 
-  // 跨層驗證：docker exec 進 backend 查 DB（helper 從 scripts/e2e/ cwd 找）
-  const out = execSync(`${HASH_HELPER} "${username}" "${password}"`, {
+  // 跨層驗證：docker compose exec 進 backend 執行 inline python 查 DB
+  const pyCmd = `import sys; from app.db.session import SessionLocal; from app.models.user import User; from app.core.security import SecurityManager; db = SessionLocal(); user = db.query(User).filter(User.username == sys.argv[1]).first(); (print('[FAIL] user not found'), sys.exit(2)) if not user else (print('[FAIL] verify failed'), sys.exit(1)) if user.password_hash == sys.argv[2] or not SecurityManager.verify_password(sys.argv[2], user.password_hash) else print('[OK]')`
+  const out = execSync(`docker compose exec -T backend python -c "${pyCmd}" "${username}" "${password}"`, {
     encoding: 'utf-8',
     cwd: REPO_ROOT_CWD + '/scripts/e2e',
   })
