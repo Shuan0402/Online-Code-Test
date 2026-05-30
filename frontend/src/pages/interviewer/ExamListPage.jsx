@@ -46,6 +46,8 @@ export default function ExamListPage() {
 
   // 狀態篩選（client-side，不發新 API 請求）
   const [statusFilter, setStatusFilter] = useState('')
+  // 「只看我的」切換（server-side filter，會重新發 API 請求）
+  const [mineOnly, setMineOnly] = useState(false)
 
   // 刪除確認 Dialog 狀態
   const [deleteTarget, setDeleteTarget] = useState(null) // { id, title }
@@ -56,14 +58,15 @@ export default function ExamListPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await api.get('/api/v1/exams/')
+      const params = mineOnly ? '?mine=true' : ''
+      const res = await api.get(`/api/v1/exams/${params}`)
       setExams(res.data)
     } catch (err) {
       setError(err.response?.data?.detail ?? '載入考試列表失敗，請稍後再試')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [mineOnly])
 
   useEffect(() => {
     fetchExams()
@@ -124,23 +127,38 @@ export default function ExamListPage() {
         </Button>
       </div>
 
-      {/* 狀態篩選 */}
-      <div className="flex items-center gap-2">
-        <label htmlFor="status-filter" className="text-sm font-medium">
-          篩選狀態：
-        </label>
-        <select
-          id="status-filter"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      {/* 篩選列：狀態 + 「只看我的」 */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label htmlFor="status-filter" className="text-sm font-medium">
+            篩選狀態：
+          </label>
+          <select
+            id="status-filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          id="mine-only-toggle"
+          type="button"
+          onClick={() => setMineOnly((prev) => !prev)}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium border transition-colors ${
+            mineOnly
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-background text-foreground border-input hover:bg-muted'
+          }`}
         >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          {mineOnly ? '只看我的' : '所有考試'}
+        </button>
       </div>
 
       {/* 考試列表 */}

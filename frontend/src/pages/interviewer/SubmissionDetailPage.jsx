@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -204,9 +205,9 @@ export default function SubmissionDetailPage() {
             </span>
           </div>
           {problem.description && (
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {problem.description}
-            </p>
+            <div className="text-sm text-muted-foreground prose prose-sm max-w-none">
+              <ReactMarkdown>{problem.description}</ReactMarkdown>
+            </div>
           )}
         </section>
       )}
@@ -246,7 +247,7 @@ export default function SubmissionDetailPage() {
           <h2 className="text-base font-semibold">提交程式碼</h2>
         </div>
         {sourceUnavailable ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">程式碼暫無法顯示</p>
+          <p className="px-4 py-6 text-sm text-muted-foreground text-center">程式碼暫無法顯示</p>
         ) : sourceCode !== null ? (
           <pre className="bg-muted rounded p-4 text-sm overflow-auto whitespace-pre-wrap break-words">
             {sourceCode}

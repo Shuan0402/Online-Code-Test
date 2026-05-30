@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import api from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -87,9 +88,9 @@ export default function ProblemPanel({ problemId, points, sequence }) {
         <span>記憶體限制：{problem.memory_limit_mb} MB</span>
       </div>
 
-      {/* 題目描述 */}
-      <div className="text-sm whitespace-pre-wrap leading-relaxed border rounded p-3 bg-muted/30">
-        {problem.description}
+      {/* 題目描述（Markdown 渲染） */}
+      <div className="text-sm leading-relaxed border rounded p-3 bg-muted/30 prose prose-sm max-w-none">
+        <ReactMarkdown>{problem.description}</ReactMarkdown>
       </div>
 
       {/* 範例測試案例 */}

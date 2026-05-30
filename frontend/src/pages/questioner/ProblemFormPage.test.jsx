@@ -173,6 +173,9 @@ describe('ProblemFormPage', () => {
       target: { value: '25' },
     })
 
+    // 勾選「範例測資」以通過 sample 必填驗證
+    fireEvent.click(screen.getByLabelText('範例測資（題目頁面顯示）'))
+
     // 送出表單（getByRole 取 submit 按鈕以避免和 h1 的文字衝突）
     fireEvent.click(screen.getByRole('button', { name: '新增題目' }))
 

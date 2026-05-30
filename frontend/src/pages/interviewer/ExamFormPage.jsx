@@ -24,6 +24,9 @@ export default function ExamFormPage() {
   const [loadingCandidates, setLoadingCandidates] = useState(true)
   const [loadError, setLoadError] = useState(null)
 
+  // --- 題庫各難度可用題數（防呆提醒用） ---
+  const [problemStats, setProblemStats] = useState({ Easy: 0, Medium: 0, Hard: 0 })
+
   // --- 送出狀態 ---
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
@@ -31,7 +34,7 @@ export default function ExamFormPage() {
   // --- 前端驗證訊息 ---
   const [validationError, setValidationError] = useState(null)
 
-  // mount 時取得使用者清單，過濾出 Candidate 角色
+  // mount 時取得使用者清單 + 題庫統計（用來防呆提醒題數設定）
   useEffect(() => {
     let cancelled = false
 
@@ -52,10 +55,32 @@ export default function ExamFormPage() {
         if (!cancelled) setLoadingCandidates(false)
       })
 
+    // 題庫統計：用來防呆，避免使用者填超過實際題庫量。
+    // 失敗就 silent，預設 0（會讓所有非 0 的設定都跳警告，符合保守做法）
+    api
+      .get('/api/v1/problems/')
+      .then((res) => {
+        if (cancelled) return
+        const stats = { Easy: 0, Medium: 0, Hard: 0 }
+        for (const p of res.data ?? []) {
+          if (stats[p.difficulty] !== undefined) stats[p.difficulty] += 1
+        }
+        setProblemStats(stats)
+      })
+      .catch(() => {})
+
     return () => {
       cancelled = true
     }
   }, [])
+
+  // 各難度設定值是否超過題庫可用數
+  const exceedsBank = {
+    Easy: Number(easyCount) > problemStats.Easy,
+    Medium: Number(mediumCount) > problemStats.Medium,
+    Hard: Number(hardCount) > problemStats.Hard,
+  }
+  const anyExceeds = exceedsBank.Easy || exceedsBank.Medium || exceedsBank.Hard
 
   // --- 表單送出 ---
   const handleSubmit = async (e) => {
@@ -159,6 +184,7 @@ export default function ExamFormPage() {
             id="duration-minutes"
             type="number"
             min="1"
+            max="480"
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(e.target.value)}
           />
@@ -172,9 +198,11 @@ export default function ExamFormPage() {
               id="easy-count"
               type="number"
               min="0"
+              max="20"
               value={easyCount}
               onChange={(e) => setEasyCount(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">題庫可用：{problemStats.Easy}</p>
           </div>
           <div className="space-y-1">
             <Label htmlFor="medium-count">中等題數</Label>
@@ -182,9 +210,11 @@ export default function ExamFormPage() {
               id="medium-count"
               type="number"
               min="0"
+              max="20"
               value={mediumCount}
               onChange={(e) => setMediumCount(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">題庫可用：{problemStats.Medium}</p>
           </div>
           <div className="space-y-1">
             <Label htmlFor="hard-count">困難題數</Label>
@@ -192,11 +222,24 @@ export default function ExamFormPage() {
               id="hard-count"
               type="number"
               min="0"
+              max="20"
               value={hardCount}
               onChange={(e) => setHardCount(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">題庫可用：{problemStats.Hard}</p>
           </div>
         </div>
+
+        {/* 題庫不足防呆提醒 */}
+        {anyExceeds && (
+          <p className="text-sm font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+            ⚠️ 設定的題數超過題庫可用量
+            {exceedsBank.Easy && `（簡單：要 ${easyCount}、有 ${problemStats.Easy}）`}
+            {exceedsBank.Medium && `（中等：要 ${mediumCount}、有 ${problemStats.Medium}）`}
+            {exceedsBank.Hard && `（困難：要 ${hardCount}、有 ${problemStats.Hard}）`}
+            ，建立考試後可能無法自動填滿題目。
+          </p>
+        )}
 
         {/* 應試者下拉選單 */}
         <div className="space-y-1">

@@ -24,7 +24,7 @@ class Problem(Base):
     id = Column(Integer, primary_key=True, index=True)
     creator_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=False)
 
-    title = Column(String(255), nullable=False)
+    title = Column(String(255), nullable=False, unique=True)
     description = Column(Text, nullable=False)
     difficulty = Column(Enum(DifficultyLevel), nullable=False)
 

@@ -159,7 +159,10 @@ export default function MemberListPage() {
                     className="border-t hover:bg-muted/30 transition-colors cursor-pointer"
                     onClick={() => navigate(`/admin/members/${member.id}`)}
                   >
-                    <td className="px-4 py-3 font-medium">
+                    <td
+                      className="px-4 py-3 font-medium max-w-[220px] truncate"
+                      title={member.full_name ?? member.username ?? ''}
+                    >
                       {member.full_name ?? member.username ?? '—'}
                     </td>
                     <td className="px-4 py-3">{member.username}</td>
