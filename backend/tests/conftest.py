@@ -28,7 +28,8 @@ def setup_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield engine
-    Base.metadata.drop_all(bind=engine)
+    # 測試結束後不要 drop_all，保留資料表結構，方便進行手動與 E2E 測試。
+
 
 @pytest.fixture(scope="function")
 def db_session(setup_db):
