@@ -904,3 +904,62 @@ def test_delete_exam_problem_candidate_blocked(client, candidate_user, override_
     response = client.delete(f"/api/v1/exams/{exam.id}/problems/{prob.id}")
 
     assert response.status_code == 403
+
+
+def test_get_exam_result_filters_and_sorting(client, db_session, candidate_user, override_auth, create_test_exam, create_test_problem):
+    """
+    驗證 I-3.1 加上 score_gte/score_lte 篩選及 finished_at 排序功能。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(title="過濾排序測試", status=ExamStatus.Ongoing)
+    prob1 = create_test_problem(title="Easy Prob")
+    prob2 = create_test_problem(title="Hard Prob")
+
+    ep1 = ExamProblem(exam_id=exam.id, problem_id=prob1.id, sequence=1, points=100, problem=prob1)
+    ep2 = ExamProblem(exam_id=exam.id, problem_id=prob2.id, sequence=2, points=100, problem=prob2)
+    db_session.add_all([ep1, ep2])
+    db_session.commit()
+
+    base_time = datetime.now(timezone.utc)
+
+    # 模擬兩次提交：prob1 得 80 分（80%），較早提交；prob2 得 40 分（40%），較晚提交
+    sub1 = Submission(
+        id=uuid.uuid4(), exam_id=exam.id, user_id=candidate_user.id, problem_id=prob1.id,
+        score=80, status="AC", code_s3_url="s3://p1", language="python", created_at=base_time - timedelta(minutes=5)
+    )
+    sub2 = Submission(
+        id=uuid.uuid4(), exam_id=exam.id, user_id=candidate_user.id, problem_id=prob2.id,
+        score=40, status="WA", code_s3_url="s3://p2", language="python", created_at=base_time - timedelta(minutes=1)
+    )
+    db_session.add_all([sub1, sub2])
+    db_session.commit()
+
+    # 1. 測試 score_gte 篩選
+    res = client.get(f"/api/v1/exams/{exam.id}/result?score_gte=50")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["results"]) == 1
+    assert data["results"][0]["problem_id"] == prob1.id
+
+    # 2. 測試 score_lte 篩選
+    res = client.get(f"/api/v1/exams/{exam.id}/result?score_lte=50")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["results"]) == 1
+    assert data["results"][0]["problem_id"] == prob2.id
+
+    # 3. 測試 finished_at 排序 (ascending: sub1 then sub2)
+    res = client.get(f"/api/v1/exams/{exam.id}/result?order_by=finished_at")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["results"]) == 2
+    assert data["results"][0]["problem_id"] == prob1.id
+    assert data["results"][1]["problem_id"] == prob2.id
+
+    # 4. 測試 -finished_at 排序 (descending: sub2 then sub1)
+    res = client.get(f"/api/v1/exams/{exam.id}/result?order_by=-finished_at")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["results"]) == 2
+    assert data["results"][0]["problem_id"] == prob2.id
+    assert data["results"][1]["problem_id"] == prob1.id
