@@ -35,14 +35,24 @@ def aggregate_verdict(per_testcase: List[CallbackTestcase]) -> JudgeStatus:
 def calc_score(
     per_testcase: List[CallbackTestcase],
     weights_by_id: Dict[int, int],
+    problem_points: int,
 ) -> int:
-    """Partial credit：只算 AC 那些 testcase 的 score_weight 和。
+    """Partial credit：按 (AC 通過的 weight / 總 weight) 比例分配 problem_points。
+
+    - testcase.score_weight 是「本題內部」的 partial credit 分配（任意總和）。
+    - problem_points 是「本場 exam_problem 配分」（上限）。
+    - 兩者解耦：最終分數 = round(ratio * problem_points)。
 
     沒在 per_testcase 內的 testcases（fail-fast 後沒跑到）視為「未測」、不計分。
     沒在 weights_by_id 內的 testcase_id（資料異常）也視為 0、不爆。
+    total_weight 為 0（資料異常）視為 0、避免除零。
     """
-    return sum(
+    total_weight = sum(weights_by_id.values())
+    if total_weight <= 0:
+        return 0
+    ac_weight = sum(
         weights_by_id.get(tc.testcase_id, 0)
         for tc in per_testcase
         if tc.case_verdict == "AC"
     )
+    return round(ac_weight / total_weight * problem_points)

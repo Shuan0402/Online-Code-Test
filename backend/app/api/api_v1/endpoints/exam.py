@@ -3,12 +3,12 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from app.api import deps
 from app.models.exam import Exam, ExamProblem
 from app.models.problem import Problem
-from app.models.enums import UserRole, ExamStatus, DifficultyLevel
+from app.models.enums import UserRole, ExamStatus, DifficultyLevel, JudgeStatus
 from app.models.submission import Submission
 from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
@@ -53,7 +53,29 @@ def get_candidate_exams(
             .order_by(Exam.created_at.desc())
             .all()
         )
-        
+        # 對應 spec：candidate 只看「答對幾題」、不看分數。逐場 exam 算每題「最新一筆
+        # submission」的 status；status=AC 才算答對（對齊 ResultPage 顯示的 latest 邏輯）。
+        # 不能用「歷史曾經 AC」算，否則先前跑成功、之後重交 fail 還是會被算進去。
+        if exams:
+            exam_ids = [ex.id for ex in exams]
+            rows = db.execute(
+                text("""
+                    SELECT exam_id, COUNT(*) FROM (
+                        SELECT DISTINCT ON (exam_id, problem_id) exam_id, status
+                          FROM submissions
+                         WHERE exam_id = ANY(:exam_ids) AND user_id = :user_id
+                         ORDER BY exam_id, problem_id, created_at DESC
+                    ) latest
+                    WHERE status = 'AC'
+                    GROUP BY exam_id
+                """),
+                {"exam_ids": exam_ids, "user_id": current_user.id},
+            ).all()
+            correct_counts = {r[0]: int(r[1]) for r in rows}
+            for ex in exams:
+                ex.total_problems = len(ex.exam_problems)
+                ex.correct_count = correct_counts.get(ex.id, 0)
+
     return exams
 
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)

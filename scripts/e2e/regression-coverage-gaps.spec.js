@@ -112,8 +112,9 @@ int main() {
 
   const final = await pollSubmission(request, token, sub.id)
   // 雙 testcase 都正確輸出 → AC；只要 worker 真的有走 sandbox:cpp 編譯，就不會卡 CE。
+  // 全 AC → round(100/100 * 25) = 25（exam_problem.points 來自 seed = 100//4）
   expect(final.status, `C++ judged status=${final.status}`).toBe('AC')
-  expect(final.score).toBe(100)
+  expect(final.score).toBe(25)
 })
 
 // ╔══════════════════════════════════════════════════════════════════════╗

@@ -79,7 +79,7 @@ export default function ProblemPanel({ problemId, points, sequence }) {
         <span className="text-muted-foreground text-sm font-medium">題 {sequence}．</span>
         <h2 className="text-lg font-bold leading-tight">{problem.title}</h2>
         <Badge className={diff.className}>{diff.label}</Badge>
-        <Badge variant="outline" className="ml-auto shrink-0">{points} 分</Badge>
+        {/* 配分對 candidate 隱藏（spec：candidate 只知道答對幾題、不看分數） */}
       </div>
 
       {/* 時間 / 記憶體限制 */}

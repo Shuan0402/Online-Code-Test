@@ -111,8 +111,9 @@ export default function ExamListPage() {
                 <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-muted-foreground">
                   <ExamStatusBadge status={exam.status} />
                   <span>時長：{exam.duration_minutes ?? exam.duration ?? '—'} 分鐘</span>
-                  {exam.status === 'Finished' && exam.score != null && (
-                    <span>得分：{exam.score}</span>
+                  {/* spec：candidate 只看答對題數、不看分數 */}
+                  {exam.status === 'Finished' && exam.total_problems != null && (
+                    <span>答對 {exam.correct_count ?? 0} / {exam.total_problems} 題</span>
                   )}
                 </div>
               </div>
