@@ -56,23 +56,28 @@ class DockerSpawner(SandboxSpawner):
         # docker daemon spawn sibling container 時才能用同一個 host path mount 進去。
         # 對應 docker-compose worker 的 /tmp/oct-sandbox-work bind mount。
         sandbox_root = "/tmp/oct-sandbox-work"
-        Path(sandbox_root).mkdir(parents=True, exist_ok=True)
+        sandbox_path = Path(sandbox_root)
+        sandbox_path.mkdir(parents=True, exist_ok=True)
+        try:
+            sandbox_path.chmod(0o755)
+        except Exception:
+            pass
         host_dir = Path(tempfile.mkdtemp(prefix="sandbox-", dir=sandbox_root))
         try:
             # sandbox image 跑 user 65532 + --cap-drop=ALL（沒 CAP_DAC_READ_SEARCH），
             # 所以 host_dir 一定要 world-readable+executable、source 檔要 world-readable，
             # 否則 entrypoint 連 /sandbox/source.py 都讀不到 → exit 2 RE。
-            os.chmod(host_dir, 0o755)
+            host_dir.chmod(0o755)
             source_path = host_dir / source_filename
             source_path.write_text(source)
-            os.chmod(source_path, 0o644)
+            source_path.chmod(0o644)
 
             container_name = f"sandbox-{uuid.uuid4().hex[:12]}"
             cmd = self._build_run_cmd(
                 image,
                 container_name,
                 host_dir,
-                memory_limit_mb=memory_limit_mb or DEFAULT_MEMORY_LIMIT_MB,
+                memory_limit_mb=max(memory_limit_mb or DEFAULT_MEMORY_LIMIT_MB, 6),
             )
 
             start = time.monotonic()
