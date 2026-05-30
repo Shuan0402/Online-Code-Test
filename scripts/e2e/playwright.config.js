@@ -5,6 +5,8 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: [['list']],
+  workers: 1,
+  fullyParallel: false,
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'retain-on-failure',
