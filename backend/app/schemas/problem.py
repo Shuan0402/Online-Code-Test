@@ -28,7 +28,7 @@ class ProblemBase(BaseModel):
     description: str = Field(..., json_schema_extra={"example": "請計算兩數之和"})
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.Easy)
     time_limit_ms: int = Field(default=1000, gt=0, description="單位為 ms")
-    memory_limit_mb: int = Field(default=256, gt=0, description="單位為 MB")
+    memory_limit_mb: int = Field(default=256, ge=6, description="單位為 MB")
 
 class ProblemShortRead(BaseModel):
     """
@@ -54,7 +54,7 @@ class ProblemUpdate(BaseModel):
     description: Optional[str] = None
     difficulty: Optional[DifficultyLevel] = None
     time_limit_ms: Optional[int] = Field(None, gt=0)
-    memory_limit_mb: Optional[int] = Field(None, gt=0)
+    memory_limit_mb: Optional[int] = Field(None, ge=6)
     test_cases: Optional[List[TestCaseUpdate]] = Field(None, description="傳入則代表重設所有測資")
 
 class ProblemRead(ProblemBase):

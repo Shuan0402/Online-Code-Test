@@ -72,6 +72,55 @@ export default function TakeExamPage() {
   // ── 提交錯誤（inline，取代 alert()） ─────────────────────────────────────────
   const [submitError, setSubmitError] = useState(null) // { problemId, message }
 
+  // ── 行為監控（Questioner Q-2.3）─────────────────────────────────────────────
+  // 切換視窗 (visibilitychange→hidden) 與大量貼上 (paste 文字 > 100 字) 計次，
+  // 沒接後端 endpoint、僅前端橫幅警示。
+  //
+  // 純前端的限制（未補 backend 前的盲點）：
+  // 1. 計數活在 React state，F5 / DevTools 改 state 就歸零、作弊者可抹除
+  // 2. banner 只有 candidate 自己看得到，出題主管 / interviewer 後台看不到紀錄
+  // 3. 沒持久化 → 考完後無法事後審查、無法跟 submission 時間軸對照
+  // 要做完整防作弊閉環需補：POST /api/v1/exams/{id}/proctor-events 與
+  // interviewer 後台行為紀錄 section（throttle 後再送，避免每次 paste 一個 request）。
+  const [tabSwitchCount, setTabSwitchCount] = useState(0)
+  const [largePasteCount, setLargePasteCount] = useState(0)
+  const lastCopiedTextRef = useRef('')
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) setTabSwitchCount((c) => c + 1)
+    }
+    const onCopyOrCut = () => {
+      let selection = window.getSelection()?.toString() ?? ''
+      if (!selection && document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+        const active = document.activeElement
+        selection = active.value.substring(active.selectionStart, active.selectionEnd)
+      }
+      if (selection) {
+        lastCopiedTextRef.current = selection
+      }
+    }
+    const onPaste = (e) => {
+      const text = e.clipboardData?.getData?.('text/plain') ?? ''
+      if (text.length > 100) {
+        if (text !== lastCopiedTextRef.current) {
+          setLargePasteCount((c) => c + 1)
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    document.addEventListener('copy', onCopyOrCut)
+    document.addEventListener('cut', onCopyOrCut)
+    // capture 階段：在 Monaco 內部 textarea 也能攔到，避免 stopPropagation 漏掉
+    document.addEventListener('paste', onPaste, true)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      document.removeEventListener('copy', onCopyOrCut)
+      document.removeEventListener('cut', onCopyOrCut)
+      document.removeEventListener('paste', onPaste, true)
+    }
+  }, [])
+
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. 掛載時呼叫 POST /api/v1/exams/{examId}/start（idempotent）
   // ─────────────────────────────────────────────────────────────────────────────
@@ -231,6 +280,16 @@ export default function TakeExamPage() {
           交卷
         </Button>
       </div>
+
+      {/* ── 行為監控警示橫幅（Q-2.3） ───────────────────────────────────── */}
+      {(tabSwitchCount > 0 || largePasteCount > 0) && (
+        <div
+          data-testid="behavior-alert"
+          className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-sm text-yellow-800 shrink-0"
+        >
+          行為監控：已偵測到 {tabSwitchCount} 次切換視窗、{largePasteCount} 次大量貼上
+        </div>
+      )}
 
       {/* ── 題目 Tab 列 ───────────────────────────────────────────────────── */}
       <div className="flex gap-1 px-3 pt-2 pb-0 border-b bg-muted/20 shrink-0 overflow-x-auto">

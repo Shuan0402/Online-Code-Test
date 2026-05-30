@@ -96,6 +96,8 @@ def decide_case_verdict(result: CompletedRun, expected_output: str, language: st
     """
     if result.timed_out:
         return "TLE"
+    if result.exit_code == 137:
+        return "MLE"
     if result.exit_code == 100 and language == "cpp":
         return "CE"
     if result.exit_code != 0:
@@ -124,6 +126,7 @@ def run_official(
     testcases: list,
     time_limit_ms: int,
     submission_id: str,
+    memory_limit_mb: int | None = None,
 ) -> tuple[list, str, int]:
     """跑 OFFICIAL submission 的所有 testcases、fail-fast。
 
@@ -159,6 +162,7 @@ def run_official(
             source_filename=source_filename,
             stdin=tc["input_data"],
             timeout=timeout_sec,
+            memory_limit_mb=memory_limit_mb,
         )
         case_verdict = decide_case_verdict(result, tc["expected_output"], language)
         exec_ms = int(result.duration_sec * 1000)
@@ -295,6 +299,7 @@ def process_submission(
             testcases=msg["testcases"],
             time_limit_ms=msg["time_limit_ms"],
             submission_id=sub_id,
+            memory_limit_mb=msg.get("memory_limit_mb"),
         )
     except Exception as e:
         # L1/L2 任何錯 → failure callback（不分 exception class、senior audit 砍掉）
@@ -388,6 +393,16 @@ def main() -> None:
     root_logger.setLevel(logging.INFO)
     root_logger.handlers = []
     root_logger.addHandler(stdout_handler)
+
+    file_path = os.environ.get("LOG_FILE_PATH", "/var/log/app/worker.log")
+    log_dir = os.path.dirname(file_path) or "."
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = logging.FileHandler(file_path, encoding="utf-8")
+        file_handler.setFormatter(WorkerJSONFormatter())
+        root_logger.addHandler(file_handler)
+    except Exception as e:
+        print(f"[Logging Setup] Failed to create worker FileHandler: {e}", file=sys.stderr)
 
     if not WORKER_SECRET:
         log.error("WORKER_SECRET env var not set, exiting")

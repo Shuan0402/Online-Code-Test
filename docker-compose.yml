@@ -104,6 +104,10 @@ services:
       # See judge-worker/Dockerfile header for the security trade-off.
       - /var/run/docker.sock:/var/run/docker.sock
       - app_logs:/var/log/app
+      # DooD path 一致性：sandbox source code 寫在這條 path，sibling container 也
+      # 從同名 host path bind mount /sandbox:ro。worker 寫的位置跟 host docker daemon
+      # 解析 -v 來源是同一個資料夾、否則 sibling 拿到空的 /sandbox → exit 2 RE。
+      - /tmp/oct-sandbox-work:/tmp/oct-sandbox-work
     depends_on:
       redis:
         condition: service_healthy
