@@ -84,20 +84,39 @@ export default function TakeExamPage() {
   // interviewer 後台行為紀錄 section（throttle 後再送，避免每次 paste 一個 request）。
   const [tabSwitchCount, setTabSwitchCount] = useState(0)
   const [largePasteCount, setLargePasteCount] = useState(0)
+  const lastCopiedTextRef = useRef('')
 
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) setTabSwitchCount((c) => c + 1)
     }
+    const onCopyOrCut = () => {
+      let selection = window.getSelection()?.toString() ?? ''
+      if (!selection && document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+        const active = document.activeElement
+        selection = active.value.substring(active.selectionStart, active.selectionEnd)
+      }
+      if (selection) {
+        lastCopiedTextRef.current = selection
+      }
+    }
     const onPaste = (e) => {
       const text = e.clipboardData?.getData?.('text/plain') ?? ''
-      if (text.length > 100) setLargePasteCount((c) => c + 1)
+      if (text.length > 100) {
+        if (text !== lastCopiedTextRef.current) {
+          setLargePasteCount((c) => c + 1)
+        }
+      }
     }
     document.addEventListener('visibilitychange', onVisibility)
+    document.addEventListener('copy', onCopyOrCut)
+    document.addEventListener('cut', onCopyOrCut)
     // capture 階段：在 Monaco 內部 textarea 也能攔到，避免 stopPropagation 漏掉
     document.addEventListener('paste', onPaste, true)
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
+      document.removeEventListener('copy', onCopyOrCut)
+      document.removeEventListener('cut', onCopyOrCut)
       document.removeEventListener('paste', onPaste, true)
     }
   }, [])
