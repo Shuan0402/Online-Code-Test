@@ -181,6 +181,38 @@ describe('useAdaptivePolling', () => {
     expect(onResult).not.toHaveBeenCalled()
   })
 
+  // D2：HackMD user story —— 狀態應該流轉 Pending → Judging → AC，
+  // 前兩輪 onResult 拿到中間狀態並繼續 polling，第三輪拿到終局後停止。
+  it('reports Pending → Judging → AC across polls and stops on AC', async () => {
+    api.get
+      .mockResolvedValueOnce({ data: { id: 'sub-d2', status: 'Pending' } })
+      .mockResolvedValueOnce({ data: { id: 'sub-d2', status: 'Judging' } })
+      .mockResolvedValueOnce({ data: { id: 'sub-d2', status: 'AC', score: 100 } })
+    const onResult = vi.fn()
+
+    renderHook(() => useAdaptivePolling('sub-d2', onResult))
+
+    // Poll 1：Pending（非終局，繼續排下一輪）
+    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[0]) })
+    expect(api.get).toHaveBeenCalledTimes(1)
+    expect(onResult).toHaveBeenLastCalledWith({ id: 'sub-d2', status: 'Pending' })
+
+    // Poll 2：Judging（仍非終局）
+    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[1]) })
+    expect(api.get).toHaveBeenCalledTimes(2)
+    expect(onResult).toHaveBeenLastCalledWith({ id: 'sub-d2', status: 'Judging' })
+
+    // Poll 3：AC（終局，stop）
+    await act(async () => { vi.advanceTimersByTime(POLLING_DELAYS[2]) })
+    expect(api.get).toHaveBeenCalledTimes(3)
+    expect(onResult).toHaveBeenLastCalledWith({ id: 'sub-d2', status: 'AC', score: 100 })
+
+    // 之後不再 poll
+    await act(async () => { vi.advanceTimersByTime(60000) })
+    expect(api.get).toHaveBeenCalledTimes(3)
+    expect(onResult).toHaveBeenCalledTimes(3)
+  })
+
   it('terminal statuses CE, TLE, MLE, RE, WA all stop polling', async () => {
     const terminalStatuses = ['CE', 'TLE', 'MLE', 'RE', 'WA']
 
