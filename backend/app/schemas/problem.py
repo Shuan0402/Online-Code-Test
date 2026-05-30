@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
@@ -40,11 +40,25 @@ class ProblemShortRead(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
+# 共用驗證：對應 Candidate C-3.2「至少一組範例測資」spec — 題目至少要有一筆 is_sample=True，
+# 否則考生看不到範例可對照。frontend 已有 client-side 防呆，這裡是 backend defense-in-depth。
+def _ensure_at_least_one_sample(test_cases):
+    if test_cases and not any(tc.is_sample for tc in test_cases):
+        raise ValueError("至少需要勾選一筆「範例測資」（讓考生看得到題目範例）")
+    return test_cases
+
+
 class ProblemCreate(ProblemBase):
     """
     建立題目時，允許同時帶入多組測資。
     """
     test_cases: List[TestCaseCreate] = Field(default=[], description="題目的測試案例列表")
+
+    @field_validator("test_cases")
+    @classmethod
+    def _check_sample(cls, v):
+        return _ensure_at_least_one_sample(v)
+
 
 class ProblemUpdate(BaseModel):
     """
@@ -56,6 +70,13 @@ class ProblemUpdate(BaseModel):
     time_limit_ms: Optional[int] = Field(None, gt=0)
     memory_limit_mb: Optional[int] = Field(None, ge=6)
     test_cases: Optional[List[TestCaseUpdate]] = Field(None, description="傳入則代表重設所有測資")
+
+    @field_validator("test_cases")
+    @classmethod
+    def _check_sample(cls, v):
+        if v is None:
+            return v
+        return _ensure_at_least_one_sample(v)
 
 class ProblemRead(ProblemBase):
     """

@@ -205,6 +205,50 @@ test('Q-2.1：超過 cgroup 記憶體上限的提交應被沙箱擋下（非 AC�
   expect(['MLE', 'RE']).toContain(final.status)
 })
 
+// Q-2.1 (CPU)：cgroup CPU quota 應該已套到 sandbox
+// 手法：python 讀 /sys/fs/cgroup/cpu.max (cgroup v2) 或 cpu.cfs_quota_us/period_us (v1)
+// 寫到 stderr，judge_log 撈出後斷言值不是「unbounded」
+test('Q-2.1 (CPU)：sandbox cgroup CPU quota 已套用（讀 /sys/fs/cgroup 驗）', async ({ page, request }) => {
+  test.setTimeout(90_000)
+
+  await login(page, SEEDED_CANDIDATE)
+  await page.waitForURL('**/candidate/exams')
+  const token = await page.evaluate(() => localStorage.getItem('access_token'))
+  expect(token).toBeTruthy()
+
+  const { examId, problemId } = await findAssignedProblemId(request, token, 'E2E-Q-Partial')
+
+  // 讀 cgroup 寫 stderr。stdout 給對 testcase 1（"A" → "hello A"）讓 judge 跑得完。
+  const introspector = [
+    'import sys',
+    'try:',
+    '    info = open("/sys/fs/cgroup/cpu.max").read().strip()',
+    '    sys.stderr.write(f"CGROUP_CPU={info}\\n")',
+    'except FileNotFoundError:',
+    '    try:',
+    '        q = open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read().strip()',
+    '        p = open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read().strip()',
+    '        sys.stderr.write(f"CGROUP_CPU=v1:quota={q}_period={p}\\n")',
+    '    except Exception as e:',
+    '        sys.stderr.write(f"CGROUP_CPU=err:{e}\\n")',
+    'print("hello A")',
+    '',
+  ].join('\n')
+
+  const final = await submitAndAwait(request, token, {
+    examId,
+    problemId,
+    sourceCode: introspector,
+  })
+
+  // judge_log 應含 CGROUP_CPU=...，值不是 "max ..."（v2 無上限）也不是 v1 的 quota=-1
+  const m = final.judge_log?.match(/CGROUP_CPU=(.+)/)
+  expect(m, `judge_log 找不到 CGROUP_CPU 行；log=${final.judge_log}`).toBeTruthy()
+  const value = m[1].trim()
+  expect(value, `cgroup v2 cpu.max 顯示無上限 "${value}"`).not.toMatch(/^max\s/)
+  expect(value, `cgroup v1 quota=-1 顯示無上限 "${value}"`).not.toMatch(/^v1:quota=-1/)
+})
+
 // Q-2.2：沙箱 network 應被阻斷 → 嘗試外連必失敗（非 AC）
 test('Q-2.2：沙箱內網路連線應被阻斷（外連不會成功）', async ({ page, request }) => {
   test.setTimeout(90_000)
