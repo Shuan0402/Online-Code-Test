@@ -22,6 +22,9 @@ router = APIRouter()
 def get_candidate_exams(
     db: Session = Depends(deps.get_db),
     candidate_id: Optional[uuid.UUID] = None,
+    score_gte: Optional[float] = None,
+    score_lte: Optional[float] = None,
+    order_by: Optional[str] = None,
     current_user = Depends(deps.get_current_user)
 ):
     """
@@ -38,7 +41,7 @@ def get_candidate_exams(
         if candidate_id:
             query = query.filter(Exam.candidate_id == candidate_id)
             
-        exams = query.order_by(Exam.created_at.desc()).all()
+        exams = query.all()
         
     else:
         exams = (
@@ -50,11 +53,36 @@ def get_candidate_exams(
                 Exam.candidate_id == current_user.id,
                 Exam.status != ExamStatus.Draft
             )
-            .order_by(Exam.created_at.desc())
             .all()
         )
         
-    return exams
+    # Python-side filtering & sorting for percentage range and finished_at
+    filtered_exams = []
+    for exam in exams:
+        total_points = sum(ep.points for ep in exam.exam_problems)
+        pct = (exam.score / total_points * 100.0) if total_points > 0 else 0.0
+        
+        if score_gte is not None and pct < score_gte:
+            continue
+        if score_lte is not None and pct > score_lte:
+            continue
+        filtered_exams.append((exam, pct))
+
+    if order_by:
+        if order_by == "finished_at":
+            filtered_exams.sort(key=lambda x: (x[0].end_time is None, x[0].end_time))
+        elif order_by == "-finished_at":
+            filtered_exams.sort(key=lambda x: (x[0].end_time is None, x[0].end_time), reverse=True)
+        elif order_by == "score":
+            filtered_exams.sort(key=lambda x: x[1])
+        elif order_by == "-score":
+            filtered_exams.sort(key=lambda x: x[1], reverse=True)
+        else:
+            filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
+    else:
+        filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
+
+    return [x[0] for x in filtered_exams]
 
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)
 def start_exam(
@@ -165,6 +193,9 @@ def submit_exam(
 @router.get("/{exam_id}/result", response_model=ExamResultRead)
 def get_exam_result(
     exam_id: uuid.UUID,
+    score_gte: Optional[float] = None,
+    score_lte: Optional[float] = None,
+    order_by: Optional[str] = None,
     db: Session = Depends(deps.get_db),
     current_user = Depends(deps.get_current_user)
 ):
@@ -219,6 +250,7 @@ def get_exam_result(
         
         p_score = latest_sub.score if latest_sub else 0
         p_status = latest_sub.status if latest_sub else "Unsubmitted"
+        p_finished_at = latest_sub.created_at if latest_sub else None
         
         accumulated_candidate_score += p_score
         
@@ -235,9 +267,34 @@ def get_exam_result(
                 sequence=ep.sequence,
                 max_points=ep.points,
                 candidate_score=p_score,
-                submission_status=p_status
+                submission_status=p_status,
+                finished_at=p_finished_at
             )
         )
+
+    # Python-side filtering & sorting for single exam problems
+    filtered_results = []
+    for r in problem_results:
+        pct = (r.candidate_score / r.max_points * 100.0) if r.max_points > 0 else 0.0
+        if score_gte is not None and pct < score_gte:
+            continue
+        if score_lte is not None and pct > score_lte:
+            continue
+        filtered_results.append(r)
+
+    if order_by:
+        if order_by == "finished_at":
+            filtered_results.sort(key=lambda x: (x.finished_at is None, x.finished_at))
+        elif order_by == "-finished_at":
+            filtered_results.sort(key=lambda x: (x.finished_at is None, x.finished_at), reverse=True)
+        elif order_by == "score":
+            filtered_results.sort(key=lambda x: x.candidate_score)
+        elif order_by == "-score":
+            filtered_results.sort(key=lambda x: x.candidate_score, reverse=True)
+        else:
+            filtered_results.sort(key=lambda x: x.sequence)
+    else:
+        filtered_results.sort(key=lambda x: x.sequence)
 
     return ExamResultRead(
         id=exam.id,
@@ -247,7 +304,7 @@ def get_exam_result(
         total_candidate_score=accumulated_candidate_score,
         start_time=exam.start_time,
         end_time=exam.end_time,
-        results=problem_results
+        results=filtered_results
     )
 
 @router.post("/", response_model=ExamRead, status_code=status.HTTP_201_CREATED)
