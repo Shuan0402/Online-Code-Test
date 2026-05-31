@@ -464,6 +464,14 @@ def publish_exam_session(
             detail="發布失敗！本場考試尚未配置任何實體題目，請先自動抽選題目。"
         )
 
+    expected_total = (exam.easy_count or 0) + (exam.medium_count or 0) + (exam.hard_count or 0)
+    actual_total = len(exam.exam_problems)
+    if actual_total < expected_total:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"發布失敗！本場考試設定題數為 {expected_total} 題，但目前僅配置 {actual_total} 題，題目數量不足。"
+        )
+
     exam.status = ExamStatus.Published
     db.commit()
     db.refresh(exam)

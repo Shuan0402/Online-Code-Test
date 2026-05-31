@@ -60,6 +60,8 @@ export default function ExamDetailPage() {
   const [problemBank, setProblemBank] = useState([])
   // 預覽中的題目 ID（picker dialog 內展開顯示完整 description）
   const [previewId, setPreviewId] = useState(null)
+  // 存放動態取得的題目描述
+  const [problemDescriptions, setProblemDescriptions] = useState({})
   const [bankLoading, setBankLoading] = useState(false)
   const [bankError, setBankError] = useState(null)
   // 正在加入中的 problem_id（int），防止重複點擊
@@ -167,6 +169,30 @@ export default function ExamDetailPage() {
       setBankError(err.response?.data?.detail ?? '載入題庫失敗，請稍後再試')
     } finally {
       setBankLoading(false)
+    }
+  }
+
+  // --- 切換預覽題目描述並動態加載 ---
+  const handleTogglePreview = async (problemId) => {
+    if (previewId === problemId) {
+      setPreviewId(null)
+      return
+    }
+    setPreviewId(problemId)
+    if (problemDescriptions[problemId] === undefined) {
+      try {
+        const res = await api.get(`/api/v1/problems/${problemId}`)
+        setProblemDescriptions((prev) => ({
+          ...prev,
+          [problemId]: res.data?.description || null,
+        }))
+      } catch (err) {
+        console.error('取得題目描述失敗：', err)
+        setProblemDescriptions((prev) => ({
+          ...prev,
+          [problemId]: null,
+        }))
+      }
     }
   }
 
@@ -425,10 +451,16 @@ export default function ExamDetailPage() {
           {saving ? '儲存中…' : '儲存設定'}
         </Button>
 
-        {/* 發佈考試（Draft 且有題目才啟用） */}
+        {/* 發佈考試（Draft 且題數足夠才啟用） */}
         <Button
           onClick={handlePublish}
-          disabled={!isDraft || exam.exam_problems.length === 0 || publishing}
+          disabled={
+            !isDraft ||
+            exam.exam_problems.length === 0 ||
+            exam.exam_problems.length <
+              ((exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0)) ||
+            publishing
+          }
         >
           {publishing ? '發佈中…' : '發佈考試'}
         </Button>
@@ -445,9 +477,18 @@ export default function ExamDetailPage() {
         </Button>
       </div>
 
+      {/* 題數不足提醒 */}
+      {isDraft &&
+        exam.exam_problems.length <
+          ((exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0)) && (
+          <p className="text-sm font-medium text-amber-600 mt-2">
+            ⚠️ 目前配置題目數量不足（設定 {((exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0))} 題，已配置 {exam.exam_problems.length} 題），暫不可發佈。
+          </p>
+        )}
+
       {/* 發佈錯誤 */}
       {publishError && (
-        <p className="text-sm font-medium text-destructive">{publishError}</p>
+        <p className="text-sm font-medium text-destructive mt-2">{publishError}</p>
       )}
 
       {/* 手動新增題目 Dialog */}
@@ -506,7 +547,7 @@ export default function ExamDetailPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setPreviewId(previewId === p.id ? null : p.id)}
+                            onClick={() => handleTogglePreview(p.id)}
                           >
                             {previewId === p.id ? '收合' : '預覽'}
                           </Button>
@@ -525,9 +566,13 @@ export default function ExamDetailPage() {
                       <tr className="border-t bg-muted/20">
                         <td colSpan={3} className="px-4 py-3">
                           <div className="prose prose-sm max-w-none text-sm">
-                            {p.description
-                              ? <ReactMarkdown>{p.description}</ReactMarkdown>
-                              : <p className="text-muted-foreground italic">（此題目沒有描述）</p>}
+                            {problemDescriptions[p.id] === undefined ? (
+                              <p className="text-muted-foreground italic animate-pulse">載入中…</p>
+                            ) : problemDescriptions[p.id] ? (
+                              <ReactMarkdown>{problemDescriptions[p.id]}</ReactMarkdown>
+                            ) : (
+                              <p className="text-muted-foreground italic">（此題目沒有描述）</p>
+                            )}
                           </div>
                         </td>
                       </tr>
