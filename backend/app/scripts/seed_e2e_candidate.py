@@ -48,7 +48,9 @@ def _get_any_questioner(db: Session) -> User:
 
 
 def _get_first_problem(db: Session) -> Problem:
-    p = db.query(Problem).order_by(Problem.id.asc()).first()
+    p = db.query(Problem).filter(Problem.title == "兩數相加 (demo)").first()
+    if not p:
+        p = db.query(Problem).order_by(Problem.id.asc()).first()
     if not p:
         sys.exit("DB 沒有任何題目，請先建一題。")
     return p
@@ -92,13 +94,8 @@ def _upsert_exam(
         exam.end_time = end_time
         action = "重置"
 
-    link = (
-        db.query(ExamProblem)
-        .filter(ExamProblem.exam_id == exam.id, ExamProblem.problem_id == problem_id)
-        .first()
-    )
-    if link is None:
-        db.add(ExamProblem(exam_id=exam.id, problem_id=problem_id, sequence=1, points=100))
+    db.query(ExamProblem).filter(ExamProblem.exam_id == exam.id).delete()
+    db.add(ExamProblem(exam_id=exam.id, problem_id=problem_id, sequence=1, points=100))
 
     db.commit()
     db.refresh(exam)

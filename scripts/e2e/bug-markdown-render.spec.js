@@ -14,7 +14,8 @@ test('Candidate 看到的題目敘述會渲染 Markdown（例如 inline code）'
   await page.getByRole('button', { name: '登入' }).click()
   await page.waitForURL('**/candidate/exams')
 
-  await page.getByRole('button', { name: '開始作答' }).first().click()
+  const card = page.locator('div.border.rounded-lg').filter({ hasText: 'E2E 進行中考試' })
+  await card.getByRole('button', { name: '開始作答' }).click()
   await page.getByRole('button', { name: '確認開始' }).click()
   await page.waitForURL('**/candidate/exams/*/take')
 

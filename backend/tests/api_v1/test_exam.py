@@ -963,3 +963,56 @@ def test_get_exam_result_filters_and_sorting(client, db_session, candidate_user,
     assert len(data["results"]) == 2
     assert data["results"][0]["problem_id"] == prob2.id
     assert data["results"][1]["problem_id"] == prob1.id
+
+
+def test_start_exam_not_found(client, candidate_user, override_auth):
+    override_auth(candidate_user)
+    response = client.post(f"/api/v1/exams/{uuid.uuid4()}/start")
+    assert response.status_code == 404
+    assert "找不到指定的考試項目" in response.json()["detail"]
+
+
+def test_start_exam_unauthorized_candidate(client, candidate_user, override_auth, create_test_exam, create_test_user):
+    other_candidate = create_test_user(role=UserRole.Candidate)
+    exam = create_test_exam(candidate_id=other_candidate.id, status=ExamStatus.Published)
+    
+    override_auth(candidate_user)
+    response = client.post(f"/api/v1/exams/{exam.id}/start")
+    assert response.status_code == 403
+    assert "您無權參與此場考試" in response.json()["detail"]
+
+
+def test_start_exam_draft_blocked(client, candidate_user, override_auth, create_test_exam):
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Draft)
+    
+    override_auth(candidate_user)
+    response = client.post(f"/api/v1/exams/{exam.id}/start")
+    assert response.status_code == 400
+    assert "該場考試尚未對外發布" in response.json()["detail"]
+
+
+def test_start_exam_finished_blocked(client, candidate_user, override_auth, create_test_exam):
+    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Finished)
+    
+    override_auth(candidate_user)
+    response = client.post(f"/api/v1/exams/{exam.id}/start")
+    assert response.status_code == 400
+    assert "您已完成本場考試" in response.json()["detail"]
+
+
+def test_get_exams_list_filtering_and_sorting(client, interviewer_user, override_auth, create_test_exam, create_test_user, db_session):
+    override_auth(interviewer_user)
+    candidate1 = create_test_user(role=UserRole.Candidate)
+    candidate2 = create_test_user(role=UserRole.Candidate)
+    
+    exam1 = create_test_exam(title="Exam 1", candidate_id=candidate1.id, status=ExamStatus.Finished)
+    exam2 = create_test_exam(title="Exam 2", candidate_id=candidate2.id, status=ExamStatus.Finished)
+    
+    exam1.end_time = datetime.now(timezone.utc) - timedelta(hours=1)
+    exam2.end_time = datetime.now(timezone.utc)
+    db_session.commit()
+
+    # Query with sorting
+    for sort_param in ["finished_at", "-finished_at", "score", "-score", "invalid_sort"]:
+        response = client.get(f"/api/v1/exams/?order_by={sort_param}")
+        assert response.status_code == 200

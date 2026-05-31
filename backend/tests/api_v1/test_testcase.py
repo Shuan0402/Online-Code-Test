@@ -238,3 +238,24 @@ def test_rejudge_candidate_permission_blocked(client, candidate_user, override_a
     response = client.post(f"/api/v1/problems/{prob.id}/rejudge")
     
     assert response.status_code == 403
+
+
+def test_update_testcase_not_found(client, questioner_user, override_auth):
+    """
+    修改不存在的測試資料應回傳 404。
+    """
+    override_auth(questioner_user)
+    payload = {"input_data": "NEW_INPUT"}
+    response = client.patch("/api/v1/testcases/999999", json=payload)
+    assert response.status_code == 404
+    assert "找不到該筆測試資料" in response.json()["detail"]
+
+
+def test_delete_testcase_not_found(client, questioner_user, override_auth):
+    """
+    刪除不存在的測試資料應回傳 404。
+    """
+    override_auth(questioner_user)
+    response = client.delete("/api/v1/testcases/999999")
+    assert response.status_code == 404
+    assert "找不到該筆測試資料" in response.json()["detail"]

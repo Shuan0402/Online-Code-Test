@@ -360,9 +360,23 @@ def test_decide_case_verdict_cpp_exit_100_is_ce():
 
 
 def test_decide_case_verdict_python_exit_100_is_re():
-    """exit 100 對 python 是 RE、不是 CE（python 沒編譯階段）。"""
+    """exit 100 對 python 且無語法錯誤時是 RE、不是 CE。"""
     result = _make_completed_run(stdout="", exit_code=100)
     assert worker.decide_case_verdict(result, "anything", "python") == "RE"
+
+
+def test_decide_case_verdict_python_syntax_errors_is_ce():
+    # SyntaxError
+    r1 = _make_completed_run(stdout="", stderr="SyntaxError: invalid syntax", exit_code=1)
+    assert worker.decide_case_verdict(r1, "anything", "python") == "CE"
+
+    # IndentationError
+    r2 = _make_completed_run(stdout="", stderr="IndentationError: expected an indented block", exit_code=1)
+    assert worker.decide_case_verdict(r2, "anything", "python") == "CE"
+
+    # TabError
+    r3 = _make_completed_run(stdout="", stderr="TabError: inconsistent use of tabs", exit_code=1)
+    assert worker.decide_case_verdict(r3, "anything", "python") == "CE"
 
 
 def test_decide_case_verdict_nonzero_exit_is_re():
@@ -378,3 +392,9 @@ def test_decide_case_verdict_stdout_mismatch_is_wa():
 def test_decide_case_verdict_match_is_ac():
     result = _make_completed_run(stdout="3\n", exit_code=0)
     assert worker.decide_case_verdict(result, "3\n", "python") == "AC"
+
+
+def test_decide_case_verdict_exit_137_is_mle():
+    result = _make_completed_run(stdout="", exit_code=137)
+    assert worker.decide_case_verdict(result, "anything", "python") == "MLE"
+    assert worker.decide_case_verdict(result, "anything", "cpp") == "MLE"

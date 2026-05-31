@@ -165,3 +165,39 @@ def test_ensure_bucket_soft_fails_on_create_error(storage_with_mock_client):
 
     # Must not raise
     s.ensure_bucket()
+
+
+def test_storage_bucket_property(storage_with_mock_client):
+    s = storage_with_mock_client
+    assert s.bucket == "octest-submissions"
+
+
+def test_ensure_bucket_head_fails_other_code(storage_with_mock_client):
+    s = storage_with_mock_client
+    s._client.head_bucket.side_effect = ClientError(
+        {"Error": {"Code": "403", "Message": "Forbidden"}}, "HeadBucket"
+    )
+    s.ensure_bucket()
+
+
+def test_upload_source_client_error(storage_with_mock_client):
+    s = storage_with_mock_client
+    s._client.put_object.side_effect = ClientError(
+        {"Error": {"Code": "AccessDenied", "Message": "denied"}}, "PutObject"
+    )
+    with pytest.raises(ClientError):
+        s.upload_source(uuid.uuid4(), "print(1)", "python")
+
+
+def test_upload_source_general_exception(storage_with_mock_client):
+    s = storage_with_mock_client
+    s._client.put_object.side_effect = Exception("General network collapse")
+    with pytest.raises(Exception, match="General network collapse"):
+        s.upload_source(uuid.uuid4(), "print(1)", "python")
+
+
+def test_sign_get_url_general_exception(storage_with_mock_client):
+    s = storage_with_mock_client
+    s._client.generate_presigned_url.side_effect = Exception("HMAC fail")
+    with pytest.raises(Exception, match="HMAC fail"):
+        s.sign_get_url("abc.py")
