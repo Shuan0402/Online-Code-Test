@@ -10,6 +10,7 @@ from app.models.exam import Exam, ExamProblem
 from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
+from app.models.testcase import TestCase
 from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
@@ -22,8 +23,11 @@ router = APIRouter()
 def get_candidate_exams(
     db: Session = Depends(deps.get_db),
     candidate_id: Optional[uuid.UUID] = None,
+    mine: Optional[bool] = None,
     score_gte: Optional[float] = None,
     score_lte: Optional[float] = None,
+    created_start: Optional[str] = None,
+    created_end: Optional[str] = None,
     order_by: Optional[str] = None,
     current_user = Depends(deps.get_current_user)
 ):
@@ -42,6 +46,31 @@ def get_candidate_exams(
         if candidate_id:
             query = query.filter(Exam.candidate_id == candidate_id)
             
+        if mine:
+            query = query.filter(Exam.creator_id == current_user.id)
+            
+        if created_start:
+            try:
+                start_dt = datetime.fromisoformat(created_start).replace(tzinfo=timezone.utc)
+            except ValueError:
+                try:
+                    start_dt = datetime.strptime(created_start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    start_dt = None
+            if start_dt:
+                query = query.filter(Exam.created_at >= start_dt)
+
+        if created_end:
+            try:
+                end_dt = datetime.fromisoformat(created_end).replace(tzinfo=timezone.utc)
+            except ValueError:
+                try:
+                    end_dt = datetime.strptime(created_end, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                except ValueError:
+                    end_dt = None
+            if end_dt:
+                query = query.filter(Exam.created_at <= end_dt)
+
         exams = query.all()
         
     else:
@@ -60,7 +89,12 @@ def get_candidate_exams(
     # Python-side filtering & sorting for percentage range and finished_at
     filtered_exams = []
     for exam in exams:
-        total_points = sum(ep.points for ep in exam.exam_problems)
+        total_points = 0
+        for ep in exam.exam_problems:
+            total_tc_weight = db.query(func.sum(TestCase.score_weight)).filter(TestCase.problem_id == ep.problem_id).scalar() or 0
+            if total_tc_weight == 0:
+                total_tc_weight = ep.points
+            total_points += total_tc_weight
         pct = (exam.score / total_points * 100.0) if total_points > 0 else 0.0
         
         if score_gte is not None and pct < score_gte:
@@ -236,7 +270,10 @@ def get_exam_result(
     accumulated_candidate_score = 0
 
     for ep in exam.exam_problems:
-        accumulated_exam_points += ep.points
+        total_tc_weight = db.query(func.sum(TestCase.score_weight)).filter(TestCase.problem_id == ep.problem_id).scalar() or 0
+        if total_tc_weight == 0:
+            total_tc_weight = ep.points
+        accumulated_exam_points += total_tc_weight
         
         latest_sub = (
             db.query(Submission)
@@ -266,7 +303,7 @@ def get_exam_result(
                 problem_id=ep.problem_id,
                 title=p_title,
                 sequence=ep.sequence,
-                max_points=ep.points,
+                max_points=total_tc_weight,
                 candidate_score=p_score,
                 submission_status=p_status,
                 finished_at=p_finished_at
