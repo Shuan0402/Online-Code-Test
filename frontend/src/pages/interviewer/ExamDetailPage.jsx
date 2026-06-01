@@ -242,6 +242,20 @@ export default function ExamDetailPage() {
     }
   }
 
+  // --- 移除題目 ---
+  const handleRemoveProblem = async (problemId) => {
+    if (!isDraft) return
+    try {
+      await api.delete(`/api/v1/exams/${id}/problems/${problemId}`)
+      setExam((prev) => ({
+        ...prev,
+        exam_problems: prev.exam_problems.filter((ep) => ep.problem_id !== problemId),
+      }))
+    } catch (err) {
+      alert(err.response?.data?.detail ?? '移除題目失敗，請稍後再試')
+    }
+  }
+
   // --- 發佈考試 ---
   const handlePublish = async () => {
     if (!isDraft) return
@@ -399,9 +413,7 @@ export default function ExamDetailPage() {
                 <th className="px-4 py-3 text-left font-medium">題目名稱</th>
                 <th className="px-4 py-3 text-left font-medium w-24">難度</th>
                 <th className="px-4 py-3 text-left font-medium w-20">配分</th>
-                {!isDraft && (
-                  <th className="px-4 py-3 text-left font-medium w-24">操作</th>
-                )}
+                <th className="px-4 py-3 text-left font-medium w-24">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -424,15 +436,23 @@ export default function ExamDetailPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">{problem.points}</td>
-                  {!isDraft && (
-                    <td className="px-4 py-3">
+                  <td className="px-4 py-3">
+                    {isDraft ? (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRemoveProblem(problem.problem_id)}
+                      >
+                        移除
+                      </Button>
+                    ) : (
                       <Button variant="outline" size="sm" asChild>
                         <Link to={`/interviewer/exams/${id}/problems/${problem.problem_id}`}>
                           查看提交
                         </Link>
                       </Button>
-                    </td>
-                  )}
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
