@@ -16,9 +16,7 @@ export default function ExamResultPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // 篩選與排序狀態
-  const [scoreGte, setScoreGte] = useState('')
-  const [scoreLte, setScoreLte] = useState('')
+  // 排序狀態
   const [orderBy, setOrderBy] = useState('')
 
   useEffect(() => {
@@ -28,8 +26,6 @@ export default function ExamResultPage() {
       setError(null)
       try {
         const params = {}
-        if (scoreGte !== '') params.score_gte = Number(scoreGte)
-        if (scoreLte !== '') params.score_lte = Number(scoreLte)
         if (orderBy !== '') params.order_by = orderBy
 
         const res = await api.get(`/api/v1/exams/${id}/result`, { params })
@@ -43,7 +39,7 @@ export default function ExamResultPage() {
     }
     loadResult()
     return () => { cancelled = true }
-  }, [id, scoreGte, scoreLte, orderBy])
+  }, [id, orderBy])
 
   if (loading && !result) {
     return (
@@ -92,35 +88,8 @@ export default function ExamResultPage() {
         </p>
       </div>
 
-      {/* 篩選與排序控制項 */}
+      {/* 排序控制項 */}
       <div className="flex flex-wrap items-center gap-4 p-4 rounded-lg border bg-muted/20 text-sm">
-        <div className="flex items-center gap-2">
-          <label htmlFor="score-gte" className="font-medium text-muted-foreground">
-            分數區間 (%)：
-          </label>
-          <input
-            id="score-gte"
-            type="number"
-            min="0"
-            max="100"
-            placeholder="最小 %"
-            value={scoreGte}
-            onChange={(e) => setScoreGte(e.target.value)}
-            className="w-20 rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <span className="text-muted-foreground">～</span>
-          <input
-            id="score-lte"
-            type="number"
-            min="0"
-            max="100"
-            placeholder="最大 %"
-            value={scoreLte}
-            onChange={(e) => setScoreLte(e.target.value)}
-            className="w-20 rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
-
         <div className="flex items-center gap-2">
           <label htmlFor="order-by" className="font-medium text-muted-foreground">
             排序依據：
@@ -138,19 +107,6 @@ export default function ExamResultPage() {
             <option value="-score">得分 (由高到低)</option>
           </select>
         </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setScoreGte('')
-            setScoreLte('')
-            setOrderBy('')
-          }}
-          className="ml-auto text-xs"
-        >
-          重設篩選
-        </Button>
       </div>
 
       {/* 每題結果 */}
