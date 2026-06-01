@@ -131,12 +131,17 @@ def run_official(
     testcases: list,
     time_limit_ms: int,
     submission_id: str,
+    fail_fast: bool = True,
 ) -> tuple[list, str, int]:
-    """跑 OFFICIAL submission 的所有 testcases、fail-fast。
+    """跑 submission 的所有 testcases。
+
+    Args:
+        fail_fast: True（OFFICIAL 預設）→ 任一 testcase 非 AC 立刻中斷後續；
+                   False（RUN_ONLY 試跑）→ 全部跑完再回，讓考生看完整 testcase 表
 
     Returns:
         (per_testcase, judge_log, max_exec_ms)
-        per_testcase: list[{"testcase_id", "case_verdict", "exec_time_ms"}]
+        per_testcase: list[{"testcase_id", "case_verdict", "exec_time_ms", "runtime_info"}]
                       fail-fast 後只含跑過的 testcases（含 fail 那筆）
         judge_log:    所有 testcase 的 stderr 串起來（"[tc <id>] <stderr>"）
         max_exec_ms:  跑過的 testcase 中最慢的 exec_time_ms（給合約 3 的 exec_time_ms）
@@ -203,7 +208,7 @@ def run_official(
             }
         )
 
-        if case_verdict != "AC":
+        if case_verdict != "AC" and fail_fast:
             log.warning(
                 f"觸發 Fail-fast 機制：Testcase {tc['testcase_id']} 產生非 AC 結果 ({case_verdict})，中斷後續評測。[SubmissionID: {submission_id}]",
                 extra={"submission_id": submission_id, "final_verdict": case_verdict, "action": "fail_fast_break"}
@@ -308,6 +313,8 @@ def process_submission(
 
     try:
         source = fetch_source(http, msg["presigned_url"])
+        # RUN_ONLY 試跑：不 fail-fast、全部 testcase 都跑完，讓考生看完整明細
+        is_run_only = msg.get("submission_type") == "RUN_ONLY"
         per_testcase, judge_log, max_exec_ms = run_official(
             spawner=spawner,
             source=source,
@@ -315,6 +322,7 @@ def process_submission(
             testcases=msg["testcases"],
             time_limit_ms=msg["time_limit_ms"],
             submission_id=sub_id,
+            fail_fast=not is_run_only,
         )
     except Exception as e:
         # L1/L2 任何錯 → failure callback（不分 exception class、senior audit 砍掉）
@@ -379,9 +387,9 @@ def consume_once(
     sub_id = msg.get("submission_id", "?")
     sub_type = msg.get("submission_type")
 
-    # RUN_ONLY: backend `POST /submissions` 應已 reject、不該到 queue；這裡是 fallback
-    # （合約 5a）。不送 failure callback——backend 已決定這 submission 不該存在判題流程
-    if sub_type != "OFFICIAL":
+    # OFFICIAL / RUN_ONLY 都會走 process_submission（差別只在 fail-fast 開不開）；
+    # 其他未知 type 才直接 ACK，避免把意外訊息送進評測管線。
+    if sub_type not in ("OFFICIAL", "RUN_ONLY"):
         log.warning(
             f"sub={sub_id}: submission_type={sub_type!r} not supported, ACK without callback "
             f"(backend should reject before queue)",

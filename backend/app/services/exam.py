@@ -11,17 +11,19 @@ class ExamService:
         """
         考場總分實時刷新函數：一場考試的總分，等於該場考試中「每道題目」「最後一次繳交」的分數之總和。
         """
+        # 只算 OFFICIAL 正式繳交、不算 RUN_ONLY 試跑；不然試跑的 0 分會蓋掉真正的 OFFICIAL 分數
         score_query = db.execute(
             text("""
                 SELECT COALESCE(SUM(score), 0) as total_exam_score
                 FROM (
                     SELECT score,
                            ROW_NUMBER() OVER (
-                               PARTITION BY problem_id 
+                               PARTITION BY problem_id
                                ORDER BY created_at DESC
                            ) as rn
                       FROM submissions
                      WHERE exam_id = :exam_id
+                       AND submission_type = 'OFFICIAL'
                 ) as subquery
                 WHERE rn = 1
             """),

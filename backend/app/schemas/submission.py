@@ -19,14 +19,15 @@ class SubmissionCreate(BaseModel):
     exam_id: Optional[UUID] = None
     language: str = Field(..., json_schema_extra={"example": "python"})
     source_code: str = Field(..., json_schema_extra={"example": "print('Hello World')"})
-    submission_type: str = Field("OFFICIAL", description="必須為 OFFICIAL")
+    submission_type: str = Field("OFFICIAL", description="OFFICIAL（正式繳交、計分）或 RUN_ONLY（試跑、不計分）")
 
     @field_validator("submission_type")
     @classmethod
     def validate_submission_type(cls, v: str) -> str:
-        if v.upper() == "RUN_ONLY":
-            raise ValueError("此版本尚未支援 'RUN_ONLY' 運行模式，請使用 'OFFICIAL' 繳交。")
-        return v.upper()
+        up = v.upper()
+        if up not in ("OFFICIAL", "RUN_ONLY"):
+            raise ValueError(f"submission_type 僅支援 OFFICIAL 或 RUN_ONLY，得到 {v!r}")
+        return up
     
     @field_validator("language")
     @classmethod

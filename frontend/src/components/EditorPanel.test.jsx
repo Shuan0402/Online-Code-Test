@@ -313,4 +313,59 @@ describe('EditorPanel', () => {
 
     expect(onSubmitSpy).toHaveBeenCalledWith('my code', 'python')
   })
+
+  // ── RUN_ONLY 試跑按鈕（共用 EditorPanel）─────────────────────────────────────
+  it('RUN_ONLY：onRunOnly 沒帶時不顯示試跑按鈕（向後相容）', () => {
+    render(
+      <EditorPanel examId={EXAM_ID} problemId={PROBLEM_ID} onSubmit={vi.fn()} submitting={false} />
+    )
+    expect(screen.queryByRole('button', { name: '試跑' })).toBeNull()
+  })
+
+  it('RUN_ONLY：onRunOnly 帶入時顯示試跑按鈕、點擊 callback 被呼叫', () => {
+    const onRunOnlySpy = vi.fn()
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={vi.fn()}
+        onRunOnly={onRunOnlySpy}
+        submitting={false}
+      />
+    )
+    const textarea = screen.getByTestId('monaco-stub')
+    fireEvent.change(textarea, { target: { value: 'print(1)' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '試跑' }))
+    expect(onRunOnlySpy).toHaveBeenCalledWith('print(1)', 'python')
+  })
+
+  it('RUN_ONLY：runOnlyRunning=true 時試跑按鈕變「試跑中…」且 disable', () => {
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={vi.fn()}
+        onRunOnly={vi.fn()}
+        submitting={false}
+        runOnlyRunning={true}
+      />
+    )
+    const btn = screen.getByRole('button', { name: '試跑中…' })
+    expect(btn).toBeDisabled()
+  })
+
+  it('RUN_ONLY：runOnlyRunning=true 時連帶把「提交本題」也 disable（避免雙開）', () => {
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={vi.fn()}
+        onRunOnly={vi.fn()}
+        submitting={false}
+        runOnlyRunning={true}
+      />
+    )
+    expect(screen.getByRole('button', { name: '提交本題' })).toBeDisabled()
+  })
 })

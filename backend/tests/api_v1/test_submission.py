@@ -73,25 +73,6 @@ def test_create_submission_exam_ongoing_success(mock_push, client, candidate_use
         client.app.dependency_overrides.clear()
 
 
-def test_create_submission_reject_run_only(client, candidate_user, override_auth, create_test_problem):
-    """
-    測試合約防線：拒絕 RUN_ONLY
-    """
-    override_auth(candidate_user)
-    problem = create_test_problem()
-
-    payload = {
-        "problem_id": problem.id,
-        "language": "python",
-        "source_code": "print('Run Only')",
-        "submission_type": SubmissionType.RUN_ONLY,
-        "exam_id": str(uuid.uuid4())
-    }
-    response = client.post("/api/v1/submissions/", json=payload)
-
-    assert response.status_code == 422
-    assert "submission_type" in response.text
-
 def test_create_submission_reject_unsupported_language(client, candidate_user, override_auth, create_test_problem):
     """
     測試合約防線：拒絕不支援的程式語言 (非 python/cpp)
@@ -523,38 +504,6 @@ def test_create_submission_queue_push_failed(mock_push, client, candidate_user, 
     client.app.dependency_overrides.clear()
 
 
-def test_create_submission_run_only_direct(db_session, candidate_user, create_test_problem, create_test_exam):
-    from app.api.api_v1.endpoints.submission import create_submission
-    from app.schemas.submission import SubmissionCreate
-
-    prob = create_test_problem()
-    exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
-    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
-    db_session.add(ep)
-    db_session.commit()
-
-    payload = MagicMock(spec=SubmissionCreate)
-    payload.problem_id = prob.id
-    payload.exam_id = exam.id
-    payload.language = "python"
-    payload.submission_type = "RUN_ONLY"
-
-    request = MagicMock()
-    request.headers = {}
-    request.client = MagicMock()
-    request.client.host = "127.0.0.1"
-
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        create_submission(
-            payload=payload,
-            request=request,
-            db=db_session,
-            current_user=candidate_user,
-            storage_service=MagicMock()
-        )
-    assert exc_info.value.status_code == 400
-    assert "不開放 RUN_ONLY 測試" in exc_info.value.detail
 
 
 # === Bug 1 + 2 backend regression tests ============================================
@@ -663,6 +612,156 @@ def test_get_submission_by_id_masks_hidden_testcase_runtime_info_for_candidate(
     runtime_infos = [d["runtime_info"] for d in details]
     assert any(r and "Expected: 7" in r for r in runtime_infos), "sample 測資 runtime_info 應保留"
     assert None in runtime_infos, "hidden 測資 runtime_info 必須被 mask 成 null"
+
+
+# === RUN_ONLY 試跑機制（accept + cooldown + 不污染 OFFICIAL）======================
+
+
+def test_create_submission_run_only_accepted_in_ongoing_exam(
+    client, candidate_user, override_auth, create_test_problem, create_test_exam, db_session
+):
+    """
+    RUN_ONLY 試跑：考試 Ongoing + 帶 exam_id → 202 Accepted（不再被 reject）。
+    """
+    from unittest.mock import patch as _patch
+    problem = create_test_problem()
+    exam = create_test_exam(
+        status=ExamStatus.Ongoing,
+        candidate_id=candidate_user.id,
+    )
+    db_session.add(ExamProblem(exam_id=exam.id, problem_id=problem.id, sequence=1, points=100))
+    db_session.commit()
+
+    override_auth(candidate_user)
+    with _patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=True):
+        res = client.post(
+            "/api/v1/submissions/",
+            json={
+                "problem_id": problem.id,
+                "exam_id": str(exam.id),
+                "language": "python",
+                "source_code": "print('hi')",
+                "submission_type": "RUN_ONLY",
+            },
+        )
+    assert res.status_code == 202, res.text
+    assert res.json()["submission_type"] == "RUN_ONLY"
+
+
+def test_create_submission_run_only_requires_exam_id(
+    client, candidate_user, override_auth, create_test_problem
+):
+    """
+    RUN_ONLY 試跑：沒帶 exam_id → 400。
+    （exam_id 是 POST /submissions 共用守則、不分 OFFICIAL/RUN_ONLY）
+    """
+    problem = create_test_problem()
+    override_auth(candidate_user)
+
+    res = client.post(
+        "/api/v1/submissions/",
+        json={
+            "problem_id": problem.id,
+            "language": "python",
+            "source_code": "print(1)",
+            "submission_type": "RUN_ONLY",
+        },
+    )
+    assert res.status_code == 400
+    assert "exam_id" in res.json()["detail"] or "考試場次" in res.json()["detail"]
+
+
+def test_create_submission_run_only_cooldown_429(
+    client, candidate_user, override_auth, create_test_problem, create_test_exam, db_session
+):
+    """
+    RUN_ONLY 試跑：5 秒內第二次同 user+同題 → 429 + Retry-After header。
+    """
+    from unittest.mock import patch as _patch
+    from app.services.queue_manager import queue_manager
+    problem = create_test_problem()
+    exam = create_test_exam(status=ExamStatus.Ongoing, candidate_id=candidate_user.id)
+    db_session.add(ExamProblem(exam_id=exam.id, problem_id=problem.id, sequence=1, points=100))
+    db_session.commit()
+    # 先把潛在殘留 cooldown 清掉（其他測試可能塞過）
+    queue_manager.client.delete(f"runonly:cd:{candidate_user.id}:{problem.id}")
+
+    override_auth(candidate_user)
+    payload = {
+        "problem_id": problem.id,
+        "exam_id": str(exam.id),
+        "language": "python",
+        "source_code": "print(1)",
+        "submission_type": "RUN_ONLY",
+    }
+    with _patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=True):
+        first = client.post("/api/v1/submissions/", json=payload)
+        second = client.post("/api/v1/submissions/", json=payload)
+    assert first.status_code == 202
+    assert second.status_code == 429
+    assert "太頻繁" in second.json()["detail"]
+    assert second.headers.get("Retry-After") is not None
+
+
+def test_create_submission_official_not_blocked_by_run_only_cooldown(
+    client, candidate_user, override_auth, create_test_problem, create_test_exam, db_session
+):
+    """
+    cooldown 只影響 RUN_ONLY；OFFICIAL 正式繳交應該不受影響（不會被擋）。
+    """
+    from unittest.mock import patch as _patch
+    from app.services.queue_manager import queue_manager
+    problem = create_test_problem()
+    exam = create_test_exam(status=ExamStatus.Ongoing, candidate_id=candidate_user.id)
+    db_session.add(ExamProblem(exam_id=exam.id, problem_id=problem.id, sequence=1, points=100))
+    db_session.commit()
+    queue_manager.client.delete(f"runonly:cd:{candidate_user.id}:{problem.id}")
+
+    override_auth(candidate_user)
+    base = {
+        "problem_id": problem.id,
+        "exam_id": str(exam.id),
+        "language": "python",
+        "source_code": "print(1)",
+    }
+    with _patch("app.services.queue_manager.queue_manager.push_to_queue", return_value=True):
+        run_only = client.post(
+            "/api/v1/submissions/",
+            json={**base, "submission_type": "RUN_ONLY"},
+        )
+        official = client.post(
+            "/api/v1/submissions/",
+            json={**base, "submission_type": "OFFICIAL"},
+        )
+    assert run_only.status_code == 202
+    assert official.status_code == 202, official.text
+
+
+def test_get_latest_submission_excludes_run_only(
+    client, db_session, candidate_user, override_auth, create_test_problem
+):
+    """
+    /submissions/latest 只回 OFFICIAL：候選人試跑後又正式提交、latest 必為 OFFICIAL；
+    若只有試跑、無 OFFICIAL → 404。
+    """
+    problem = create_test_problem()
+
+    # 只塞一筆 RUN_ONLY，看 /latest 該 404
+    run_only_sub = Submission(
+        user_id=candidate_user.id,
+        problem_id=problem.id,
+        language="python",
+        code_s3_url="s3://x",
+        status=JudgeStatus.AC,
+        score=0,
+        submission_type="RUN_ONLY",
+    )
+    db_session.add(run_only_sub)
+    db_session.commit()
+
+    override_auth(candidate_user)
+    res = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}")
+    assert res.status_code == 404
 
 
 def test_get_submission_by_id_interviewer_sees_all_runtime_info_unmasked(
