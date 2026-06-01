@@ -59,6 +59,9 @@ export default function TakeExamPage() {
   // ── 評測狀態：{ [problemId]: statusStr } ────────────────────────────────────
   const [statuses, setStatuses] = useState({})
 
+  // ── 最新提交完整結果：{ [problemId]: SubmissionRead } ──────────────────────────
+  const [lastResults, setLastResults] = useState({})
+
   // ── 輪詢管理：{ [problemId]: submissionId | null } ───────────────────────────
   const [pollingIds, setPollingIds] = useState({}) // problemId → submissionId
 
@@ -118,13 +121,15 @@ export default function TakeExamPage() {
   //    Use a flat registry approach — store submissionId per problem slot.
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // 輪詢回呼：更新評測狀態，若終止就清 pending key
+  // 輪詢回呼：更新評測狀態，若終止就清 pending key 並儲存完整結果
   const handlePollResult = useCallback((problemId) => (data) => {
     setStatuses((prev) => ({ ...prev, [problemId]: data.status }))
     const terminal = data.status !== 'Pending' && data.status !== 'Judging'
     if (terminal) {
       localStorage.removeItem(`pending:${problemId}`)
       setPollingIds((prev) => ({ ...prev, [problemId]: null }))
+      // 儲存完整 SubmissionRead（含 details.runtime_info）
+      setLastResults((prev) => ({ ...prev, [problemId]: data }))
     }
   }, [])
 
@@ -284,8 +289,8 @@ export default function TakeExamPage() {
             />
           </div>
 
-          {/* 右：編輯器 */}
-          <div className="flex-1 min-w-0">
+          {/* 右：編輯器 + 提交結果 */}
+          <div className="flex-1 min-w-0 flex flex-col min-h-0">
             <EditorPanel
               ref={editorRef}
               examId={examId}
@@ -293,6 +298,8 @@ export default function TakeExamPage() {
               onSubmit={(code, lang) => handleSubmit(activeProblem.problem_id, code, lang)}
               submitting={!!submittingPids[activeProblem.problem_id]}
             />
+            {/* 提交後 testcase 詳情（只顯示最新一次提交的結果） */}
+            <SubmissionResultPanel result={lastResults[activeProblem.problem_id]} />
           </div>
         </div>
       ) : (
@@ -321,6 +328,70 @@ export default function TakeExamPage() {
         onClose={() => setShowFinalize(false)}
         onDone={() => navigate(`/candidate/exams/${examId}/result`)}
       />
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SubmissionResultPanel — 顯示最新一次提交的 testcase 詳情（含 runtime_info）
+// ─────────────────────────────────────────────────────────────────────────────
+function SubmissionResultPanel({ result }) {
+  if (!result) return null
+
+  const details = result.details ?? []
+  if (details.length === 0) return null
+
+  return (
+    <div className="border-t bg-muted/5 shrink-0 overflow-y-auto max-h-56">
+      <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground border-b bg-muted/10">
+        最新提交 Testcase 明細
+      </p>
+      <table className="w-full text-xs">
+        <thead className="bg-muted/20 text-muted-foreground">
+          <tr>
+            <th className="px-3 py-1.5 text-left font-medium w-16">Testcase</th>
+            <th className="px-3 py-1.5 text-left font-medium w-20">結果</th>
+            <th className="px-3 py-1.5 text-right font-medium w-20">耗時</th>
+            <th className="px-3 py-1.5 text-left font-medium">詳細資訊</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {details.map((d, idx) => (
+            <tr key={d.id ?? idx}>
+              <td className="px-3 py-1.5 text-muted-foreground">#{idx + 1}</td>
+              <td className="px-3 py-1.5">
+                <span
+                  className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${
+                    STATUS_VARIANT[d.status] ?? STATUS_VARIANT.Unsubmitted
+                  }`}
+                >
+                  {STATUS_LABEL[d.status] ?? d.status}
+                </span>
+              </td>
+              <td className="px-3 py-1.5 text-right">
+                {d.execution_time != null ? `${d.execution_time} ms` : '—'}
+              </td>
+              <td className="px-3 py-1.5">
+                {d.runtime_info ? (
+                  <pre className="whitespace-pre-wrap break-all bg-muted/30 rounded px-2 py-1 max-h-20 overflow-y-auto text-xs">
+                    {d.runtime_info}
+                  </pre>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {result.failure_reason && (
+        <div className="px-3 py-2 border-t">
+          <p className="text-xs font-medium text-muted-foreground mb-1">系統錯誤訊息：</p>
+          <pre className="text-xs whitespace-pre-wrap break-all bg-muted/20 rounded px-2 py-1 max-h-24 overflow-y-auto">
+            {result.failure_reason}
+          </pre>
+        </div>
+      )}
     </div>
   )
 }
