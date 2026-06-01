@@ -28,6 +28,7 @@ def storage_with_mock_client():
         expires_sec=600,
     )
     s._client = MagicMock()
+    s._signing_client = s._client
     return s
 
 
