@@ -29,19 +29,19 @@ const DEFAULT_CODE = {
 // forwardRef so TakeExamPage can call editorRef.current.flushDraft() synchronously
 // before changing the active problem index, preventing draft loss on rapid tab switch.
 const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmit, submitting }, ref) {
-  const draftKey = `draft:exam:${examId}:problem:${problemId}`
-
-  // 從 localStorage 取草稿，沒有就用預設程式碼
-  const getInitialCode = (lang) => {
-    const saved = localStorage.getItem(draftKey)
-    return saved ?? DEFAULT_CODE[lang]
-  }
+  // Bug 5：每個語言各存自己的 draft，切語言時保留 Python 寫到一半的內容、
+  // 也不會把 Python 註解 / code 帶到 C++ 視窗。
+  const draftKeyFor = (lang) => `draft:exam:${examId}:problem:${problemId}:lang:${lang}`
 
   const [language, setLanguage] = useState('python')
-  const [code, setCode] = useState(() => getInitialCode('python'))
+  const [code, setCode] = useState(
+    () => localStorage.getItem(draftKeyFor('python')) ?? DEFAULT_CODE.python
+  )
   const debounceRef = useRef(null)
   // codeRef always has the latest code for synchronous flush (avoids stale closure)
   const codeRef = useRef(code)
+  // langRef 同上，確保 flushDraft 與 unmount cleanup 用到對的 key
+  const langRef = useRef(language)
 
   // Expose flushDraft() so the parent can synchronously persist the current
   // editor contents to localStorage before switching to another problem tab.
@@ -51,37 +51,43 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
         clearTimeout(debounceRef.current)
         debounceRef.current = null
       }
-      localStorage.setItem(draftKey, codeRef.current)
+      localStorage.setItem(draftKeyFor(langRef.current), codeRef.current)
     },
   }))
 
-  // 切換 problemId 或 examId 時重新載入草稿
+  // 切換 problemId 或 examId 時重新載入該題目 + 該語言的草稿
   useEffect(() => {
-    const saved = localStorage.getItem(draftKey)
+    const saved = localStorage.getItem(draftKeyFor(language))
     const loaded = saved ?? DEFAULT_CODE[language]
     setCode(loaded)
     codeRef.current = loaded
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey])
+  }, [examId, problemId])
 
   const handleCodeChange = (value) => {
     const newCode = value ?? ''
     setCode(newCode)
     codeRef.current = newCode
-    // 防抖 1 秒後寫入 localStorage
+    // 防抖 1 秒後寫入 localStorage（key 是「當下語言」）
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    const keyAtTimeOfChange = draftKeyFor(langRef.current)
     debounceRef.current = setTimeout(() => {
-      localStorage.setItem(draftKey, newCode)
+      localStorage.setItem(keyAtTimeOfChange, newCode)
     }, 1000)
   }
 
   const handleLanguageChange = (e) => {
     const newLang = e.target.value
-    // 先儲存舊草稿
+    // 1) 立刻 flush 舊語言當下草稿
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    localStorage.setItem(draftKey, code)
+    localStorage.setItem(draftKeyFor(langRef.current), code)
+    // 2) 載入新語言已存的草稿；沒有就用該語言的預設範本（含對應註解）
+    const savedNew = localStorage.getItem(draftKeyFor(newLang))
+    const nextCode = savedNew ?? DEFAULT_CODE[newLang]
     setLanguage(newLang)
-    // 切語言後不覆蓋草稿內容（草稿與語言分開儲存不在計畫內，維持現有草稿）
+    langRef.current = newLang
+    setCode(nextCode)
+    codeRef.current = nextCode
   }
 
   const handleSubmit = () => {

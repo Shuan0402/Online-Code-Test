@@ -101,14 +101,14 @@ def create_submission(
 
     if payload.submission_type == "RUN_ONLY":
         logger.warning(
-            f"拒絕提交：暫不支援 RUN_ONLY 類型 [用戶: {current_user.id}]", 
+            f"拒絕提交：暫不支援 RUN_ONLY 類型 [用戶: {current_user.id}]",
             extra=audit_extra
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="交卷失敗：目前評測引擎僅支援 OFFICIAL 正式提交，不開放 RUN_ONLY 測試。"
         )
-    
+
     target_lang = payload.language.lower()
 
     resolved_sub_type = payload.submission_type if payload.submission_type else "OFFICIAL"
@@ -138,7 +138,9 @@ def create_submission(
         )
         db_submission.code_s3_url = s3_uri
         db.commit()
-        presigned_url = storage_service.sign_get_url(s3_uri)
+        # for_worker=True：URL host 走 internal MinIO endpoint (minio:9000)、
+        # 給 docker network 內的 worker 拉原始碼用，不可走 external (localhost:9000)
+        presigned_url = storage_service.sign_get_url(s3_uri, for_worker=True)
 
         logger.info(f"原始碼成功上傳物體儲存 | S3_URI: {s3_uri}", extra=audit_extra)
     except Exception as storage_err:
@@ -216,7 +218,7 @@ def get_latest_submission(
     filters = [Submission.problem_id == problem_id, Submission.user_id == current_user.id]
     if exam_id:
         filters.append(Submission.exam_id == exam_id)
-        
+
     submission = (
         db.query(Submission)
         .options(joinedload(Submission.details).joinedload(SubmissionDetail.test_case))

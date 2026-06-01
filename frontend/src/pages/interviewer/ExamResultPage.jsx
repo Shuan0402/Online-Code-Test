@@ -135,7 +135,7 @@ export default function ExamResultPage() {
                     key={item.problem_id}
                     className="border-t hover:bg-muted/30 transition-colors"
                   >
-                    <td className="px-4 py-3 text-muted-foreground">{item.sequence}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{item.problem_id}</td>
                     <td className="px-4 py-3 font-medium">{item.title}</td>
                     <td className="px-4 py-3">{item.max_points}</td>
                     <td className="px-4 py-3">

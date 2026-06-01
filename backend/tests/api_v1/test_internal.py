@@ -361,3 +361,67 @@ def test_calc_score_missing_weight_is_zero():
     """testcase_id 在 weights dict 找不到時、不爆、視為 0。"""
     per_tc = [CallbackTestcase(testcase_id=999, case_verdict="AC", exec_time_ms=10)]
     assert calc_score(per_tc, {}) == 0
+
+
+# === Bug 1/2 backend data-layer regression ====================================
+# 驗 worker callback 把 per_testcase[i].runtime_info 寫入 SubmissionDetail.runtime_info
+
+
+def test_callback_writes_runtime_info_into_submission_detail(
+    client: TestClient, pending_submission, db_session: Session
+):
+    """
+    Bug 1/2 根因驗證：worker 經 /internal/judge-callback 回 per_testcase[*].runtime_info、
+    backend 必須把它寫進 SubmissionDetail.runtime_info、不能丟掉。
+    """
+    from app.models.submission import SubmissionDetail
+
+    sub, problem = pending_submission
+    tc1, tc2 = problem.test_cases
+    payload = _callback_payload(sub.id, [
+        {
+            "testcase_id": tc1.id,
+            "case_verdict": "AC",
+            "exec_time_ms": 12,
+            "runtime_info": "",
+        },
+        {
+            "testcase_id": tc2.id,
+            "case_verdict": "WA",
+            "exec_time_ms": 8,
+            "runtime_info": "Expected: 12\nGot: 11",
+        },
+    ], exec_time_ms=12)
+
+    resp = client.post("/api/v1/internal/judge-callback", json=payload, headers=HEADERS_OK)
+    assert resp.status_code == 200
+
+    details = db_session.query(SubmissionDetail).filter_by(submission_id=sub.id).all()
+    assert len(details) == 2
+    by_tc = {d.testcase_id: d for d in details}
+    assert by_tc[tc1.id].runtime_info == ""
+    assert by_tc[tc2.id].runtime_info == "Expected: 12\nGot: 11"
+    assert by_tc[tc2.id].status == JudgeStatus.WA
+
+
+def test_callback_runtime_info_optional_omitted_defaults_to_none(
+    client: TestClient, pending_submission, db_session: Session
+):
+    """
+    backwards compat：舊版 worker payload 沒帶 runtime_info 欄位、
+    schema 預設 None、callback 不應 422。
+    """
+    from app.models.submission import SubmissionDetail
+
+    sub, problem = pending_submission
+    tc1, tc2 = problem.test_cases
+    payload = _callback_payload(sub.id, [
+        {"testcase_id": tc1.id, "case_verdict": "AC", "exec_time_ms": 12},
+        {"testcase_id": tc2.id, "case_verdict": "AC", "exec_time_ms": 8},
+    ], exec_time_ms=12)
+
+    resp = client.post("/api/v1/internal/judge-callback", json=payload, headers=HEADERS_OK)
+    assert resp.status_code == 200
+
+    details = db_session.query(SubmissionDetail).filter_by(submission_id=sub.id).all()
+    assert all(d.runtime_info is None for d in details)

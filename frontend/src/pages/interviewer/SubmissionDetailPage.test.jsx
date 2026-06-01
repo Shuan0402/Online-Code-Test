@@ -275,6 +275,52 @@ describe('SubmissionDetailPage', () => {
     })
   })
 
+  // (g) Bug 2: 測資詳細資訊欄渲染 runtime_info；judge_log 區塊存在
+  it('renders runtime_info per testcase and judge_log summary block', async () => {
+    const detailWithRuntimeInfo = {
+      ...MOCK_SUBMISSION_DETAIL,
+      judge_log: 'NameError: name foo is not defined',
+      details: [
+        {
+          id: 1,
+          testcase_id: 1,
+          status: 'WrongAnswer',
+          score: 0,
+          execution_time: 18,
+          runtime_info: 'Expected: 7\nGot: 6',
+        },
+        {
+          id: 2,
+          testcase_id: 2,
+          status: 'Accepted',
+          score: 10,
+          execution_time: 22,
+          runtime_info: null,
+        },
+      ],
+    }
+    api.get
+      .mockResolvedValueOnce({ data: MOCK_EXAM })
+      .mockResolvedValueOnce({ data: MOCK_SUBMISSION_LIST })
+      .mockResolvedValueOnce({ data: detailWithRuntimeInfo })
+      .mockResolvedValueOnce({ data: MOCK_PROBLEM })
+      .mockResolvedValueOnce({ data: MOCK_CANDIDATE_USER })
+
+    fetchSpy.mockResolvedValue({ text: async () => '' })
+
+    renderPage()
+
+    // WA testcase 的 runtime_info Expected/Got 對比
+    await waitFor(() => {
+      expect(screen.getByText(/Expected: 7/)).toBeInTheDocument()
+      expect(screen.getByText(/Got: 6/)).toBeInTheDocument()
+    })
+
+    // judge_log 整體錯誤訊息摘要
+    expect(screen.getByText('整體錯誤訊息摘要：')).toBeInTheDocument()
+    expect(screen.getByText(/NameError/)).toBeInTheDocument()
+  })
+
   // (f) fallback to UUID when candidate user fetch rejects
   it('falls back to candidate_id UUID in header when user fetch rejects', async () => {
     api.get

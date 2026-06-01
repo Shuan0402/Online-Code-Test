@@ -160,7 +160,7 @@ export default function AdminProblemListPage() {
                   className="border-t hover:bg-muted/30 cursor-pointer transition-colors"
                   onClick={() => navigate(`/admin/problems/${problem.id}`)}
                 >
-                  <td className="px-4 py-3 text-muted-foreground">{idx + 1}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{problem.id}</td>
                   <td className="px-4 py-3 font-medium">{problem.title}</td>
                   <td className="px-4 py-3">
                     <span

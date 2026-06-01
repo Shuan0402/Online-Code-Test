@@ -55,6 +55,8 @@ export default function TakeExamPage() {
   const [activeIdx, setActiveIdx] = useState(0)
   // ref to the active EditorPanel instance so we can flush draft before tab switch
   const editorRef = useRef(null)
+  // ref to SubmissionResultPanel — 提交完成自動滾到 panel、考生不會錯過結果
+  const resultPanelRef = useRef(null)
 
   // ── 評測狀態：{ [problemId]: statusStr } ────────────────────────────────────
   const [statuses, setStatuses] = useState({})
@@ -121,6 +123,13 @@ export default function TakeExamPage() {
   //    Use a flat registry approach — store submissionId per problem slot.
   // ─────────────────────────────────────────────────────────────────────────────
 
+  // 評測完成 → panel 滾進視窗（smooth）
+  const scrollToResultPanel = useCallback(() => {
+    requestAnimationFrame(() => {
+      resultPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
+
   // 輪詢回呼：更新評測狀態，若終止就清 pending key 並儲存完整結果
   const handlePollResult = useCallback((problemId) => (data) => {
     setStatuses((prev) => ({ ...prev, [problemId]: data.status }))
@@ -130,8 +139,9 @@ export default function TakeExamPage() {
       setPollingIds((prev) => ({ ...prev, [problemId]: null }))
       // 儲存完整 SubmissionRead（含 details.runtime_info）
       setLastResults((prev) => ({ ...prev, [problemId]: data }))
+      scrollToResultPanel()
     }
-  }, [])
+  }, [scrollToResultPanel])
 
   // ─────────────────────────────────────────────────────────────────────────────
   // PollingSlot — small inner component so we can call useAdaptivePolling
@@ -277,28 +287,33 @@ export default function TakeExamPage() {
         </div>
       )}
 
-      {/* ── 主體：題目說明 + 編輯器 ─────────────────────────────────────────── */}
+      {/* ── 主體 + 結果 panel：在共用 scroll 容器內、panel 永遠在頁面下方 ─── */}
       {activeProblem ? (
-        <div className="flex flex-1 min-h-0">
-          {/* 左：題目敘述 */}
-          <div className="w-2/5 border-r overflow-hidden">
-            <ProblemPanel
-              problemId={activeProblem.problem_id}
-              points={activeProblem.points}
-              sequence={activeProblem.sequence}
-            />
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* 上半：題目 + 編輯器，留 ~30% 空間給 panel header 顯示在預設視窗內 */}
+          <div className="flex" style={{ height: '70vh', minHeight: '500px' }}>
+            {/* 左：題目敘述 (candidate 不秀題目配分) */}
+            <div className="w-2/5 border-r overflow-hidden">
+              <ProblemPanel
+                problemId={activeProblem.problem_id}
+                sequence={activeProblem.sequence}
+              />
+            </div>
+
+            {/* 右：編輯器 */}
+            <div className="flex-1 min-w-0">
+              <EditorPanel
+                ref={editorRef}
+                examId={examId}
+                problemId={activeProblem.problem_id}
+                onSubmit={(code, lang) => handleSubmit(activeProblem.problem_id, code, lang)}
+                submitting={!!submittingPids[activeProblem.problem_id]}
+              />
+            </div>
           </div>
 
-          {/* 右：編輯器 + 提交結果 */}
-          <div className="flex-1 min-w-0 flex flex-col min-h-0">
-            <EditorPanel
-              ref={editorRef}
-              examId={examId}
-              problemId={activeProblem.problem_id}
-              onSubmit={(code, lang) => handleSubmit(activeProblem.problem_id, code, lang)}
-              submitting={!!submittingPids[activeProblem.problem_id]}
-            />
-            {/* 提交後 testcase 詳情（只顯示最新一次提交的結果） */}
+          {/* 下半：提交 testcase 詳情（全寬、natural 高度，評測完 auto-scroll 到這） */}
+          <div ref={resultPanelRef}>
             <SubmissionResultPanel result={lastResults[activeProblem.problem_id]} />
           </div>
         </div>
@@ -335,16 +350,41 @@ export default function TakeExamPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 // SubmissionResultPanel — 顯示最新一次提交的 testcase 詳情（含 runtime_info）
 // ─────────────────────────────────────────────────────────────────────────────
-function SubmissionResultPanel({ result }) {
-  if (!result) return null
+export function SubmissionResultPanel({ result }) {
+  // 即使還沒提交，也保留 placeholder、讓考生知道結果會出現在這裡
+  if (!result) {
+    return (
+      <div className="border-t bg-muted/5">
+        <p className="px-3 py-2 text-sm font-medium border-b bg-background">
+          Testcase 結果
+        </p>
+        <p className="px-3 py-6 text-sm text-center text-muted-foreground">
+          按上方「<span className="font-medium">提交本題</span>」後，testcase 結果會顯示在這。
+        </p>
+      </div>
+    )
+  }
 
   const details = result.details ?? []
-  if (details.length === 0) return null
+  if (details.length === 0) {
+    return (
+      <div className="border-t bg-muted/5">
+        <p className="px-3 py-2 text-sm font-medium border-b bg-background">
+          Testcase 結果
+        </p>
+        <p className="px-3 py-6 text-sm text-center text-muted-foreground">
+          評測中…
+        </p>
+      </div>
+    )
+  }
 
   return (
-    <div className="border-t bg-muted/5 shrink-0 overflow-y-auto max-h-56">
-      <p className="px-3 py-1.5 text-xs font-medium text-muted-foreground border-b bg-muted/10">
+    // panel 放在頁面下半（外層 scroll 容器負責滾動）、自然 expand 把全部 testcase 顯示
+    <div className="border-t bg-muted/5">
+      <p className="px-3 py-2 text-sm font-medium border-b bg-background flex items-center gap-2">
         最新提交 Testcase 明細
+        <span className="ml-auto text-xs text-muted-foreground">共 {details.length} 筆</span>
       </p>
       <table className="w-full text-xs">
         <thead className="bg-muted/20 text-muted-foreground">

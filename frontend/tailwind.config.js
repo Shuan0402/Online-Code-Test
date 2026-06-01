@@ -70,5 +70,11 @@ export default {
       },
     },
   },
-  plugins: [require('tailwindcss-animate')],
+  plugins: [
+    require('tailwindcss-animate'),
+    // Bug 6：啟用 @tailwindcss/typography 讓 `prose` class 實際 style 出 ReactMarkdown 渲染的
+    // <h1>/<h2>/<ul>/<strong> 等元素，否則 Tailwind preflight 會把 <h1> 重設成 1em、
+    // 使用者會覺得「markdown 沒被 render」（其實 h1 在 DOM 裡、只是視覺上跟 p 一樣）。
+    require('@tailwindcss/typography'),
+  ],
 }

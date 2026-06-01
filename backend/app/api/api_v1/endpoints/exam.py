@@ -61,11 +61,20 @@ def get_candidate_exams(
                 query = query.filter(Exam.created_at >= start_dt)
 
         if created_end:
-            try:
-                end_dt = datetime.fromisoformat(created_end).replace(tzinfo=timezone.utc)
-            except ValueError:
+            # 純日期 (YYYY-MM-DD) 必須優先用 strptime 解析、補上 23:59:59 變成「當天結束」；
+            # 否則 datetime.fromisoformat("2026-06-01") 在 Python 3.11+ 會被解析成 00:00:00、
+            # 變成「<= 該日 00:00:00」、把當天的考試全部排除。
+            end_dt = None
+            if len(created_end) == 10:
                 try:
-                    end_dt = datetime.strptime(created_end, "%Y-%m-%d").replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                    end_dt = datetime.strptime(created_end, "%Y-%m-%d").replace(
+                        hour=23, minute=59, second=59, tzinfo=timezone.utc
+                    )
+                except ValueError:
+                    pass
+            if end_dt is None:
+                try:
+                    end_dt = datetime.fromisoformat(created_end).replace(tzinfo=timezone.utc)
                 except ValueError:
                     end_dt = None
             if end_dt:
@@ -588,6 +597,16 @@ def update_exam_session(
         )
 
     update_data = obj_in.model_dump(exclude_unset=True)
+
+    # Bug 7：easy_count / medium_count / hard_count 只能在 Draft 狀態下調整。
+    # 一旦發布或結束、題目配比就是已敲定的紀錄、不准回頭改。
+    count_fields = {"easy_count", "medium_count", "hard_count"}
+    if count_fields & set(update_data) and exam.status != ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="只有草稿 (Draft) 狀態的考試可以修改題數配比。"
+        )
+
     for field, value in update_data.items():
         setattr(exam, field, value)
 

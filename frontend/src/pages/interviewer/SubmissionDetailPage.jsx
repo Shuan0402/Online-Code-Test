@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
+import MarkdownView from '@/components/MarkdownView'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -205,9 +205,9 @@ export default function SubmissionDetailPage() {
             </span>
           </div>
           {problem.description && (
-            <div className="text-sm text-muted-foreground prose prose-sm max-w-none">
-              <ReactMarkdown>{problem.description}</ReactMarkdown>
-            </div>
+            <MarkdownView className="text-sm text-muted-foreground">
+              {problem.description}
+            </MarkdownView>
           )}
         </section>
       )}

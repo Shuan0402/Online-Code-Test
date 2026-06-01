@@ -1016,3 +1016,183 @@ def test_get_exams_list_filtering_and_sorting(client, interviewer_user, override
     for sort_param in ["finished_at", "-finished_at", "score", "-score", "invalid_sort"]:
         response = client.get(f"/api/v1/exams/?order_by={sort_param}")
         assert response.status_code == 200
+
+
+# === Bug 3 + 4 backend regression tests ============================================
+# 分數結算 + 考試列表 server-side filters
+
+
+def test_get_exam_result_total_uses_testcase_score_weight_sum(
+    client, db_session, candidate_user, override_auth, create_test_exam, create_test_problem
+):
+    """
+    Bug 3：/exams/{id}/result 的 total_exam_points 必須等於每題所有 testcase score_weight 加總、
+    不能再回退到 ExamProblem.points 寫死的 100。
+    例：一題、兩個 testcase 各 10 分 → total=20。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(status=ExamStatus.Ongoing)
+    problem = create_test_problem(
+        test_cases_data=[
+            {"input_data": "1 2", "expected_output": "3", "score_weight": 10, "is_sample": True},
+            {"input_data": "5 6", "expected_output": "11", "score_weight": 10, "is_sample": False},
+        ],
+    )
+
+    # 故意把 ExamProblem.points 設成 100（舊 bug 預設值）— 證明它不再被使用
+    ep = ExamProblem(exam_id=exam.id, problem_id=problem.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    assert response.status_code == 200
+    data = response.json()
+    # 兩 testcase × 10 分 = 20，不是 ep.points = 100
+    assert data["total_exam_points"] == 20, (
+        f"total 應為 testcase score_weight 加總 (20)，目前 {data['total_exam_points']}（疑似回退到 ep.points）"
+    )
+    assert data["results"][0]["max_points"] == 20
+
+
+def test_get_exam_result_total_falls_back_to_ep_points_when_no_testcases(
+    client, db_session, candidate_user, override_auth, create_test_exam, create_test_problem
+):
+    """
+    Bug 3 fallback：如果某題完全沒 testcase（早期建題或匯入失敗），
+    退回 ExamProblem.points 算總分、避免 0/0 把總分歸零。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(status=ExamStatus.Ongoing)
+    problem = create_test_problem(test_cases_data=None)  # 不建任何 testcase
+    ep = ExamProblem(exam_id=exam.id, problem_id=problem.id, sequence=1, points=80)
+    db_session.add(ep)
+    db_session.commit()
+
+    response = client.get(f"/api/v1/exams/{exam.id}/result")
+    assert response.status_code == 200
+    assert response.json()["total_exam_points"] == 80
+
+
+def test_exam_list_mine_filter_only_returns_own_created(
+    client, db_session, interviewer_user, create_test_user, override_auth, create_test_exam
+):
+    """
+    Bug 4：?mine=true 應只回 current_user 自己 creator_id 開的考試。
+    """
+    other_interviewer = create_test_user(role=UserRole.Interviewer)
+    own_exam = create_test_exam(title="Mine", creator_id=interviewer_user.id)
+    create_test_exam(title="Theirs", creator_id=other_interviewer.id)
+
+    override_auth(interviewer_user)
+    res = client.get("/api/v1/exams/?mine=true")
+    assert res.status_code == 200
+    titles = [e["title"] for e in res.json()]
+    assert "Mine" in titles
+    assert "Theirs" not in titles
+    assert str(own_exam.id) in [e["id"] for e in res.json()]
+
+
+def test_exam_list_created_start_end_filter(
+    client, db_session, interviewer_user, override_auth, create_test_exam
+):
+    """
+    Bug 4：?created_start / ?created_end 應以 YYYY-MM-DD 解析、依 Exam.created_at 範圍篩選。
+    """
+    exam_old = create_test_exam(title="2026-05-01 場")
+    exam_mid = create_test_exam(title="2026-05-06 場")
+    exam_new = create_test_exam(title="2026-05-10 場")
+
+    exam_old.created_at = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    exam_mid.created_at = datetime(2026, 5, 6, tzinfo=timezone.utc)
+    exam_new.created_at = datetime(2026, 5, 10, tzinfo=timezone.utc)
+    db_session.commit()
+
+    override_auth(interviewer_user)
+    # 篩 5/5 ~ 5/8 → 只有 mid 那場
+    res = client.get("/api/v1/exams/?created_start=2026-05-05&created_end=2026-05-08")
+    assert res.status_code == 200
+    titles = [e["title"] for e in res.json()]
+    assert "2026-05-06 場" in titles
+    assert "2026-05-01 場" not in titles
+    assert "2026-05-10 場" not in titles
+
+
+def test_exam_list_created_start_end_invalid_format_silently_ignored(
+    client, interviewer_user, override_auth, create_test_exam
+):
+    """
+    Bug 4 robustness：壞掉的日期字串（例如 'foo'）不應 500、應靜默忽略該 filter。
+    """
+    create_test_exam(title="正常考試")
+    override_auth(interviewer_user)
+
+    res = client.get("/api/v1/exams/?created_start=not-a-date&created_end=foo")
+    assert res.status_code == 200
+    # 篩選被忽略 → 仍能列出考試
+    assert any(e["title"] == "正常考試" for e in res.json())
+
+
+def test_update_exam_can_change_difficulty_counts_in_draft(
+    client, db_session, interviewer_user, override_auth, create_test_exam
+):
+    """
+    Bug 7：草稿狀態下、PATCH /exams/{id} 應接受 easy_count / medium_count / hard_count
+    並寫入 DB。
+    """
+    exam = create_test_exam(
+        status=ExamStatus.Draft, easy_count=0, medium_count=0, hard_count=0
+    )
+    override_auth(interviewer_user)
+
+    res = client.patch(
+        f"/api/v1/exams/{exam.id}",
+        json={"easy_count": 3, "medium_count": 2, "hard_count": 1},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["easy_count"] == 3
+    assert data["medium_count"] == 2
+    assert data["hard_count"] == 1
+
+    db_session.refresh(exam)
+    assert exam.easy_count == 3
+    assert exam.medium_count == 2
+    assert exam.hard_count == 1
+
+
+def test_update_exam_count_blocked_when_published(
+    client, db_session, interviewer_user, override_auth, create_test_exam
+):
+    """
+    Bug 7：發布後再改題數應 400、保護已敲定的考卷不被回頭調整。
+    """
+    exam = create_test_exam(status=ExamStatus.Published, easy_count=1)
+    override_auth(interviewer_user)
+
+    res = client.patch(f"/api/v1/exams/{exam.id}", json={"easy_count": 5})
+    assert res.status_code == 400
+    assert "草稿" in res.json()["detail"]
+    db_session.refresh(exam)
+    # 未被寫入
+    assert exam.easy_count == 1
+
+
+def test_exam_list_created_end_yyyy_mm_dd_includes_same_day_exam(
+    client, db_session, interviewer_user, override_auth, create_test_exam
+):
+    """
+    Bug 4 regression：created_end='YYYY-MM-DD' 必須涵蓋當天 23:59:59、
+    不能因為 datetime.fromisoformat 解析成 00:00:00 而把當天的考試漏掉。
+    """
+    today = create_test_exam(title="今天考試")
+    today.created_at = datetime(2026, 5, 8, 14, 30, tzinfo=timezone.utc)
+    db_session.commit()
+
+    override_auth(interviewer_user)
+    res = client.get("/api/v1/exams/?created_end=2026-05-08")
+    assert res.status_code == 200
+    titles = [e["title"] for e in res.json()]
+    assert "今天考試" in titles, (
+        "created_end='2026-05-08' 應涵蓋當天 23:59:59；"
+        "若 fromisoformat 把它解析成 00:00:00、會把當天的考試漏掉。"
+    )

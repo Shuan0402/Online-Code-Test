@@ -18,10 +18,11 @@ from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.api.deps import verify_worker_secret
-from app.models.submission import SubmissionDetail
+from app.models.submission import Submission, SubmissionDetail
 from app.models.testcase import TestCase
 from app.models.enums import JudgeStatus
 from app.schemas.submission import JudgeCallbackPayload
+from app.services.exam import exam_service
 from app.services.judging import aggregate_verdict, calc_score
 
 
@@ -93,12 +94,12 @@ def judge_callback(
         for tc in payload.per_testcase:
             tc_weight = weights_by_id.get(tc.testcase_id, 0)
             tc_score = tc_weight if tc.case_verdict == "AC" else 0
-            
+
             try:
                 js = JudgeStatus(tc.case_verdict)
             except ValueError:
                 js = JudgeStatus.RE
-                
+
             detail = SubmissionDetail(
                 submission_id=payload.submission_id,
                 testcase_id=tc.testcase_id,
@@ -109,6 +110,15 @@ def judge_callback(
             )
             db.add(detail)
         db.commit()
+
+        # 評測完成 → 同步刷新該場考試的「目前總分」，讓 ExamListPage 列表分數即時正確。
+        # （refresh_total_score 內部已過濾 submission_type=OFFICIAL、所以 RUN_ONLY 試跑不會污染）
+        sub = db.query(Submission).filter(Submission.id == payload.submission_id).first()
+        if sub and sub.exam_id and sub.submission_type == "OFFICIAL":
+            try:
+                exam_service.refresh_total_score(db, str(sub.exam_id))
+            except Exception as e:
+                log.warning("refresh_total_score after callback failed: %s", e)
 
     if result.rowcount == 0:
         log.info(

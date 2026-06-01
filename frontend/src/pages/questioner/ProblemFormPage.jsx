@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
+import MarkdownView from '@/components/MarkdownView'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -283,10 +283,10 @@ export default function ProblemFormPage() {
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
           />
           {showPreview && (
-            <div className="mt-2 rounded-md border bg-muted/30 p-3 prose prose-sm max-w-none">
+            <div className="mt-2 rounded-md border bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground mb-2">預覽：</p>
               {description.trim()
-                ? <ReactMarkdown>{description}</ReactMarkdown>
+                ? <MarkdownView>{description}</MarkdownView>
                 : <p className="text-sm text-muted-foreground italic">（尚無內容）</p>}
             </div>
           )}

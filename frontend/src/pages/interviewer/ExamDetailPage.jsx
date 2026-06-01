@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
+import MarkdownView from '@/components/MarkdownView'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -48,6 +48,10 @@ export default function ExamDetailPage() {
   // --- 行內編輯欄位狀態（草稿模式才啟用） ---
   const [editTitle, setEditTitle] = useState('')
   const [editDuration, setEditDuration] = useState(120)
+  // Bug 7：草稿狀態允許改題數配比
+  const [editEasy, setEditEasy] = useState(0)
+  const [editMedium, setEditMedium] = useState(0)
+  const [editHard, setEditHard] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
@@ -100,6 +104,9 @@ export default function ExamDetailPage() {
       // 同步編輯欄位
       setEditTitle(examData.title)
       setEditDuration(examData.duration_minutes)
+      setEditEasy(examData.easy_count ?? 0)
+      setEditMedium(examData.medium_count ?? 0)
+      setEditHard(examData.hard_count ?? 0)
     } catch (err) {
       setError(err.response?.data?.detail ?? '載入考試資料失敗，請稍後再試')
     } finally {
@@ -124,16 +131,25 @@ export default function ExamDetailPage() {
     setSaving(true)
     setSaveError(null)
     const parsedDuration = Number(editDuration)
+    const parsedEasy = Number(editEasy)
+    const parsedMedium = Number(editMedium)
+    const parsedHard = Number(editHard)
     const body = {
       title: editTitle.trim() || exam.title,
       duration_minutes:
         Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 120,
+      easy_count: Number.isFinite(parsedEasy) && parsedEasy >= 0 ? parsedEasy : 0,
+      medium_count: Number.isFinite(parsedMedium) && parsedMedium >= 0 ? parsedMedium : 0,
+      hard_count: Number.isFinite(parsedHard) && parsedHard >= 0 ? parsedHard : 0,
     }
     try {
       const res = await api.patch(`/api/v1/exams/${id}`, body)
       setExam(res.data)
       setEditTitle(res.data.title)
       setEditDuration(res.data.duration_minutes)
+      setEditEasy(res.data.easy_count ?? 0)
+      setEditMedium(res.data.medium_count ?? 0)
+      setEditHard(res.data.hard_count ?? 0)
     } catch (err) {
       setSaveError(err.response?.data?.detail ?? '儲存失敗，請稍後再試')
     } finally {
@@ -366,6 +382,47 @@ export default function ExamDetailPage() {
               disabled={!isDraft}
             />
           </div>
+
+          {/* Bug 7：草稿狀態允許修改題數配比 */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="edit-easy">簡單題數</Label>
+              <Input
+                id="edit-easy"
+                type="number"
+                min="0"
+                max="20"
+                value={editEasy}
+                onChange={(e) => setEditEasy(e.target.value)}
+                disabled={!isDraft}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-medium">中等題數</Label>
+              <Input
+                id="edit-medium"
+                type="number"
+                min="0"
+                max="20"
+                value={editMedium}
+                onChange={(e) => setEditMedium(e.target.value)}
+                disabled={!isDraft}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-hard">困難題數</Label>
+              <Input
+                id="edit-hard"
+                type="number"
+                min="0"
+                max="20"
+                value={editHard}
+                onChange={(e) => setEditHard(e.target.value)}
+                disabled={!isDraft}
+              />
+            </div>
+          </div>
+
           {saveError && (
             <p className="text-sm font-medium text-destructive">{saveError}</p>
           )}
@@ -424,7 +481,7 @@ export default function ExamDetailPage() {
                   data-problem-id={problem.problem_id}
                   className="border-t hover:bg-muted/30 transition-colors"
                 >
-                  <td className="px-4 py-3 text-muted-foreground">{problem.sequence}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{problem.problem_id}</td>
                   <td className="px-4 py-3 font-medium">{problem.title}</td>
                   <td className="px-4 py-3">
                     <span
@@ -472,18 +529,23 @@ export default function ExamDetailPage() {
         </Button>
 
         {/* 發佈考試（Draft 且題數足夠才啟用） */}
-        <Button
-          onClick={handlePublish}
-          disabled={
-            !isDraft ||
-            exam.exam_problems.length === 0 ||
-            exam.exam_problems.length <
-              ((exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0)) ||
-            publishing
-          }
-        >
-          {publishing ? '發佈中…' : '發佈考試'}
-        </Button>
+        {(() => {
+          const expected = (exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0)
+          const actual = exam.exam_problems.length
+          const tooFew = actual === 0 || actual < expected
+          const publishDisabledHint = tooFew
+            ? `題目不足（設定 ${expected} 題，已配置 ${actual} 題）`
+            : ''
+          return (
+            <Button
+              onClick={handlePublish}
+              disabled={!isDraft || tooFew || publishing}
+              title={publishDisabledHint}
+            >
+              {publishing ? '發佈中…' : '發佈考試'}
+            </Button>
+          )
+        })()}
 
         {/* 刪除考試 */}
         <Button
@@ -496,15 +558,6 @@ export default function ExamDetailPage() {
           刪除考試
         </Button>
       </div>
-
-      {/* 題數不足提醒 */}
-      {isDraft &&
-        exam.exam_problems.length <
-          ((exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0)) && (
-          <p className="text-sm font-medium text-amber-600 mt-2">
-            ⚠️ 目前配置題目數量不足（設定 {((exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0))} 題，已配置 {exam.exam_problems.length} 題），暫不可發佈。
-          </p>
-        )}
 
       {/* 發佈錯誤 */}
       {publishError && (
@@ -585,15 +638,15 @@ export default function ExamDetailPage() {
                     {previewId === p.id && (
                       <tr className="border-t bg-muted/20">
                         <td colSpan={3} className="px-4 py-3">
-                          <div className="prose prose-sm max-w-none text-sm">
-                            {problemDescriptions[p.id] === undefined ? (
-                              <p className="text-muted-foreground italic animate-pulse">載入中…</p>
-                            ) : problemDescriptions[p.id] ? (
-                              <ReactMarkdown>{problemDescriptions[p.id]}</ReactMarkdown>
-                            ) : (
-                              <p className="text-muted-foreground italic">（此題目沒有描述）</p>
-                            )}
-                          </div>
+                          {problemDescriptions[p.id] === undefined ? (
+                            <p className="text-muted-foreground italic animate-pulse">載入中…</p>
+                          ) : problemDescriptions[p.id] ? (
+                            <MarkdownView className="text-sm">
+                              {problemDescriptions[p.id]}
+                            </MarkdownView>
+                          ) : (
+                            <p className="text-muted-foreground italic">（此題目沒有描述）</p>
+                          )}
                         </td>
                       </tr>
                     )}
