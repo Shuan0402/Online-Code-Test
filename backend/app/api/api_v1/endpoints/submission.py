@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
-from app.models.submission import Submission
+from app.models.submission import Submission, SubmissionDetail
 from app.models.problem import Problem
 from app.models.exam import Exam, ExamProblem
 from app.schemas.submission import SubmissionCreate, SubmissionRead, JudgeTaskPayload
@@ -219,6 +219,7 @@ def get_latest_submission(
         
     submission = (
         db.query(Submission)
+        .options(joinedload(Submission.details).joinedload(SubmissionDetail.test_case))
         .filter(*filters)
         .order_by(Submission.created_at.desc())
         .first()
@@ -240,6 +241,9 @@ def get_latest_submission(
     
     if current_user.role == UserRole.Candidate:
         submission.failure_reason = None
+        for detail in submission.details:
+            if detail.test_case and not detail.test_case.is_sample:
+                detail.runtime_info = None
 
     return submission
 
@@ -258,7 +262,7 @@ def get_submission_by_id(
     """
     submission = (
         db.query(Submission)
-        .options(joinedload(Submission.details))
+        .options(joinedload(Submission.details).joinedload(SubmissionDetail.test_case))
         .filter(Submission.id == submission_id)
         .first()
     )
@@ -282,6 +286,11 @@ def get_submission_by_id(
     if submission.code_s3_url and submission.code_s3_url != "PENDING_UPLOAD":
         submission.presigned_url = storage_service.sign_get_url(submission.code_s3_url)
     
+    if current_user.role == UserRole.Candidate:
+        for detail in submission.details:
+            if detail.test_case and not detail.test_case.is_sample:
+                detail.runtime_info = None
+
     return submission
 
 @router.get("/", response_model=List[SubmissionRead])

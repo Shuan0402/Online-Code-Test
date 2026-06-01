@@ -18,7 +18,9 @@ from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.api.deps import verify_worker_secret
+from app.models.submission import SubmissionDetail
 from app.models.testcase import TestCase
+from app.models.enums import JudgeStatus
 from app.schemas.submission import JudgeCallbackPayload
 from app.services.judging import aggregate_verdict, calc_score
 
@@ -86,6 +88,27 @@ def judge_callback(
         )
 
     db.commit()
+
+    if payload.verdict == "Success" and result.rowcount > 0:
+        for tc in payload.per_testcase:
+            tc_weight = weights_by_id.get(tc.testcase_id, 0)
+            tc_score = tc_weight if tc.case_verdict == "AC" else 0
+            
+            try:
+                js = JudgeStatus(tc.case_verdict)
+            except ValueError:
+                js = JudgeStatus.RE
+                
+            detail = SubmissionDetail(
+                submission_id=payload.submission_id,
+                testcase_id=tc.testcase_id,
+                status=js,
+                execution_time=tc.exec_time_ms,
+                score=tc_score,
+                runtime_info=tc.runtime_info,
+            )
+            db.add(detail)
+        db.commit()
 
     if result.rowcount == 0:
         log.info(

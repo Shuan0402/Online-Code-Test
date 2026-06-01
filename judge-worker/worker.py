@@ -170,10 +170,23 @@ def run_official(
         case_verdict = decide_case_verdict(result, tc["expected_output"], language)
         exec_ms = int(result.duration_sec * 1000)
 
+        runtime_info = None
+        if case_verdict == "WA":
+            runtime_info = f"Expected: {tc['expected_output']}\nGot: {result.stdout}"
+        elif case_verdict == "RE":
+            runtime_info = result.stderr or "Runtime Error (No stderr)"
+        elif case_verdict == "TLE":
+            runtime_info = f"Time Limit Exceeded"
+        elif case_verdict == "MLE":
+            runtime_info = "Memory Limit Exceeded"
+        elif case_verdict == "CE":
+            runtime_info = result.stderr or "Compile Error"
+
         per_testcase.append({
             "testcase_id": tc["testcase_id"],
             "case_verdict": case_verdict,
             "exec_time_ms": exec_ms,
+            "runtime_info": runtime_info,
         })
         max_exec_ms = max(max_exec_ms, exec_ms)
         if result.stderr:
