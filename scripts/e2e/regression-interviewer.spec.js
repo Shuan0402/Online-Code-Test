@@ -231,41 +231,26 @@ test('I-2.3：candidate 透過 API 對未指派 problemId 提交會被擋', asyn
 // ║  Story 3 — 全局成績調閱與過濾                                          ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-// I-3.1：% 篩選 — score range filtering and ordering
-test('I-3.1：考試結果頁可用 % 區間篩選並以完成時間排序', async ({ page }) => {
+// I-3.1：% 篩選 — Bug 4 修正後，篩選位置從 ExamResultPage 搬到 ExamListPage
+test('I-3.1：考試列表頁可用 % 區間篩選 + 建立時間 + 重設', async ({ page }) => {
   await login(page, INTERVIEWER)
   await page.waitForURL('**/interviewer**')
-
-  // 從考試列表進 seeded exam 結果頁
   await page.goto('/interviewer')
-  await page
-    .getByRole('row', { name: new RegExp(SEEDED_EXAM_TITLE) })
-    .getByRole('link', { name: '查看' })
-    .click()
-  await page.waitForURL(/\/interviewer\/exams\/[0-9a-f-]{36}$/i)
-  await page.getByRole('link', { name: '查看結果' }).click()
-  await page.waitForURL(/\/interviewer\/exams\/[0-9a-f-]{36}\/result$/i)
 
-  // 初始狀態下，結果表格有 4 題 (Easy-1, Easy-2, Medium-1, Hard-1)
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-1' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-2' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Medium-1' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Hard-1' })).toBeVisible()
+  // 初始：seeded exam 應該在列表
+  await expect(page.getByRole('row', { name: new RegExp(SEEDED_EXAM_TITLE) })).toBeVisible()
 
-  // 測試分數篩選: 最小 50%
-  await page.locator('#score-gte').fill('50')
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-1' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-2' })).toBeHidden()
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Medium-1' })).toBeHidden()
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Hard-1' })).toBeHidden()
+  // 答對率最小 99% → SEEDED_EXAM_TITLE 那場（最高約 50%）應被排除
+  await page.locator('#score-gte').fill('99')
+  await expect(page.getByRole('row', { name: new RegExp(SEEDED_EXAM_TITLE) })).toBeHidden({ timeout: 10_000 })
 
-  // 測試重設篩選
-  await page.getByRole('button', { name: '重設篩選' }).click()
-  await expect(page.getByRole('cell', { name: 'E2E-IV-Easy-2' })).toBeVisible()
+  // 重設 → 該場 row 重新出現
+  await page.locator('#reset-filters').click()
+  await expect(page.getByRole('row', { name: new RegExp(SEEDED_EXAM_TITLE) })).toBeVisible()
 
-  // 測試排序依據
-  await page.locator('#order-by').selectOption('-score')
-  await expect(page.locator('#order-by')).toHaveValue('-score')
+  // 「只看我的」切換 → 點下不會 throw、UI 狀態變化
+  await page.locator('#mine-only-toggle').click()
+  await expect(page.locator('#mine-only-toggle')).toHaveText(/只看我的/)
 })
 
 // I-3.2：ExamResultPage → SubmissionDetail → 看到 testcase 明細

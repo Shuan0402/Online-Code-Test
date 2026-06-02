@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 import api from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import MarkdownView from '@/components/MarkdownView'
 
 const DIFFICULTY_MAP = {
   Easy:   { label: '簡單', className: 'bg-green-100 text-green-800' },
@@ -18,10 +18,11 @@ const DIFFICULTY_MAP = {
  * - 後端對 Candidate 角色只回傳 is_sample=true 的測試案例，直接渲染。
  *
  * @param {number} problemId   — 題目 ID
- * @param {number} points      — 本題在此考試的配分
  * @param {number} sequence    — 題號
+ *
+ * 註：candidate 不應該看到具體配分（題目右上角）—— 只有 staff 後台才秀配分。
  */
-export default function ProblemPanel({ problemId, points, sequence }) {
+export default function ProblemPanel({ problemId, sequence }) {
   const [problem, setProblem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -74,12 +75,11 @@ export default function ProblemPanel({ problemId, points, sequence }) {
 
   return (
     <div className="flex flex-col gap-4 p-4 h-full overflow-y-auto">
-      {/* 題目標題列 */}
+      {/* 題目標題列（candidate 不秀配分） */}
       <div className="flex items-start gap-2 flex-wrap">
         <span className="text-muted-foreground text-sm font-medium">題 {sequence}．</span>
         <h2 className="text-lg font-bold leading-tight">{problem.title}</h2>
         <Badge className={diff.className}>{diff.label}</Badge>
-        <Badge variant="outline" className="ml-auto shrink-0">{points} 分</Badge>
       </div>
 
       {/* 時間 / 記憶體限制 */}
@@ -88,10 +88,10 @@ export default function ProblemPanel({ problemId, points, sequence }) {
         <span>記憶體限制：{problem.memory_limit_mb} MB</span>
       </div>
 
-      {/* 題目描述（Markdown 渲染） */}
-      <div className="text-sm leading-relaxed border rounded p-3 bg-muted/30 prose prose-sm max-w-none">
-        <ReactMarkdown>{problem.description}</ReactMarkdown>
-      </div>
+      {/* 題目描述（Markdown 渲染，含 GFM 表格 + KaTeX 數學式） */}
+      <MarkdownView className="text-sm leading-relaxed border rounded p-3 bg-muted/30">
+        {problem.description}
+      </MarkdownView>
 
       {/* 範例測試案例 */}
       {problem.test_cases && problem.test_cases.length > 0 && (

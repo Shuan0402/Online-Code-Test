@@ -44,6 +44,7 @@ class StorageService:
         secret_key: str,
         bucket: str,
         expires_sec: int = 600,
+        external_endpoint: Optional[str] = None,
     ):
         self._endpoint = endpoint
         self._bucket = bucket
@@ -54,6 +55,16 @@ class StorageService:
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             region_name="us-east-1",                # MinIO accepts any region
+            config=Config(signature_version="s3v4"),
+        )
+        # Use external_endpoint for generating presigned URLs (for external browser access)
+        signing_endpoint = external_endpoint or endpoint
+        self._signing_client = boto3.client(
+            "s3",
+            endpoint_url=signing_endpoint,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name="us-east-1",
             config=Config(signature_version="s3v4"),
         )
 
@@ -154,19 +165,31 @@ class StorageService:
             )
             raise e
 
-    def sign_get_url(self, s3_uri_or_key: str, expires_sec: Optional[int] = None) -> str:
-        """Pre-signed HTTP GET URL. Accepts either `s3://bucket/key` or bare key."""
+    def sign_get_url(
+        self,
+        s3_uri_or_key: str,
+        expires_sec: Optional[int] = None,
+        *,
+        for_worker: bool = False,
+    ) -> str:
+        """Pre-signed HTTP GET URL. Accepts either `s3://bucket/key` or bare key.
+
+        `for_worker=True` 時改用 internal client（host = MINIO_ENDPOINT，例如 minio:9000），
+        給跑在 docker network 內的 worker 拉原始碼用；預設 False、用 external endpoint
+        （例如 localhost:9000）供瀏覽器直連 MinIO 下載程式碼顯示在 UI 上。
+        """
         if s3_uri_or_key.startswith("s3://"):
             rest = s3_uri_or_key[len("s3://"):]
             bucket, _, key = rest.partition("/")
         else:
             bucket = self._bucket
             key = s3_uri_or_key
-        
+
         final_expires = expires_sec if expires_sec is not None else self._expires_sec
+        client = self._client if for_worker else self._signing_client
 
         try:
-            presigned_url = self._client.generate_presigned_url(
+            presigned_url = client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": bucket, "Key": key},
                 ExpiresIn=final_expires,
@@ -198,4 +221,5 @@ def build_storage_from_env() -> StorageService:
         secret_key=os.environ["MINIO_PASSWORD"],
         bucket=os.environ.get("MINIO_BUCKET", "octest-submissions"),
         expires_sec=int(os.environ.get("MINIO_PRESIGN_EXPIRES_SEC", "600")),
+        external_endpoint=os.environ.get("MINIO_EXTERNAL_ENDPOINT", "http://localhost:9000"),
     )

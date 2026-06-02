@@ -28,6 +28,7 @@ def storage_with_mock_client():
         expires_sec=600,
     )
     s._client = MagicMock()
+    s._signing_client = s._client
     return s
 
 
@@ -201,3 +202,43 @@ def test_sign_get_url_general_exception(storage_with_mock_client):
     s._client.generate_presigned_url.side_effect = Exception("HMAC fail")
     with pytest.raises(Exception, match="HMAC fail"):
         s.sign_get_url("abc.py")
+
+
+# === for_worker vs browser-facing signing branch ===============================
+# PR #59 regression fix：sign_get_url 必須區分對象，worker 用 internal endpoint client、
+# browser 用 external endpoint client，不能共用、否則 worker 拿到 localhost:9000 抓不到。
+
+
+def _make_storage_with_distinct_clients():
+    """造一個 internal / external client 拆開的 StorageService，兩個 client 分別 mock。"""
+    s = StorageService(
+        endpoint="http://minio:9000",                     # internal (docker network)
+        access_key="u",
+        secret_key="p",
+        bucket="octest-submissions",
+        expires_sec=600,
+        external_endpoint="http://localhost:9000",        # external (browser)
+    )
+    s._client = MagicMock()             # internal
+    s._signing_client = MagicMock()     # external
+    s._client.generate_presigned_url.return_value = "http://minio:9000/internal-signed"
+    s._signing_client.generate_presigned_url.return_value = "http://localhost:9000/external-signed"
+    return s
+
+
+def test_sign_get_url_for_worker_uses_internal_client():
+    """for_worker=True → 用 internal _client（minio:9000）、不可用 external。"""
+    s = _make_storage_with_distinct_clients()
+    url = s.sign_get_url("abc.py", for_worker=True)
+    assert url == "http://minio:9000/internal-signed"
+    s._client.generate_presigned_url.assert_called_once()
+    s._signing_client.generate_presigned_url.assert_not_called()
+
+
+def test_sign_get_url_default_uses_external_client():
+    """預設 for_worker=False → 用 external _signing_client（localhost:9000）、給 browser。"""
+    s = _make_storage_with_distinct_clients()
+    url = s.sign_get_url("abc.py")
+    assert url == "http://localhost:9000/external-signed"
+    s._signing_client.generate_presigned_url.assert_called_once()
+    s._client.generate_presigned_url.assert_not_called()

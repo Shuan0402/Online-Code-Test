@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
+import MarkdownView from '@/components/MarkdownView'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -158,14 +158,12 @@ export default function AdminProblemDetailPage() {
           </div>
         </div>
 
-        {/* 題目描述（Markdown 渲染） */}
+        {/* 題目描述（Markdown 渲染，含 GFM + KaTeX） */}
         <div className="space-y-1">
           <p className="text-muted-foreground font-medium">題目描述</p>
-          <div className="text-sm bg-muted/30 rounded-md p-3 border prose prose-sm max-w-none">
-            {problem.description
-              ? <ReactMarkdown>{problem.description}</ReactMarkdown>
-              : '（無描述）'}
-          </div>
+          {problem.description
+            ? <MarkdownView className="text-sm bg-muted/30 rounded-md p-3 border">{problem.description}</MarkdownView>
+            : <div className="text-sm bg-muted/30 rounded-md p-3 border">（無描述）</div>}
         </div>
       </section>
 

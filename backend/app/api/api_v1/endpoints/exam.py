@@ -10,6 +10,7 @@ from app.models.exam import Exam, ExamProblem
 from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
+from app.models.testcase import TestCase
 from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
@@ -22,8 +23,11 @@ router = APIRouter()
 def get_candidate_exams(
     db: Session = Depends(deps.get_db),
     candidate_id: Optional[uuid.UUID] = None,
+    mine: Optional[bool] = None,
     score_gte: Optional[float] = None,
     score_lte: Optional[float] = None,
+    created_start: Optional[str] = None,
+    created_end: Optional[str] = None,
     order_by: Optional[str] = None,
     current_user = Depends(deps.get_current_user)
 ):
@@ -42,6 +46,40 @@ def get_candidate_exams(
         if candidate_id:
             query = query.filter(Exam.candidate_id == candidate_id)
             
+        if mine:
+            query = query.filter(Exam.creator_id == current_user.id)
+            
+        if created_start:
+            try:
+                start_dt = datetime.fromisoformat(created_start).replace(tzinfo=timezone.utc)
+            except ValueError:
+                try:
+                    start_dt = datetime.strptime(created_start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    start_dt = None
+            if start_dt:
+                query = query.filter(Exam.created_at >= start_dt)
+
+        if created_end:
+            # 純日期 (YYYY-MM-DD) 必須優先用 strptime 解析、補上 23:59:59 變成「當天結束」；
+            # 否則 datetime.fromisoformat("2026-06-01") 在 Python 3.11+ 會被解析成 00:00:00、
+            # 變成「<= 該日 00:00:00」、把當天的考試全部排除。
+            end_dt = None
+            if len(created_end) == 10:
+                try:
+                    end_dt = datetime.strptime(created_end, "%Y-%m-%d").replace(
+                        hour=23, minute=59, second=59, tzinfo=timezone.utc
+                    )
+                except ValueError:
+                    pass
+            if end_dt is None:
+                try:
+                    end_dt = datetime.fromisoformat(created_end).replace(tzinfo=timezone.utc)
+                except ValueError:
+                    end_dt = None
+            if end_dt:
+                query = query.filter(Exam.created_at <= end_dt)
+
         exams = query.all()
         
     else:
@@ -57,10 +95,29 @@ def get_candidate_exams(
             .all()
         )
         
+    # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，
+    # 避免在雙重迴圈裡每場考試每題都打一次 DB（N+1）。
+    problem_ids = {ep.problem_id for exam in exams for ep in exam.exam_problems}
+    if problem_ids:
+        weight_rows = (
+            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
+            .filter(TestCase.problem_id.in_(problem_ids))
+            .group_by(TestCase.problem_id)
+            .all()
+        )
+        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
+    else:
+        weight_by_problem = {}
+
     # Python-side filtering & sorting for percentage range and finished_at
     filtered_exams = []
     for exam in exams:
-        total_points = sum(ep.points for ep in exam.exam_problems)
+        total_points = 0
+        for ep in exam.exam_problems:
+            total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
+            if total_tc_weight == 0:
+                total_tc_weight = ep.points
+            total_points += total_tc_weight
         pct = (exam.score / total_points * 100.0) if total_points > 0 else 0.0
         
         if score_gte is not None and pct < score_gte:
@@ -235,8 +292,24 @@ def get_exam_result(
     accumulated_exam_points = 0
     accumulated_candidate_score = 0
 
+    # 一次 batch 取本場考試所有題目的 testcase 配分總和，避免逐題打 DB。
+    ep_problem_ids = [ep.problem_id for ep in exam.exam_problems]
+    if ep_problem_ids:
+        weight_rows = (
+            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
+            .filter(TestCase.problem_id.in_(ep_problem_ids))
+            .group_by(TestCase.problem_id)
+            .all()
+        )
+        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
+    else:
+        weight_by_problem = {}
+
     for ep in exam.exam_problems:
-        accumulated_exam_points += ep.points
+        total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
+        if total_tc_weight == 0:
+            total_tc_weight = ep.points
+        accumulated_exam_points += total_tc_weight
         
         latest_sub = (
             db.query(Submission)
@@ -266,7 +339,7 @@ def get_exam_result(
                 problem_id=ep.problem_id,
                 title=p_title,
                 sequence=ep.sequence,
-                max_points=ep.points,
+                max_points=total_tc_weight,
                 candidate_score=p_score,
                 submission_status=p_status,
                 finished_at=p_finished_at
@@ -464,6 +537,14 @@ def publish_exam_session(
             detail="發布失敗！本場考試尚未配置任何實體題目，請先自動抽選題目。"
         )
 
+    expected_total = (exam.easy_count or 0) + (exam.medium_count or 0) + (exam.hard_count or 0)
+    actual_total = len(exam.exam_problems)
+    if actual_total < expected_total:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"發布失敗！本場考試設定題數為 {expected_total} 題，但目前僅配置 {actual_total} 題，題目數量不足。"
+        )
+
     exam.status = ExamStatus.Published
     db.commit()
     db.refresh(exam)
@@ -543,6 +624,16 @@ def update_exam_session(
         )
 
     update_data = obj_in.model_dump(exclude_unset=True)
+
+    # Bug 7：easy_count / medium_count / hard_count 只能在 Draft 狀態下調整。
+    # 一旦發布或結束、題目配比就是已敲定的紀錄、不准回頭改。
+    count_fields = {"easy_count", "medium_count", "hard_count"}
+    if count_fields & set(update_data) and exam.status != ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="只有草稿 (Draft) 狀態的考試可以修改題數配比。"
+        )
+
     for field, value in update_data.items():
         setattr(exam, field, value)
 

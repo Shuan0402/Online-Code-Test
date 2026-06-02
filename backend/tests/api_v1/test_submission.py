@@ -79,7 +79,7 @@ def test_create_submission_reject_run_only(client, candidate_user, override_auth
     """
     override_auth(candidate_user)
     problem = create_test_problem()
-    
+
     payload = {
         "problem_id": problem.id,
         "language": "python",
@@ -88,7 +88,7 @@ def test_create_submission_reject_run_only(client, candidate_user, override_auth
         "exam_id": str(uuid.uuid4())
     }
     response = client.post("/api/v1/submissions/", json=payload)
-    
+
     assert response.status_code == 422
     assert "submission_type" in response.text
 
@@ -526,7 +526,7 @@ def test_create_submission_queue_push_failed(mock_push, client, candidate_user, 
 def test_create_submission_run_only_direct(db_session, candidate_user, create_test_problem, create_test_exam):
     from app.api.api_v1.endpoints.submission import create_submission
     from app.schemas.submission import SubmissionCreate
-    
+
     prob = create_test_problem()
     exam = create_test_exam(candidate_id=candidate_user.id, status=ExamStatus.Ongoing)
     ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
@@ -538,7 +538,7 @@ def test_create_submission_run_only_direct(db_session, candidate_user, create_te
     payload.exam_id = exam.id
     payload.language = "python"
     payload.submission_type = "RUN_ONLY"
-    
+
     request = MagicMock()
     request.headers = {}
     request.client = MagicMock()
@@ -555,3 +555,138 @@ def test_create_submission_run_only_direct(db_session, candidate_user, create_te
         )
     assert exc_info.value.status_code == 400
     assert "不開放 RUN_ONLY 測試" in exc_info.value.detail
+
+
+# === Bug 1 + 2 backend regression tests ============================================
+# runtime_info 顯示策略：Candidate 只能看到 is_sample=True 測資的 runtime_info；
+# is_sample=False 的隱藏測資要被 mask 成 null（避免洩漏題庫）。
+# Interviewer / Admin 看到全部 runtime_info 不被 mask。
+
+from app.models.testcase import TestCase
+from app.models.submission import Submission, SubmissionDetail
+from app.models.enums import JudgeStatus
+
+
+def _seed_submission_with_two_testcases(db_session, user, problem):
+    """建立一筆 Submission + 兩筆 SubmissionDetail（一個 sample WA、一個 hidden WA），
+    runtime_info 都帶內容。回傳 submission。"""
+    sample_tc = db_session.query(TestCase).filter_by(
+        problem_id=problem.id, is_sample=True
+    ).first()
+    hidden_tc = db_session.query(TestCase).filter_by(
+        problem_id=problem.id, is_sample=False
+    ).first()
+
+    sub = Submission(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        problem_id=problem.id,
+        language="python",
+        code_s3_url="s3://octest-submissions/x.py",
+        status=JudgeStatus.WA,
+        score=0,
+        submission_type="OFFICIAL",
+    )
+    db_session.add(sub)
+    db_session.flush()
+
+    db_session.add_all([
+        SubmissionDetail(
+            submission_id=sub.id,
+            testcase_id=sample_tc.id,
+            status=JudgeStatus.WA,
+            execution_time=15,
+            score=0,
+            runtime_info="Expected: 7\nGot: 6",
+        ),
+        SubmissionDetail(
+            submission_id=sub.id,
+            testcase_id=hidden_tc.id,
+            status=JudgeStatus.WA,
+            execution_time=18,
+            score=0,
+            runtime_info="HIDDEN testcase leak: Expected: 42\nGot: 0",
+        ),
+    ])
+    db_session.commit()
+    return sub
+
+
+def test_get_latest_submission_masks_hidden_testcase_runtime_info_for_candidate(
+    client, db_session, candidate_user, override_auth, create_test_problem
+):
+    """
+    Bug 1：考生呼叫 /submissions/latest 時，is_sample=False 測資的 runtime_info
+    必須被 mask 成 null；sample 測資保留以便考生對照範例輸出。
+    """
+    problem = create_test_problem(
+        test_cases_data=[
+            {"input_data": "a", "expected_output": "1", "score_weight": 10, "is_sample": True},
+            {"input_data": "b", "expected_output": "2", "score_weight": 10, "is_sample": False},
+        ],
+    )
+    _seed_submission_with_two_testcases(db_session, candidate_user, problem)
+
+    override_auth(candidate_user)
+    res = client.get(f"/api/v1/submissions/latest?problem_id={problem.id}")
+    assert res.status_code == 200
+    details = res.json()["details"]
+    assert len(details) == 2
+
+    # sample 測資的 runtime_info 不應被 mask
+    sample = next(d for d in details if d["runtime_info"] is not None)
+    assert "Expected: 7" in sample["runtime_info"]
+
+    # 隱藏測資的 runtime_info 必須被 mask 成 null（不能洩漏題庫答案）
+    hidden = next(d for d in details if d["runtime_info"] is None)
+    assert hidden["status"] == "WA"
+
+
+def test_get_submission_by_id_masks_hidden_testcase_runtime_info_for_candidate(
+    client, db_session, candidate_user, override_auth, create_test_problem
+):
+    """
+    Bug 1：同上、但走 GET /submissions/{id} 端點（candidate ResultPage 點開明細用）。
+    """
+    problem = create_test_problem(
+        test_cases_data=[
+            {"input_data": "a", "expected_output": "1", "score_weight": 10, "is_sample": True},
+            {"input_data": "b", "expected_output": "2", "score_weight": 10, "is_sample": False},
+        ],
+    )
+    sub = _seed_submission_with_two_testcases(db_session, candidate_user, problem)
+
+    override_auth(candidate_user)
+    res = client.get(f"/api/v1/submissions/{sub.id}")
+    assert res.status_code == 200
+    details = res.json()["details"]
+    runtime_infos = [d["runtime_info"] for d in details]
+    assert any(r and "Expected: 7" in r for r in runtime_infos), "sample 測資 runtime_info 應保留"
+    assert None in runtime_infos, "hidden 測資 runtime_info 必須被 mask 成 null"
+
+
+def test_get_submission_by_id_interviewer_sees_all_runtime_info_unmasked(
+    client, db_session, candidate_user, interviewer_user, override_auth, create_test_problem
+):
+    """
+    Bug 2：interviewer 進到 SubmissionDetailPage 必須看到全部 testcase 的 runtime_info、
+    包含隱藏測資（用來 debug 考生卡在哪、要不要給分）。
+    """
+    problem = create_test_problem(
+        test_cases_data=[
+            {"input_data": "a", "expected_output": "1", "score_weight": 10, "is_sample": True},
+            {"input_data": "b", "expected_output": "2", "score_weight": 10, "is_sample": False},
+        ],
+    )
+    sub = _seed_submission_with_two_testcases(db_session, candidate_user, problem)
+
+    override_auth(interviewer_user)
+    res = client.get(f"/api/v1/submissions/{sub.id}")
+    assert res.status_code == 200
+    details = res.json()["details"]
+    runtime_infos = [d["runtime_info"] for d in details]
+    # 兩筆都應有內容、None 不應出現（interviewer 不該被 mask）
+    assert all(r is not None for r in runtime_infos), (
+        f"interviewer 看 runtime_info 不該被 mask，目前 {runtime_infos}"
+    )
+    assert any("HIDDEN testcase leak" in r for r in runtime_infos)

@@ -1,11 +1,15 @@
 /**
- * Tests for ExamListPage (P4 enrichments + P1 base).
+ * Tests for ExamListPage (P4 enrichments + P1 base + Bug 4 server-side filters).
  *
  * 覆蓋場景：
  * (a) status filter: selecting "Draft" → only Draft rows visible; "全部" restores all
  * (b) score column: null → "—", 150 → "150 分"
  * (c) delete confirm → DELETE called with exact UUID; row removed on success
  * (d) delete 400 → inline error, row stays
+ * (e) Bug 4: created_start/end date inputs trigger refetch with ISO date params
+ * (f) Bug 4: score_gte/lte 答對率 % inputs send numeric params
+ * (g) Bug 4: mineOnly toggle sends mine=true via params
+ * (h) Bug 4: 重設篩選 clears all filter state and re-fires API with empty params
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -119,7 +123,7 @@ describe('ExamListPage', () => {
 
     // Only one GET call was made (the initial load)
     expect(api.get).toHaveBeenCalledTimes(1)
-    expect(api.get).toHaveBeenCalledWith('/api/v1/exams/')
+    expect(api.get).toHaveBeenCalledWith('/api/v1/exams/', { params: {} })
   })
 
   // (b) score column: null → "—", 150 → "150 分"
@@ -161,6 +165,105 @@ describe('ExamListPage', () => {
     await waitFor(() => {
       expect(screen.queryByText('草稿考試')).not.toBeInTheDocument()
     })
+  })
+
+  // (e) Bug 4: created_start/end date inputs fire refetch with date params
+  it('typing into created_start/end inputs refetches with created_start/created_end params', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('草稿考試')).toBeInTheDocument()
+    })
+
+    // Initial load
+    expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', { params: {} })
+
+    const startInput = document.getElementById('created-start')
+    const endInput = document.getElementById('created-end')
+
+    fireEvent.change(startInput, { target: { value: '2026-05-05' } })
+    fireEvent.change(endInput, { target: { value: '2026-05-08' } })
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', {
+        params: { created_start: '2026-05-05', created_end: '2026-05-08' },
+      })
+    })
+  })
+
+  // (f) Bug 4: score_gte/lte inputs send numeric params (not strings)
+  it('typing into score_gte/lte inputs sends numeric params', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('草稿考試')).toBeInTheDocument()
+    })
+
+    const gteInput = document.getElementById('score-gte')
+    const lteInput = document.getElementById('score-lte')
+
+    fireEvent.change(gteInput, { target: { value: '60' } })
+    fireEvent.change(lteInput, { target: { value: '90' } })
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', {
+        params: { score_gte: 60, score_lte: 90 },
+      })
+    })
+
+    // Verify they are JS numbers, not strings — protects against `params.score_gte = e.target.value` regression
+    const lastCall = api.get.mock.calls[api.get.mock.calls.length - 1]
+    expect(typeof lastCall[1].params.score_gte).toBe('number')
+    expect(typeof lastCall[1].params.score_lte).toBe('number')
+  })
+
+  // (g) Bug 4: mineOnly toggle sends mine=true
+  it('clicking 「只看我的」 toggle sends mine=true via params', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('草稿考試')).toBeInTheDocument()
+    })
+
+    const toggle = document.getElementById('mine-only-toggle')
+    fireEvent.click(toggle)
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', {
+        params: { mine: true },
+      })
+    })
+  })
+
+  // (h) Bug 4: 重設篩選 clears all filters
+  it('clicking 重設篩選 clears every filter and refetches with empty params', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('草稿考試')).toBeInTheDocument()
+    })
+
+    // Set several filters
+    fireEvent.change(document.getElementById('created-start'), { target: { value: '2026-05-05' } })
+    fireEvent.change(document.getElementById('score-gte'), { target: { value: '50' } })
+    fireEvent.click(document.getElementById('mine-only-toggle'))
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', {
+        params: { created_start: '2026-05-05', score_gte: 50, mine: true },
+      })
+    })
+
+    // Click reset
+    fireEvent.click(document.getElementById('reset-filters'))
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', { params: {} })
+    })
+
+    // UI state cleared
+    expect(document.getElementById('created-start').value).toBe('')
+    expect(document.getElementById('score-gte').value).toBe('')
   })
 
   // (d) delete 400 → inline error, row stays

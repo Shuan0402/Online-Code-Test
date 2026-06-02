@@ -2,10 +2,13 @@
  * Tests for EditorPanel component.
  *
  * EditorPanel:
- *   - Loads draft from localStorage on mount (key: draft:exam:{examId}:problem:{problemId})
+ *   - Loads draft from localStorage on mount
+ *     (key: draft:exam:{examId}:problem:{problemId}:lang:{language} — Bug 5: per-language)
  *   - Debounces localStorage write by 1s after code change
  *   - Exposes flushDraft() via ref that synchronously writes current code to localStorage
- *   - Reloads draft when problemId changes
+ *   - Reloads draft when problemId / examId changes
+ *   - Bug 5: switching language flushes old lang's draft and loads new lang's saved draft
+ *     (or DEFAULT_CODE[newLang] if none) — Python comment doesn't leak into C++ slot
  *
  * Monaco does NOT render in jsdom — we mock @monaco-editor/react with a lightweight
  * textarea stub that calls the onChange prop, so tests exercise the draft logic directly.
@@ -54,7 +57,7 @@ describe('EditorPanel', () => {
   })
 
   it('loads existing draft from localStorage on mount', () => {
-    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}`
+    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:python`
     localStorage.setItem(draftKey, 'my saved code')
 
     render(
@@ -72,7 +75,7 @@ describe('EditorPanel', () => {
 
   it('flushDraft() synchronously writes current code to the correct localStorage key', () => {
     const ref = createRef()
-    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}`
+    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:python`
 
     render(
       <EditorPanel
@@ -100,7 +103,7 @@ describe('EditorPanel', () => {
   })
 
   it('debounced write lands in localStorage after 1 second', () => {
-    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}`
+    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:python`
 
     render(
       <EditorPanel
@@ -127,8 +130,8 @@ describe('EditorPanel', () => {
   })
 
   it('switching problemId reloads the draft for the new key', () => {
-    const key1 = `draft:exam:${EXAM_ID}:problem:1`
-    const key2 = `draft:exam:${EXAM_ID}:problem:2`
+    const key1 = `draft:exam:${EXAM_ID}:problem:1:lang:python`
+    const key2 = `draft:exam:${EXAM_ID}:problem:2:lang:python`
     localStorage.setItem(key1, 'code for problem 1')
     localStorage.setItem(key2, 'code for problem 2')
 
@@ -160,7 +163,7 @@ describe('EditorPanel', () => {
 
   it('flushDraft() cancels any pending debounce timer', () => {
     const ref = createRef()
-    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}`
+    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:python`
 
     render(
       <EditorPanel
@@ -190,8 +193,8 @@ describe('EditorPanel', () => {
     setItemSpy.mockRestore()
   })
 
-  it('handles language changes and saves draft', () => {
-    const draftKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}`
+  it('Bug 5: switching language flushes Python draft to its own key', () => {
+    const pyKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:python`
     render(
       <EditorPanel
         examId={EXAM_ID}
@@ -202,12 +205,93 @@ describe('EditorPanel', () => {
     )
 
     const textarea = screen.getByTestId('monaco-stub')
-    fireEvent.change(textarea, { target: { value: 'some code' } })
+    fireEvent.change(textarea, { target: { value: 'a = 1' } })
 
     const select = screen.getByLabelText('語言：')
     fireEvent.change(select, { target: { value: 'cpp' } })
 
-    expect(localStorage.getItem(draftKey)).toBe('some code')
+    // Python 草稿被 flush 到 lang:python key（不被丟掉）
+    expect(localStorage.getItem(pyKey)).toBe('a = 1')
+  })
+
+  it('Bug 5: switching python → cpp loads C++ default template (not Python comment)', () => {
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={vi.fn()}
+        submitting={false}
+      />
+    )
+
+    const textarea = screen.getByTestId('monaco-stub')
+    // Python 視窗預設應為 Python 註解
+    expect(textarea.value).toContain('Python')
+    expect(textarea.value).not.toContain('#include')
+
+    // 切到 C++
+    const select = screen.getByLabelText('語言：')
+    fireEvent.change(select, { target: { value: 'cpp' } })
+
+    const cppArea = screen.getByTestId('monaco-stub')
+    // 應換成 C++ 註解 + #include 樣板、Python 註解不該還在
+    expect(cppArea.value).toContain('C++')
+    expect(cppArea.value).toContain('#include')
+    expect(cppArea.value).not.toContain('Python')
+  })
+
+  it('Bug 5: switching back to a language with saved draft restores its code', () => {
+    const pyKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:python`
+    const cppKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:cpp`
+    localStorage.setItem(pyKey, 'print("python draft")')
+    localStorage.setItem(cppKey, 'int x = 42;')
+
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={vi.fn()}
+        submitting={false}
+      />
+    )
+
+    // 初始載入 python 草稿
+    expect(screen.getByTestId('monaco-stub').value).toBe('print("python draft")')
+
+    // 切 cpp → 載入 cpp 草稿
+    const select = screen.getByLabelText('語言：')
+    fireEvent.change(select, { target: { value: 'cpp' } })
+    expect(screen.getByTestId('monaco-stub').value).toBe('int x = 42;')
+
+    // 切回 python → 還原 python 草稿
+    fireEvent.change(select, { target: { value: 'python' } })
+    expect(screen.getByTestId('monaco-stub').value).toBe('print("python draft")')
+  })
+
+  it('Bug 5: edits made in cpp are saved to cpp key, not leaked to python key', () => {
+    const pyKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:python`
+    const cppKey = `draft:exam:${EXAM_ID}:problem:${PROBLEM_ID}:lang:cpp`
+
+    render(
+      <EditorPanel
+        examId={EXAM_ID}
+        problemId={PROBLEM_ID}
+        onSubmit={vi.fn()}
+        submitting={false}
+      />
+    )
+
+    const select = screen.getByLabelText('語言：')
+    fireEvent.change(select, { target: { value: 'cpp' } })
+
+    const textarea = screen.getByTestId('monaco-stub')
+    fireEvent.change(textarea, { target: { value: 'cpp-only edit' } })
+
+    // 跑滿 1s debounce
+    act(() => { vi.advanceTimersByTime(1000) })
+
+    expect(localStorage.getItem(cppKey)).toBe('cpp-only edit')
+    expect(localStorage.getItem(pyKey)).not.toBe('cpp-only edit')
   })
 
   it('calls onSubmit when the submit button is clicked', () => {

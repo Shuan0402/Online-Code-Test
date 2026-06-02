@@ -198,7 +198,7 @@ export default function ProblemListPage() {
                   key={problem.id}
                   className="border-t hover:bg-muted/30 transition-colors"
                 >
-                  <td className="px-4 py-3 text-muted-foreground">{idx + 1}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{problem.id}</td>
                   <td className="px-4 py-3 font-medium">{problem.title}</td>
                   <td className="px-4 py-3">
                     <span

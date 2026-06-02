@@ -22,6 +22,22 @@ browser → frontend → nginx → backend (FastAPI) ─┬─ pg (PostgreSQL)
 
 需要：Docker Desktop（或 Linux 的 Docker Engine + Compose v2）。
 
+Windows 的 Git 預設可能會將 shell 腳本檔案轉換為 CRLF 換行符號。這會導致 Docker 映像檔內的 Linux 殼層 (Shell) 無法正確解析 `entrypoint.sh`，評測時會對 C++ 或 Python 回傳 **RE (Runtime Error)**。
+
+**解決方案：**
+1. 在本地執行以下 Git 設定，防止未來 Checkout 時自動將換行符號轉換為 CRLF：
+   ```bash
+   git config --global core.autocrlf false
+   ```
+2. 將專案中的 shell 檔案換行符號轉換回 LF。您可以使用 IDE (例如 VS Code) 將檔案的換行符號設定為 `LF`，或者在專案根目錄下使用 Python 進行一鍵轉換：
+   ```bash
+   python -c "for f in ['judge-sandbox/images/cpp/entrypoint.sh', 'judge-sandbox/tests/run.sh', 'scripts/e2e/helpers/verify-password-hash.sh']: content = open(f, 'rb').read().replace(b'\r\n', b'\n'); open(f, 'wb').write(content)"
+   ```
+3. **重新編譯** Sandbox 映像檔以套用 LF 換行符號（必須加上 `--no-cache` 以免使用舊快取）：
+   ```bash
+   docker build --no-cache -t sandbox:cpp judge-sandbox/images/cpp
+   ```
+
 ### 第一次 setup
 
 ```bash
@@ -40,6 +56,30 @@ docker compose restart backend                # 改 code 後重啟
 docker compose up -d --build backend          # requirements.txt 改了
 docker compose down [-v]                      # 停（-v 砍 DB）
 ```
+
+### 資料庫初始化與測試資料灌入 (Database Initialization & Seeding)
+
+當您首次啟動服務，或是執行 `docker compose down -v` 導致資料庫被清空時，需要重新初始化資料庫並灌入測試資料：
+
+1. **基本測試帳號與資料庫結構初始化**
+   本專案在 `backend` 啟動時會自動執行 `python app/db/init_db.py` 以建立 Table 結構，並建立預設的系統測試帳號（包含 `admin@nthu.edu.tw` / `password123` 等）。
+
+2. **手動測試資料灌入 (適用於一般手動測試與 Demo)**
+   若要登入考生帳號、建立考試或進行程式碼提交測試，您需要執行以下指令以建立 `demo_candidate`、`demo_questioner` 以及範例題目「兩數相加 (demo)」：
+   ```bash
+   docker compose exec backend python scripts/integration/seed.py
+   ```
+
+3. **端到端 (E2E) 測試資料灌入 (適用於 Playwright 測試)**
+   若您需要執行 Playwright 端到端測試，請分別執行以下指令來灌入對應的測試情境資料：
+   ```bash
+   # 灌入考生端 E2E 測試資料
+   docker compose exec backend python -m app.scripts.seed_e2e_candidate
+   
+   # 灌入面試官端 E2E 測試資料
+   docker compose exec backend python -m app.scripts.seed_e2e_interviewer
+   ```
+
 
 ### 測試與開發環境分流
 專案採用環境感知建置：正式環境維持極致精簡與資安加固；本地開發與 CI 測試階段則會自動注入 `pytest` 等開發期工具。

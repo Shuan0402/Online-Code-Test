@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
+import MarkdownView from '@/components/MarkdownView'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -205,9 +205,9 @@ export default function SubmissionDetailPage() {
             </span>
           </div>
           {problem.description && (
-            <div className="text-sm text-muted-foreground prose prose-sm max-w-none">
-              <ReactMarkdown>{problem.description}</ReactMarkdown>
-            </div>
+            <MarkdownView className="text-sm text-muted-foreground">
+              {problem.description}
+            </MarkdownView>
           )}
         </section>
       )}
@@ -277,6 +277,7 @@ export default function SubmissionDetailPage() {
                   <th className="px-4 py-3 text-left font-medium w-28">狀態</th>
                   <th className="px-4 py-3 text-left font-medium w-16">得分</th>
                   <th className="px-4 py-3 text-left font-medium w-28">執行時間</th>
+                  <th className="px-4 py-3 text-left font-medium">詳細資訊</th>
                 </tr>
               </thead>
               <tbody>
@@ -295,10 +296,27 @@ export default function SubmissionDetailPage() {
                         ? `${detail.execution_time} ms`
                         : '—'}
                     </td>
+                    <td className="px-4 py-3">
+                      {detail.runtime_info ? (
+                        <pre className="text-xs whitespace-pre-wrap break-all bg-muted/20 rounded px-2 py-1 max-h-24 overflow-y-auto">
+                          {detail.runtime_info}
+                        </pre>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          )}
+          {submission?.judge_log && (
+            <div className="px-4 py-3 border-t bg-muted/5">
+              <p className="text-xs font-medium text-muted-foreground mb-1">整體錯誤訊息摘要：</p>
+              <pre className="text-xs whitespace-pre-wrap break-all bg-muted/20 rounded px-2 py-1 max-h-40 overflow-y-auto">
+                {submission.judge_log}
+              </pre>
+            </div>
           )}
         </section>
       )}

@@ -83,13 +83,14 @@ export default function ResultPage() {
 
       {!loading && !error && result && (
         <div className="space-y-6">
-          {/* 考試標題與總分 */}
+          {/* 考試標題與「答對 X / 共 Y 題」摘要
+              spec：candidate 只看答對題數、不看分數 */}
           <div className="rounded-lg border bg-white shadow-sm p-5">
             <h2 className="text-lg font-bold mb-2">{result.title}</h2>
             <p className="text-3xl font-semibold text-primary">
-              {result.total_candidate_score}
+              答對 {result.results.filter((r) => r.submission_status === 'AC').length}
               <span className="text-base text-muted-foreground font-normal">
-                {' '}/ {result.total_exam_points} 分
+                {' '}/ 共 {result.results.length} 題
               </span>
             </p>
           </div>
@@ -102,7 +103,7 @@ export default function ResultPage() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground w-16">題號</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">題目</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground w-28">狀態</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground w-24">得分</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground w-24">結果</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground w-20">明細</th>
                 </tr>
               </thead>
@@ -136,13 +137,14 @@ function FragmentRow({ item, isOpen, detailState, onToggle }) {
   return (
     <>
       <tr className="hover:bg-muted/10 transition-colors">
-        <td className="px-4 py-3 text-muted-foreground">{item.sequence}</td>
+        <td className="px-4 py-3 text-muted-foreground">{item.problem_id}</td>
         <td className="px-4 py-3 font-medium">{item.title}</td>
         <td className="px-4 py-3">
           <JudgeStatusBadge status={item.submission_status} />
         </td>
         <td className="px-4 py-3 text-right">
-          {item.candidate_score} / {item.max_points}
+          {/* spec：candidate 只看「已答對 / 未答對」、不看分數 */}
+          {item.submission_status === 'AC' ? '已答對' : '未答對'}
         </td>
         <td className="px-4 py-3 text-right">
           <button
@@ -194,7 +196,6 @@ function TestcaseDetailSection({ state }) {
               <th className="px-3 py-2 text-left font-medium text-muted-foreground w-16">Testcase</th>
               <th className="px-3 py-2 text-left font-medium text-muted-foreground w-24">結果</th>
               <th className="px-3 py-2 text-right font-medium text-muted-foreground w-20">耗時</th>
-              <th className="px-3 py-2 text-right font-medium text-muted-foreground w-24">記憶體</th>
               <th className="px-3 py-2 text-left font-medium text-muted-foreground">詳細資訊</th>
             </tr>
           </thead>
@@ -208,14 +209,13 @@ function TestcaseDetailSection({ state }) {
                 <td className="px-3 py-2 text-right">
                   {d.execution_time != null ? `${d.execution_time} ms` : '—'}
                 </td>
-                <td className="px-3 py-2 text-right">
-                  {d.memory_usage != null ? `${d.memory_usage} MB` : '—'}
-                </td>
                 <td className="px-3 py-2">
                   {d.runtime_info ? (
                     <pre className="text-xs whitespace-pre-wrap break-all bg-muted/20 rounded px-2 py-1 max-h-32 overflow-y-auto">
                       {d.runtime_info}
                     </pre>
+                  ) : d.status === 'AC' ? (
+                    <span className="text-green-700">通過</span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
                   )}

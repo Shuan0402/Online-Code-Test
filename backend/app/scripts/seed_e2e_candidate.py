@@ -157,23 +157,25 @@ def _ensure_synthetic_submission(
     db.add(submission)
     db.flush()
 
-    # 兩筆 SubmissionDetail：一筆 AC、一筆 WA。runtime_info 模擬 worker 寫的內容。
+    # 兩筆 SubmissionDetail：一筆 sample WA（runtime_info 給 candidate 對照）+ 一筆 hidden AC。
+    # PR #59 後 candidate 看 hidden testcase runtime_info 會被 mask 成 null；
+    # 所以這條為了 E2 spec demo「考生看得到 WA 對比」、WA 要放在 sample testcase 上。
     details_seed = [
         {
-            "testcase_id": testcases[0].id,
-            "status": JudgeStatus.AC,
-            "execution_time": 23,
-            "memory_usage": 10,
-            "score": 50,
-            "runtime_info": "",
-        },
-        {
-            "testcase_id": testcases[-1].id,  # 若只有 1 筆 TestCase 會跟上面同一個 — 仍可 demo
+            "testcase_id": testcases[0].id,           # sample
             "status": JudgeStatus.WA,
             "execution_time": 18,
             "memory_usage": 11,
             "score": 0,
             "runtime_info": "Expected: 7\nGot: 6",
+        },
+        {
+            "testcase_id": testcases[-1].id,          # hidden（若只有 1 筆 TestCase 會與上面同 id）
+            "status": JudgeStatus.AC,
+            "execution_time": 23,
+            "memory_usage": 10,
+            "score": 50,
+            "runtime_info": "",
         },
     ]
     for d in details_seed:

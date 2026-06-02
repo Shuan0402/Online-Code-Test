@@ -42,12 +42,20 @@ export default function ExamListPage() {
 
   const [exams, setExams] = useState([])
   const [loading, setLoading] = useState(true)
+  // 區分「首次載入」vs「換篩選時 refetch」：refetch 時不重新顯示全頁 spinner、保留現有列表
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
   const [error, setError] = useState(null)
 
   // 狀態篩選（client-side，不發新 API 請求）
   const [statusFilter, setStatusFilter] = useState('')
   // 「只看我的」切換（server-side filter，會重新發 API 請求）
   const [mineOnly, setMineOnly] = useState(false)
+  // 時間區段篩選（server-side filter，YYYY-MM-DD）
+  const [createdStart, setCreatedStart] = useState('')
+  const [createdEnd, setCreatedEnd] = useState('')
+  // 答對率區間篩選（server-side filter，0-100 %）
+  const [scoreGte, setScoreGte] = useState('')
+  const [scoreLte, setScoreLte] = useState('')
 
   // 刪除確認 Dialog 狀態
   const [deleteTarget, setDeleteTarget] = useState(null) // { id, title }
@@ -58,15 +66,30 @@ export default function ExamListPage() {
     setLoading(true)
     setError(null)
     try {
-      const params = mineOnly ? '?mine=true' : ''
-      const res = await api.get(`/api/v1/exams/${params}`)
+      const params = {}
+      if (mineOnly) params.mine = true
+      if (createdStart) params.created_start = createdStart
+      if (createdEnd) params.created_end = createdEnd
+      if (scoreGte !== '') params.score_gte = Number(scoreGte)
+      if (scoreLte !== '') params.score_lte = Number(scoreLte)
+      const res = await api.get('/api/v1/exams/', { params })
       setExams(res.data)
     } catch (err) {
       setError(err.response?.data?.detail ?? '載入考試列表失敗，請稍後再試')
     } finally {
       setLoading(false)
+      setHasLoadedOnce(true)
     }
-  }, [mineOnly])
+  }, [mineOnly, createdStart, createdEnd, scoreGte, scoreLte])
+
+  const resetFilters = () => {
+    setStatusFilter('')
+    setMineOnly(false)
+    setCreatedStart('')
+    setCreatedEnd('')
+    setScoreGte('')
+    setScoreLte('')
+  }
 
   useEffect(() => {
     fetchExams()
@@ -101,7 +124,8 @@ export default function ExamListPage() {
     : exams
 
   // --- 渲染 ---
-  if (loading) {
+  // 首次載入才顯示整頁 spinner；換篩選時 refetch 保留現有列表（避免 input 被 unmount、UI flicker）
+  if (loading && !hasLoadedOnce) {
     return (
       <div className="flex justify-center items-center py-20">
         <LoadingSpinner size="lg" />
@@ -127,8 +151,8 @@ export default function ExamListPage() {
         </Button>
       </div>
 
-      {/* 篩選列：狀態 + 「只看我的」 */}
-      <div className="flex items-center gap-4 flex-wrap">
+      {/* 篩選列：狀態 + 「只看我的」+ 時間區段 + 答對率 */}
+      <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/20 p-3">
         <div className="flex items-center gap-2">
           <label htmlFor="status-filter" className="text-sm font-medium">
             篩選狀態：
@@ -158,6 +182,65 @@ export default function ExamListPage() {
           }`}
         >
           {mineOnly ? '只看我的' : '所有考試'}
+        </button>
+
+        {/* 時間區段（建立時間） */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="created-start" className="text-sm font-medium text-muted-foreground">
+            建立時間：
+          </label>
+          <input
+            id="created-start"
+            type="date"
+            value={createdStart}
+            onChange={(e) => setCreatedStart(e.target.value)}
+            className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <span className="text-muted-foreground">～</span>
+          <input
+            id="created-end"
+            type="date"
+            value={createdEnd}
+            onChange={(e) => setCreatedEnd(e.target.value)}
+            className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+
+        {/* 答對率區間 % */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="score-gte" className="text-sm font-medium text-muted-foreground">
+            答對率 (%)：
+          </label>
+          <input
+            id="score-gte"
+            type="number"
+            min="0"
+            max="100"
+            placeholder="最小"
+            value={scoreGte}
+            onChange={(e) => setScoreGte(e.target.value)}
+            className="w-20 rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <span className="text-muted-foreground">～</span>
+          <input
+            id="score-lte"
+            type="number"
+            min="0"
+            max="100"
+            placeholder="最大"
+            value={scoreLte}
+            onChange={(e) => setScoreLte(e.target.value)}
+            className="w-20 rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+        </div>
+
+        <button
+          id="reset-filters"
+          type="button"
+          onClick={resetFilters}
+          className="ml-auto rounded-md px-3 py-1.5 text-xs font-medium border border-input bg-background text-foreground hover:bg-muted"
+        >
+          重設篩選
         </button>
       </div>
 

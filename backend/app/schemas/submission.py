@@ -58,6 +58,7 @@ class CallbackTestcase(BaseModel):
     testcase_id: int
     case_verdict: str
     exec_time_ms: int
+    runtime_info: Optional[str] = None
 
 
 class JudgeCallbackPayload(BaseModel):

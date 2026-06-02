@@ -57,13 +57,18 @@ class ExamCreate(ExamBase):
 class ExamUpdate(BaseModel):
     """
     更新考試狀態（例如：發布、歸檔，或考生開始作答）。
+    Bug 7：易/中/難題數欄位允許在 Draft 狀態下調整（endpoint 內 enforce 該守則）。
     """
     title: Optional[str] = None
     duration_minutes: Optional[int] = Field(None, gt=0)
     status: Optional[ExamStatus] = None
-    
+
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
+
+    easy_count: Optional[int] = Field(None, ge=0)
+    medium_count: Optional[int] = Field(None, ge=0)
+    hard_count: Optional[int] = Field(None, ge=0)
 
 class CandidateExamListRead(BaseModel):
     """
