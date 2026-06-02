@@ -16,5 +16,17 @@
 frontend/dist/
 frontend/coverage/
 
+# Test coverage reports (pytest-cov, Sonar)
+backend/coverage.xml
+backend/htmlcov/
+backend/.coverage
+judge-worker/coverage.xml
+judge-worker/htmlcov/
+judge-worker/.coverage
+
+# Playwright HTML reporter output
+scripts/e2e/playwright-report/
+scripts/e2e/test-results/
+
 # local-only — do not push
 /CLAUDE.md
