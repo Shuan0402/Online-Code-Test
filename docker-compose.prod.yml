@@ -1,0 +1,65 @@
+# Production override for AWS EC2 deploy.
+# Run with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# The explicit -f list bypasses docker-compose.override.yml (dev hot-reload mounts).
+#
+# Everything sits behind nginx on :80 so the browser sees one origin → no CORS.
+# Other services keep their host port mappings from the base file but the EC2
+# Security Group should only open :80 (and :22 for SSH) to the public.
+
+services:
+  backend:
+    # Base file has no `build:` — add it here so prod can build from source.
+    build: ./backend
+    # Replace dev volume list: drop the host source bind-mount, keep log volume.
+    volumes:
+      - app_logs:/var/log/app
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      WORKER_SECRET: ${WORKER_SECRET}
+      MINIO_ENDPOINT: http://minio:9000
+      # Browser-facing presigned URLs use the EC2 public host through nginx.
+      # PUBLIC_HOST = e.g. http://ec2-xx-xx-xx-xx.compute.amazonaws.com
+      MINIO_EXTERNAL_ENDPOINT: ${PUBLIC_HOST}
+      MINIO_USER: ${MINIO_USER}
+      MINIO_PASSWORD: ${MINIO_PASSWORD}
+      MINIO_BUCKET: octest-submissions
+      MINIO_PRESIGN_EXPIRES_SEC: "600"
+      PYTHONPATH: /app
+      POSTGRES_HOST: pg
+      REDIS_HOST: redis
+      LOG_FILE_PATH: /var/log/app/backend.log
+
+  worker:
+    build: ./judge-worker
+
+  minio:
+    # Tell MinIO its public-facing URL so the console + redirects work.
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+      MINIO_SERVER_URL: ${PUBLIC_HOST}
+
+  grafana:
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SERVER_ROOT_URL=${PUBLIC_HOST}/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+
+  nginx:
+    build:
+      context: .
+      dockerfile: infrastructure/nginx/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      grafana:
+        condition: service_started
+    restart: unless-stopped
