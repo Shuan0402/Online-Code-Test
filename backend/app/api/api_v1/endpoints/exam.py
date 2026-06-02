@@ -95,12 +95,26 @@ def get_candidate_exams(
             .all()
         )
         
+    # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，
+    # 避免在雙重迴圈裡每場考試每題都打一次 DB（N+1）。
+    problem_ids = {ep.problem_id for exam in exams for ep in exam.exam_problems}
+    if problem_ids:
+        weight_rows = (
+            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
+            .filter(TestCase.problem_id.in_(problem_ids))
+            .group_by(TestCase.problem_id)
+            .all()
+        )
+        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
+    else:
+        weight_by_problem = {}
+
     # Python-side filtering & sorting for percentage range and finished_at
     filtered_exams = []
     for exam in exams:
         total_points = 0
         for ep in exam.exam_problems:
-            total_tc_weight = db.query(func.sum(TestCase.score_weight)).filter(TestCase.problem_id == ep.problem_id).scalar() or 0
+            total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
             if total_tc_weight == 0:
                 total_tc_weight = ep.points
             total_points += total_tc_weight
@@ -278,8 +292,21 @@ def get_exam_result(
     accumulated_exam_points = 0
     accumulated_candidate_score = 0
 
+    # 一次 batch 取本場考試所有題目的 testcase 配分總和，避免逐題打 DB。
+    ep_problem_ids = [ep.problem_id for ep in exam.exam_problems]
+    if ep_problem_ids:
+        weight_rows = (
+            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
+            .filter(TestCase.problem_id.in_(ep_problem_ids))
+            .group_by(TestCase.problem_id)
+            .all()
+        )
+        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
+    else:
+        weight_by_problem = {}
+
     for ep in exam.exam_problems:
-        total_tc_weight = db.query(func.sum(TestCase.score_weight)).filter(TestCase.problem_id == ep.problem_id).scalar() or 0
+        total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
         if total_tc_weight == 0:
             total_tc_weight = ep.points
         accumulated_exam_points += total_tc_weight
