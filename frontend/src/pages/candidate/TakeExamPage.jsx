@@ -55,20 +55,24 @@ export default function TakeExamPage() {
   const [activeIdx, setActiveIdx] = useState(0)
   // ref to the active EditorPanel instance so we can flush draft before tab switch
   const editorRef = useRef(null)
-  // ref to SubmissionResultPanel — 提交完成自動滾到 panel、考生不會錯過結果
+  // ref to SubmissionResultPanel — 試跑 / 提交完成自動滾到 panel、考生不會錯過結果
   const resultPanelRef = useRef(null)
 
   // ── 評測狀態：{ [problemId]: statusStr } ────────────────────────────────────
   const [statuses, setStatuses] = useState({})
 
-  // ── 最新提交完整結果：{ [problemId]: SubmissionRead } ──────────────────────────
+  // ── 最新 OFFICIAL 提交完整結果：{ [problemId]: SubmissionRead } ────────────
   const [lastResults, setLastResults] = useState({})
+  // ── 最新 RUN_ONLY 試跑完整結果（不污染 tab 狀態 / 不計分） ────────────────
+  const [runOnlyResults, setRunOnlyResults] = useState({})
 
-  // ── 輪詢管理：{ [problemId]: submissionId | null } ───────────────────────────
-  const [pollingIds, setPollingIds] = useState({}) // problemId → submissionId
+  // ── 輪詢管理：兩條獨立 channel；不會互相覆蓋 ─────────────────────────────
+  const [pollingIds, setPollingIds] = useState({})            // OFFICIAL：problemId → submissionId
+  const [runOnlyPollingIds, setRunOnlyPollingIds] = useState({}) // RUN_ONLY：problemId → submissionId
 
-  // ── 提交進行中 flag（per problem） ───────────────────────────────────────────
+  // ── 提交 / 試跑進行中 flag（per problem） ────────────────────────────────────
   const [submittingPids, setSubmittingPids] = useState({})
+  const [runOnlyPids, setRunOnlyPids] = useState({})
 
   // ── 交卷 Modal ───────────────────────────────────────────────────────────────
   const [showFinalize, setShowFinalize] = useState(false)
@@ -130,15 +134,25 @@ export default function TakeExamPage() {
     })
   }, [])
 
-  // 輪詢回呼：更新評測狀態，若終止就清 pending key 並儲存完整結果
+  // 輪詢回呼（OFFICIAL）：更新評測狀態、若終止就清 pending key 並儲存完整結果
   const handlePollResult = useCallback((problemId) => (data) => {
     setStatuses((prev) => ({ ...prev, [problemId]: data.status }))
     const terminal = data.status !== 'Pending' && data.status !== 'Judging'
     if (terminal) {
       localStorage.removeItem(`pending:${problemId}`)
       setPollingIds((prev) => ({ ...prev, [problemId]: null }))
-      // 儲存完整 SubmissionRead（含 details.runtime_info）
       setLastResults((prev) => ({ ...prev, [problemId]: data }))
+      scrollToResultPanel()
+    }
+  }, [scrollToResultPanel])
+
+  // 輪詢回呼（RUN_ONLY）：只更新試跑結果；不碰 tab 狀態 / 不算分
+  const handleRunOnlyPollResult = useCallback((problemId) => (data) => {
+    const terminal = data.status !== 'Pending' && data.status !== 'Judging'
+    if (terminal) {
+      setRunOnlyPollingIds((prev) => ({ ...prev, [problemId]: null }))
+      setRunOnlyResults((prev) => ({ ...prev, [problemId]: data }))
+      setRunOnlyPids((prev) => ({ ...prev, [problemId]: false }))
       scrollToResultPanel()
     }
   }, [scrollToResultPanel])
@@ -188,6 +202,31 @@ export default function TakeExamPage() {
       setSubmitError({ problemId, message })
     } finally {
       setSubmittingPids((prev) => ({ ...prev, [problemId]: false }))
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 4b. 試跑（RUN_ONLY）— 不計分、不影響 tab 狀態、5 秒內限一次（backend 429）
+  // ─────────────────────────────────────────────────────────────────────────────
+  const handleRunOnly = async (problemId, code, language) => {
+    setRunOnlyPids((prev) => ({ ...prev, [problemId]: true }))
+    setSubmitError(null)
+    try {
+      const res = await api.post('/api/v1/submissions/', {
+        problem_id: problemId,
+        exam_id: examId,
+        language,
+        source_code: code,
+        submission_type: 'RUN_ONLY',
+      })
+      const submissionId = res.data.id
+      setRunOnlyPollingIds((prev) => ({ ...prev, [problemId]: submissionId }))
+    } catch (err) {
+      const code429 = err?.response?.status === 429
+      const message = err?.response?.data?.detail
+        || (code429 ? '試跑太頻繁，請稍後再試。' : '試跑失敗，請稍後再試。')
+      setSubmitError({ problemId, message })
+      setRunOnlyPids((prev) => ({ ...prev, [problemId]: false }))
     }
   }
 
@@ -292,7 +331,7 @@ export default function TakeExamPage() {
         <div className="flex-1 min-h-0 overflow-y-auto">
           {/* 上半：題目 + 編輯器，留 ~30% 空間給 panel header 顯示在預設視窗內 */}
           <div className="flex" style={{ height: '70vh', minHeight: '500px' }}>
-            {/* 左：題目敘述 (candidate 不秀題目配分) */}
+            {/* 左：題目敘述 */}
             <div className="w-2/5 border-r overflow-hidden">
               <ProblemPanel
                 problemId={activeProblem.problem_id}
@@ -307,14 +346,21 @@ export default function TakeExamPage() {
                 examId={examId}
                 problemId={activeProblem.problem_id}
                 onSubmit={(code, lang) => handleSubmit(activeProblem.problem_id, code, lang)}
+                onRunOnly={(code, lang) => handleRunOnly(activeProblem.problem_id, code, lang)}
                 submitting={!!submittingPids[activeProblem.problem_id]}
+                runOnlyRunning={!!runOnlyPids[activeProblem.problem_id]}
               />
             </div>
           </div>
 
-          {/* 下半：提交 testcase 詳情（全寬、natural 高度，評測完 auto-scroll 到這） */}
+          {/* 下半：提交 / 試跑 testcase 詳情（全寬、natural 高度，評測完自動 scroll 到這） */}
           <div ref={resultPanelRef}>
-            <SubmissionResultPanel result={lastResults[activeProblem.problem_id]} />
+            <SubmissionResultPanel
+              result={pickFresher(
+                lastResults[activeProblem.problem_id],
+                runOnlyResults[activeProblem.problem_id],
+              )}
+            />
           </div>
         </div>
       ) : (
@@ -332,6 +378,15 @@ export default function TakeExamPage() {
           onResult={handlePollResult(p.problem_id)}
         />
       ))}
+      {/* ── RUN_ONLY polling slots（獨立 channel、不污染 OFFICIAL 狀態） ── */}
+      {problems.map((p) => (
+        <PollingSlot
+          key={`runonly-${p.problem_id}`}
+          problemId={p.problem_id}
+          submissionId={runOnlyPollingIds[p.problem_id] ?? null}
+          onResult={handleRunOnlyPollResult(p.problem_id)}
+        />
+      ))}
 
       {/* ── 交卷 Modal ─────────────────────────────────────────────────────── */}
       <FinalizeModal
@@ -347,11 +402,18 @@ export default function TakeExamPage() {
   )
 }
 
+// pickFresher — 兩個 SubmissionRead 取較新（依 created_at），給結果 panel 顯示用
+export function pickFresher(a, b) {
+  if (!a) return b ?? null
+  if (!b) return a
+  return new Date(b.created_at ?? 0) > new Date(a.created_at ?? 0) ? b : a
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// SubmissionResultPanel — 顯示最新一次提交的 testcase 詳情（含 runtime_info）
+// SubmissionResultPanel — 顯示最新一次提交（OFFICIAL 或 RUN_ONLY）的 testcase 詳情
 // ─────────────────────────────────────────────────────────────────────────────
 export function SubmissionResultPanel({ result }) {
-  // 即使還沒提交，也保留 placeholder、讓考生知道結果會出現在這裡
+  // 即使還沒試跑 / 提交，也保留 placeholder、讓考生知道結果會出現在這裡
   if (!result) {
     return (
       <div className="border-t bg-muted/5">
@@ -359,7 +421,8 @@ export function SubmissionResultPanel({ result }) {
           Testcase 結果
         </p>
         <p className="px-3 py-6 text-sm text-center text-muted-foreground">
-          按上方「<span className="font-medium">提交本題</span>」後，testcase 結果會顯示在這。
+          按上方「<span className="font-medium">試跑</span>」或「
+          <span className="font-medium">提交本題</span>」後，testcase 結果會顯示在這。
         </p>
       </div>
     )
@@ -379,11 +442,19 @@ export function SubmissionResultPanel({ result }) {
     )
   }
 
+  const isRunOnly = result.submission_type === 'RUN_ONLY'
+  const headerLabel = isRunOnly ? '試跑 Testcase 明細（不計分）' : '最新提交 Testcase 明細'
+
   return (
-    // panel 放在頁面下半（外層 scroll 容器負責滾動）、自然 expand 把全部 testcase 顯示
+    // panel 放在頁面下半（外層 scroll 容器負責滾動）、自然 expand 把 6 筆全部顯示
     <div className="border-t bg-muted/5">
       <p className="px-3 py-2 text-sm font-medium border-b bg-background flex items-center gap-2">
-        最新提交 Testcase 明細
+        {isRunOnly && (
+          <span className="inline-flex items-center rounded bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-semibold">
+            試跑
+          </span>
+        )}
+        {headerLabel}
         <span className="ml-auto text-xs text-muted-foreground">共 {details.length} 筆</span>
       </p>
       <table className="w-full text-xs">

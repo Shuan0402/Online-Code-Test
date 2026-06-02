@@ -311,12 +311,14 @@ def get_exam_result(
             total_tc_weight = ep.points
         accumulated_exam_points += total_tc_weight
         
+        # 排除 RUN_ONLY 試跑（試跑不計分）— 只取 OFFICIAL 最新一筆當該題的繳交紀錄。
         latest_sub = (
             db.query(Submission)
             .filter(
                 Submission.exam_id == exam.id,
                 Submission.user_id == exam.candidate_id,
-                Submission.problem_id == ep.problem_id
+                Submission.problem_id == ep.problem_id,
+                Submission.submission_type == "OFFICIAL",
             )
             .order_by(Submission.created_at.desc())
             .first()

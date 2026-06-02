@@ -1132,6 +1132,49 @@ def test_exam_list_created_start_end_invalid_format_silently_ignored(
     assert any(e["title"] == "正常考試" for e in res.json())
 
 
+def test_get_exam_result_ignores_run_only_submission_when_picking_latest(
+    client, db_session, candidate_user, override_auth, create_test_exam, create_test_problem
+):
+    """
+    /exams/{id}/result 必須過濾 RUN_ONLY：
+    候選人「正式提交 AC 之後又試跑了一次 WA」、結果頁該題仍應顯示 AC 那筆、不是試跑那筆。
+    """
+    override_auth(candidate_user)
+    exam = create_test_exam(status=ExamStatus.Ongoing)
+    problem = create_test_problem(
+        test_cases_data=[
+            {"input_data": "a", "expected_output": "1", "score_weight": 10, "is_sample": True},
+        ],
+    )
+    db_session.add(ExamProblem(exam_id=exam.id, problem_id=problem.id, sequence=1, points=10))
+
+    # 先 OFFICIAL AC
+    official = Submission(
+        id=uuid.uuid4(), exam_id=exam.id, user_id=candidate_user.id, problem_id=problem.id,
+        score=10, status="AC", code_s3_url="s3://1", language="python",
+        submission_type="OFFICIAL",
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+    )
+    # 再來一發 RUN_ONLY WA（時間更新、但不該蓋掉 OFFICIAL 那筆）
+    run_only = Submission(
+        id=uuid.uuid4(), exam_id=exam.id, user_id=candidate_user.id, problem_id=problem.id,
+        score=0, status="WA", code_s3_url="s3://2", language="python",
+        submission_type="RUN_ONLY",
+        created_at=datetime.now(timezone.utc),
+    )
+    db_session.add_all([official, run_only])
+    db_session.commit()
+
+    res = client.get(f"/api/v1/exams/{exam.id}/result")
+    assert res.status_code == 200
+    data = res.json()
+    # 該題顯示的應該是 OFFICIAL AC、不是 RUN_ONLY WA
+    assert data["results"][0]["candidate_score"] == 10
+    assert data["results"][0]["submission_status"] == "AC"
+    # 總分也只算 OFFICIAL
+    assert data["total_candidate_score"] == 10
+
+
 def test_update_exam_can_change_difficulty_counts_in_draft(
     client, db_session, interviewer_user, override_auth, create_test_exam
 ):

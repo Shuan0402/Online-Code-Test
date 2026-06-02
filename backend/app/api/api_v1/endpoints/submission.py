@@ -17,6 +17,9 @@ from app.models.testcase import TestCase
 
 logger = logging.getLogger("app")
 
+# RUN_ONLY 試跑兩次之間至少要間隔的秒數（per user × per problem）
+RUN_ONLY_COOLDOWN_SEC = 5
+
 router = APIRouter()
 
 @router.post("/", response_model=SubmissionRead, status_code=status.HTTP_202_ACCEPTED)
@@ -99,15 +102,20 @@ def create_submission(
         logger.warning(f"提交失敗：題目 ID {payload.problem_id} 根本不屬於該考場", extra=audit_extra)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="提交失敗：本題目不屬於該場考試的範疇。")
 
+    # RUN_ONLY 試跑：限制與 OFFICIAL 一樣（exam_id + 屬於本場 candidate + Ongoing 已在上面 enforce），
+    # 額外加同 user + 同題 5 秒 cooldown，防頻繁洗判題資源。
+    # cooldown key 用 Redis SETEX 自然 TTL、不需手動清理。
     if payload.submission_type == "RUN_ONLY":
-        logger.warning(
-            f"拒絕提交：暫不支援 RUN_ONLY 類型 [用戶: {current_user.id}]",
-            extra=audit_extra
-        )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="交卷失敗：目前評測引擎僅支援 OFFICIAL 正式提交，不開放 RUN_ONLY 測試。"
-        )
+        cooldown_key = f"runonly:cd:{current_user.id}:{payload.problem_id}"
+        # NX = only set if not exists；回傳 True 代表「沒撞到 cooldown、剛剛我設了」
+        acquired = queue_manager.client.set(cooldown_key, "1", ex=RUN_ONLY_COOLDOWN_SEC, nx=True)
+        if not acquired:
+            ttl_remaining = queue_manager.client.ttl(cooldown_key) or RUN_ONLY_COOLDOWN_SEC
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"試跑太頻繁，請等待 {ttl_remaining} 秒後再試。",
+                headers={"Retry-After": str(ttl_remaining)},
+            )
 
     target_lang = payload.language.lower()
 
@@ -215,7 +223,14 @@ def get_latest_submission(
     - 專供考生進入題目時，自動還原上一次寫到一半的程式碼。
     - 僅鎖定當前登入使用者的最新一筆紀錄。
     """
-    filters = [Submission.problem_id == problem_id, Submission.user_id == current_user.id]
+    # /latest 只看 OFFICIAL 正式繳交：
+    # - 還原編輯器程式碼時，要還原「正式提交那次」而不是「最後一次試跑」
+    # - Candidate ResultPage 拿來秀「最終評測結果」也只能秀 OFFICIAL
+    filters = [
+        Submission.problem_id == problem_id,
+        Submission.user_id == current_user.id,
+        Submission.submission_type == "OFFICIAL",
+    ]
     if exam_id:
         filters.append(Submission.exam_id == exam_id)
 

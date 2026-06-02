@@ -23,12 +23,17 @@ const DEFAULT_CODE = {
  *
  * @param {string}   examId       — 考試 UUID
  * @param {number}   problemId    — 題目 ID
- * @param {function} onSubmit     — (code: string, language: string) => void
- * @param {boolean}  submitting   — 提交進行中旗標
+ * @param {function} onSubmit     — (code: string, language: string) => void  正式繳交
+ * @param {function} onRunOnly    — (code: string, language: string) => void  試跑（不計分）
+ * @param {boolean}  submitting   — 正式提交進行中旗標
+ * @param {boolean}  runOnlyRunning — 試跑進行中旗標（短期 disabled 試跑鈕）
  */
 // forwardRef so TakeExamPage can call editorRef.current.flushDraft() synchronously
 // before changing the active problem index, preventing draft loss on rapid tab switch.
-const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmit, submitting }, ref) {
+const EditorPanel = forwardRef(function EditorPanel(
+  { examId, problemId, onSubmit, onRunOnly, submitting, runOnlyRunning },
+  ref,
+) {
   // Bug 5：每個語言各存自己的 draft，切語言時保留 Python 寫到一半的內容、
   // 也不會把 Python 註解 / code 帶到 C++ 視窗。
   const draftKeyFor = (lang) => `draft:exam:${examId}:problem:${problemId}:lang:${lang}`
@@ -94,6 +99,10 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
     if (onSubmit) onSubmit(code, language)
   }
 
+  const handleRunOnly = () => {
+    if (onRunOnly) onRunOnly(code, language)
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* 工具列 */}
@@ -115,10 +124,23 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
 
         <div className="flex-1" />
 
+        {/* 試跑（不計分） */}
+        {onRunOnly && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRunOnly}
+            disabled={submitting || runOnlyRunning}
+            title="試跑：不計分、只看 testcase 通過情形（5 秒內限一次）"
+          >
+            {runOnlyRunning ? '試跑中…' : '試跑'}
+          </Button>
+        )}
+
         <Button
           size="sm"
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || runOnlyRunning}
         >
           {submitting ? '提交中…' : '提交本題'}
         </Button>

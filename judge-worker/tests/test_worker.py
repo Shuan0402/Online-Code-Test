@@ -189,9 +189,47 @@ def test_consume_once_fetch_source_failure_sends_judge_failed(r, fake_spawner, f
     fake_spawner.run.assert_not_called()
 
 
-def test_consume_once_run_only_acks_without_callback(r, fake_spawner, fake_http):
-    """RUN_ONLY → ACK + 不送 callback（backend 應已 reject、worker 是 fallback）。"""
-    msg = _make_msg(submission_type="RUN_ONLY")
+def test_consume_once_run_only_runs_all_testcases_no_fail_fast(
+    r, fake_spawner, fake_http
+):
+    """RUN_ONLY：所有 testcase 都跑（不 fail-fast）、callback 帶完整 per_testcase。
+
+    跟 OFFICIAL 的差別是：OFFICIAL 第一筆 WA 就 break；RUN_ONLY 即使第一筆 WA 也要把
+    後面所有 testcase 跑完，讓考生看完整明細。
+    """
+    # 兩個 testcase；第一筆故意 WA（stdout 不對）、第二筆 AC
+    msg = _make_msg(
+        submission_type="RUN_ONLY",
+        testcases=[
+            {"testcase_id": 1, "input_data": "1 2", "expected_output": "3", "is_sample": True},
+            {"testcase_id": 2, "input_data": "5 6", "expected_output": "11", "is_sample": False},
+        ],
+    )
+    # 沙盒 mock：第一筆吐 999（WA）、第二筆吐 11（AC）
+    fake_spawner.run.side_effect = [
+        MagicMock(stdout="999", stderr="", exit_code=0, duration_sec=0.01, timed_out=False),
+        MagicMock(stdout="11", stderr="", exit_code=0, duration_sec=0.02, timed_out=False),
+    ]
+    r.rpush(worker.QUEUE_PENDING, json.dumps(msg).encode())
+
+    acked = worker.consume_once(r, fake_spawner, fake_http)
+
+    assert acked is True
+    assert r.llen(worker.QUEUE_PROCESSING) == 0
+    # 兩個 testcase 都被 sandbox 跑（fail-fast 關掉了）
+    assert fake_spawner.run.call_count == 2
+    # callback 被送、且 per_testcase 有兩筆
+    fake_http.post.assert_called_once()
+    payload = fake_http.post.call_args.kwargs["json"]
+    assert payload.get("verdict", "Success") == "Success"
+    assert len(payload["per_testcase"]) == 2
+    assert payload["per_testcase"][0]["case_verdict"] == "WA"
+    assert payload["per_testcase"][1]["case_verdict"] == "AC"
+
+
+def test_consume_once_unknown_type_acks_without_callback(r, fake_spawner, fake_http):
+    """未知 submission_type → ACK 丟掉、不送 callback（防意外訊息進管線）。"""
+    msg = _make_msg(submission_type="SOME_FUTURE_TYPE")
     r.rpush(worker.QUEUE_PENDING, json.dumps(msg).encode())
 
     acked = worker.consume_once(r, fake_spawner, fake_http)
