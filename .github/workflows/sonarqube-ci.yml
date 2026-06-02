@@ -83,6 +83,19 @@ jobs:
             --cov-report=xml:coverage.xml \
             --cov-report=term
 
+      # pytest-cov 寫到 coverage.xml 的 <source> 是容器/runner cwd 的絕對路徑
+      # (如 "/app/app" 或 "/home/runner/.../judge-worker")，Sonar 從 repo root 解
+      # 不到。改寫成 repo-relative path 後 Sonar 才能 join filename → 找到對應
+      # source 檔，否則會吐 "Cannot resolve N file paths, ignoring coverage"。
+      - name: Rewrite coverage.xml source paths for Sonar
+        run: |
+          sed -i 's|<source>/app/app</source>|<source>backend/app</source>|' backend/coverage.xml
+          sed -i 's|<source>.*judge-worker</source>|<source>judge-worker</source>|' judge-worker/coverage.xml
+          echo "--- backend/coverage.xml <source> ---"
+          grep -m1 '<source>' backend/coverage.xml
+          echo "--- judge-worker/coverage.xml <source> ---"
+          grep -m1 '<source>' judge-worker/coverage.xml
+
       # ── SonarCloud scan ────────────────────────────────────────────
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
