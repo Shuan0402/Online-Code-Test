@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from pydantic import BaseModel
 
 from app.api import deps
-from app.models.exam import Exam, ExamProblem
+from app.models.exam import Exam, ExamProblem, ViolationLog
 from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
@@ -16,6 +17,10 @@ from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, Exa
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
 
+
+class ViolationReportSchema(BaseModel):
+    violation_type: str
+    details: str
 
 router = APIRouter()
 
@@ -826,3 +831,26 @@ def delete_exam_problem(
     db.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.post("/{exam_id}/violation", status_code=status.HTTP_201_CREATED)
+async def report_exam_violation(
+    exam_id: uuid.UUID,
+    payload: ViolationReportSchema,
+    db: Session = Depends(deps.get_db),
+    current_user = Depends(deps.get_current_user)
+):
+    """
+    接收前端上報的面試者切頁、大量複製貼上等誠信違規事件
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="找不到該場考試")
+        
+    new_log = ViolationLog(
+        exam_id=exam_id,
+        violation_type=payload.violation_type,
+        details=payload.details
+    )
+    db.add(new_log)
+    db.commit()
+    return {"status": "success", "message": "違規事件已同步存檔入庫"}
