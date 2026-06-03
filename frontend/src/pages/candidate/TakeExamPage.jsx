@@ -144,7 +144,7 @@ export default function TakeExamPage() {
         
         reportViolation(
           'LARGE_PASTE', 
-          `面試者企圖從外部大量複製貼上代碼。偵測到異常行數: ${lineCount} 行，總字數: ${pastedText.length} 字。`
+          `面試者企圖從外部大量複製貼上程式碼。偵測到異常行數: ${lineCount} 行，總字數: ${pastedText.length} 字。`
         )
       }
     }

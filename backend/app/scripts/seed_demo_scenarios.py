@@ -200,7 +200,7 @@ def seed_demo_data(db: Session) -> None:
 
 
     db.commit()
-    logger.info(" Demo 考卷與 MinIO 實體代碼已全數同步到位！")
+    logger.info(" Demo 考卷與 MinIO 實體程式碼已全數同步到位！")
 
 
 if __name__ == "__main__":
