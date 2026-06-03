@@ -67,7 +67,7 @@ docker compose down [-v]                      # 停（-v 砍 DB）
 2. **手動測試資料灌入 (適用於一般手動測試與 Demo)**
    若要登入考生帳號、建立考試或進行程式碼提交測試，您需要執行以下指令以建立 `demo_candidate`、`demo_questioner` 以及範例題目「兩數相加 (demo)」：
    ```bash
-   docker compose exec backend python scripts/integration/seed.py
+   docker compose exec backend python -m app.scripts.seed_demo_scenarios
    ```
 
 3. **端到端 (E2E) 測試資料灌入 (適用於 Playwright 測試)**
