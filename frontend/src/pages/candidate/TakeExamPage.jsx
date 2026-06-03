@@ -409,7 +409,7 @@ export default function TakeExamPage() {
         <DialogContent className="sm:max-w-[480px] border-red-200 bg-red-50/95 backdrop-blur-md">
           <DialogHeader className="flex flex-col items-center gap-2 text-center">
             <DialogTitle className="text-red-800 text-lg font-bold">
-              {violationType === 'TAB_SWITCH' ? '偵測到異常視窗切換行為' : '偵測到非法大量粘貼代碼'}
+              {violationType === 'TAB_SWITCH' ? '偵測到異常視窗切換行為' : '偵測到非法大量黏貼程式碼'}
             </DialogTitle>
             <DialogDescription className="text-red-700 text-sm mt-1 leading-relaxed">
               {violationType === 'TAB_SWITCH' 
