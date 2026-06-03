@@ -1,0 +1,101 @@
+[
+  {
+    "title": "簡單測試題目",
+    "description": "這是一題用於系統核心功能驗證的簡單測試題目。請寫一個程式直接輸出 0。",
+    "difficulty": "Easy",
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 128,
+    "testcases": [
+      { "input_data": "", "expected_output": "0\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "any_input", "expected_output": "0\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "兩數之和 (Two Sum)",
+    "description": "輸入兩個整數 a 與 b，請輸出它們相加後的結果。",
+    "difficulty": "Easy",
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 128,
+    "testcases": [
+      { "input_data": "2 3\n", "expected_output": "5\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "-1 10\n", "expected_output": "9\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "字串反轉 (Reverse String)",
+    "description": "輸入一個字串，請將該字串逆序輸出。",
+    "difficulty": "Easy",
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 128,
+    "testcases": [
+      { "input_data": "hello\n", "expected_output": "olleh\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "nthu\n", "expected_output": "uhtn\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "中等測試題目",
+    "description": "這是一題用於系統核心功能驗證的中等測試題目。請寫一個程式直接輸出 0。",
+    "difficulty": "Medium",
+    "time_limit_ms": 3000,
+    "memory_limit_mb": 256,
+    "testcases": [
+      { "input_data": "", "expected_output": "0\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "any_input", "expected_output": "0\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "數值平方計算 (Number Square)",
+    "description": "（演示標籤：中等）輸入一個整數 n，請輸出該整數的平方值值。",
+    "difficulty": "Medium",
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 128,
+    "testcases": [
+      { "input_data": "4\n", "expected_output": "16\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "11\n", "expected_output": "121\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "奇偶數判斷 (Odd Even)",
+    "description": "（演示標籤：中等）輸入一個整數 n，若為奇數請輸出 'Odd'，偶數請輸出 'Even'。",
+    "difficulty": "Medium",
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 128,
+    "testcases": [
+      { "input_data": "7\n", "expected_output": "Odd\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "8\n", "expected_output": "Even\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "困難測試題目",
+    "description": "這是一題用於系統核心功能驗證的困難測試題目。請寫一個程式直接輸出 0。",
+    "difficulty": "Hard",
+    "time_limit_ms": 4000,
+    "memory_limit_mb": 512,
+    "testcases": [
+      { "input_data": "", "expected_output": "0\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "any_input", "expected_output": "0\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "最大值尋找 (Find Max)",
+    "description": "（演示標籤：困難）輸入兩個整數，請輸出其中較大的數值值。",
+    "difficulty": "Hard",
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 128,
+    "testcases": [
+      { "input_data": "10 20\n", "expected_output": "20\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "-5 -2\n", "expected_output": "-2\n", "is_sample": false, "score_weight": 50 }
+    ]
+  },
+  {
+    "title": "字元計數 (Count Characters)",
+    "description": "（演示標籤：困難）輸入一個字串，請輸出該字串的字元總長度。",
+    "difficulty": "Hard",
+    "time_limit_ms": 2000,
+    "memory_limit_mb": 128,
+    "testcases": [
+      { "input_data": "apple\n", "expected_output": "5\n", "is_sample": true, "score_weight": 50 },
+      { "input_data": "cloud-native\n", "expected_output": "12\n", "is_sample": false, "score_weight": 50 }
+    ]
+  }
+]
