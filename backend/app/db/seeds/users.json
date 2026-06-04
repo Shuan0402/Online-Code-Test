@@ -1,0 +1,32 @@
+[
+  {
+    "username": "admin@nthu.edu.tw",
+    "full_name": "系統管理員",
+    "password": "password123",
+    "role": "Admin"
+  },
+  {
+    "username": "interviewer@nthu.edu.tw",
+    "full_name": "面試主管",
+    "password": "password123",
+    "role": "Interviewer"
+  },
+  {
+    "username": "questioner@nthu.edu.tw",
+    "full_name": "出題主管",
+    "password": "password123",
+    "role": "Questioner"
+  },
+  {
+    "username": "candidate01@nthu.edu.tw",
+    "full_name": "測試考生甲",
+    "password": "password123",
+    "role": "Candidate"
+  },
+  {
+    "username": "candidate02@nthu.edu.tw",
+    "full_name": "測試考生乙",
+    "password": "password123",
+    "role": "Candidate"
+  }
+]
