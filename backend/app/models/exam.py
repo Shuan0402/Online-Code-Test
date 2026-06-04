@@ -87,3 +87,19 @@ class ExamProblem(Base):
     def difficulty(self):
         """自動向上代理真實題目的難易度"""
         return self.problem.difficulty if self.problem else None
+    
+class ViolationLog(Base):
+    """
+    ViolationLog (誠信行為違規日誌表)：紀錄面試者在應試過程中的誠信異常事件。
+    """
+    __tablename__ = "violation_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    exam_id = Column(UUID(as_uuid=True), ForeignKey("exams.id", ondelete="CASCADE"), nullable=False)
+    
+    violation_type = Column(String(50), nullable=False)
+    details = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # 關聯定義
+    exam = relationship("Exam", backref="violation_logs")

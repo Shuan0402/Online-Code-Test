@@ -234,7 +234,7 @@ def get_latest_submission(
         )
     
     logger.info(
-        f"用戶 {current_user.username} 正在觸發編輯器代碼自動還原 [SubmissionID: {submission.id}]",
+        f"用戶 {current_user.username} 正在觸發編輯器程式碼自動還原 [SubmissionID: {submission.id}]",
         extra={"user_id": str(current_user.id), "problem_id": problem_id, "submission_id": str(submission.id), "action": "restore_code_latest"}
     )
     

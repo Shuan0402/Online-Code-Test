@@ -10,6 +10,7 @@ import LoadingSpinner from '@/components/LoadingSpinner'
 import { Button } from '@/components/ui/button'
 import { useAdaptivePolling } from '@/hooks/useAdaptivePolling'
 import { useOfflineRecovery } from '@/hooks/useOfflineRecovery'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 
 // ── 評測狀態標籤與顏色 ───────────────────────────────────────────────────────
 const STATUS_LABEL = {
@@ -77,6 +78,9 @@ export default function TakeExamPage() {
   // ── 提交錯誤（inline，取代 alert()） ─────────────────────────────────────────
   const [submitError, setSubmitError] = useState(null) // { problemId, message }
 
+  const [violationType, setViolationType] = useState(null) // 'TAB_SWITCH' | 'LARGE_PASTE'
+  const [showViolationModal, setShowViolationModal] = useState(false)
+
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. 掛載時呼叫 POST /api/v1/exams/{examId}/start（idempotent）
   // ─────────────────────────────────────────────────────────────────────────────
@@ -99,6 +103,62 @@ export default function TakeExamPage() {
         }
       })
   }, [examId, navigate])
+
+  // 瀏覽器事件誠信防線監聽器 ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!exam || exam.status === 'Finished') return
+
+    const reportViolation = async (type, details) => {
+      try {
+        await api.post(`/api/v1/exams/${examId}/violation`, {
+          violation_type: type,
+          details: details
+        })
+        console.log(`違規事件 (${type}) 已成功鎖定上報後端資料庫。`)
+      } catch (err) {
+        console.error("上報後端失敗：", err)
+      }
+    }
+
+    const handleVisibilityOrBlur = () => {
+      if (document.hidden || !document.hasFocus()) {
+        setViolationType('TAB_SWITCH')
+        setShowViolationModal(true)
+        reportViolation('TAB_SWITCH', '面試者企圖切換標籤頁、使用快捷鍵 Alt+Tab 離開當前考場視窗。')
+      }
+    }
+
+    const handlePaste = (e) => {
+      const pastedText = e.clipboardData.getData('text') || ''
+
+      const lines = pastedText.split('\n').filter(line => line.trim() !== '')
+      const lineCount = lines.length
+
+      if (lineCount > 5 || pastedText.length > 100) {
+        e.preventDefault()
+        e.stopPropagation()
+
+        setViolationType('LARGE_PASTE')
+        setShowViolationModal(true)
+        setShowViolationModal(true)
+        
+        reportViolation(
+          'LARGE_PASTE', 
+          `面試者企圖從外部大量複製貼上程式碼。偵測到異常行數: ${lineCount} 行，總字數: ${pastedText.length} 字。`
+        )
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityOrBlur, true)
+    window.addEventListener('blur', handleVisibilityOrBlur, true)
+    document.addEventListener('paste', handlePaste, true)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrBlur, true)
+      window.removeEventListener('blur', handleVisibilityOrBlur, true)
+      document.removeEventListener('paste', handlePaste, true)
+    }
+  }, [exam, examId])
 
   // ─────────────────────────────────────────────────────────────────────────────
   // 2. 冷重啟恢復（useOfflineRecovery）
@@ -343,6 +403,30 @@ export default function TakeExamPage() {
         onClose={() => setShowFinalize(false)}
         onDone={() => navigate(`/candidate/exams/${examId}/result`)}
       />
+
+      {/* ── 誠信行為違規警告彈窗 (Dialog) ────────────────────────────────────── */}
+      <Dialog open={showViolationModal} onOpenChange={setShowViolationModal}>
+        <DialogContent className="sm:max-w-[480px] border-red-200 bg-red-50/95 backdrop-blur-md">
+          <DialogHeader className="flex flex-col items-center gap-2 text-center">
+            <DialogTitle className="text-red-800 text-lg font-bold">
+              {violationType === 'TAB_SWITCH' ? '偵測到異常視窗切換行為' : '偵測到非法大量黏貼程式碼'}
+            </DialogTitle>
+            <DialogDescription className="text-red-700 text-sm mt-1 leading-relaxed">
+              {violationType === 'TAB_SWITCH' 
+                ? '系統偵測到您剛才離開了當前考試視窗。' 
+                : '禁止直接從外部貼上大量程式碼，您剛才的黏貼動作已被攔截。'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 sm:justify-center">
+            <Button 
+              className="w-full bg-red-600 hover:bg-red-700 text-white font-medium shadow-sm"
+              onClick={() => setShowViolationModal(false)}
+            >
+              我已知曉，承諾誠實應試
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
