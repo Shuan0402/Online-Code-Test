@@ -1,5 +1,6 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Annotated
+from app.models.user import User
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
@@ -26,7 +27,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[CandidateExamListRead])
 def get_candidate_exams(
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     candidate_id: Optional[uuid.UUID] = None,
     mine: Optional[bool] = None,
     score_gte: Optional[float] = None,
@@ -34,7 +35,7 @@ def get_candidate_exams(
     created_start: Optional[str] = None,
     created_end: Optional[str] = None,
     order_by: Optional[str] = None,
-    current_user = Depends(deps.get_current_user)
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None
 ):
     """
     考試場次列表調閱 API (多角色權限分流一體化)
@@ -150,8 +151,8 @@ def get_candidate_exams(
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)
 def start_exam(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     開始進行考試 API。
@@ -217,8 +218,8 @@ def start_exam(
 @router.post("/{exam_id}/submit", response_model=CandidateExamListRead)
 def submit_exam(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     考生主動正式交卷 API。
@@ -259,8 +260,8 @@ def get_exam_result(
     score_gte: Optional[float] = None,
     score_lte: Optional[float] = None,
     order_by: Optional[str] = None,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)] = None,
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None
 ):
     """
     獲取該場考試的實時各題狀態與總得分 (Candidate/Interviewer 共用)
@@ -389,8 +390,8 @@ def get_exam_result(
 @router.post("/", response_model=ExamRead, status_code=status.HTTP_201_CREATED)
 def create_exam_session(
     obj_in: ExamCreate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     建立考試場次 API。
@@ -424,8 +425,8 @@ def create_exam_session(
 @router.post("/{exam_id}/problems/generate", response_model=ExamRead)
 def generate_exam_problems(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     自動抽選題目 API。
@@ -506,8 +507,8 @@ def generate_exam_problems(
 @router.post("/{exam_id}/publish", response_model=ExamRead)
 def publish_exam_session(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     發布考試場次 API。
@@ -558,8 +559,8 @@ def publish_exam_session(
 @router.get("/{exam_id}", response_model=ExamRead)
 def get_exam_session_by_id(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     單一考試場次詳細調閱 API。
@@ -601,8 +602,8 @@ def get_exam_session_by_id(
 def update_exam_session(
     exam_id: uuid.UUID,
     obj_in: ExamUpdate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     # 修改考試設定 API。
@@ -649,8 +650,8 @@ def update_exam_session(
 @router.delete("/{exam_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_exam_session(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     刪除考試場次 API。
@@ -691,8 +692,8 @@ def delete_exam_session(
 def add_exam_problem_manual(
     exam_id: uuid.UUID,
     obj_in: ExamProblemCreate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     面試主管手動指派加題 API
@@ -755,8 +756,8 @@ def add_exam_problem_manual(
 @router.get("/{exam_id}/problems")
 def get_exam_problems(
     exam_id: str,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     獲取特定考試場次配置的所有題目清單
@@ -798,8 +799,8 @@ def get_exam_problems(
 def delete_exam_problem(
     exam_id: str,
     p_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_staff_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_staff_user)]
 ):
     """
     從指定考試場次中，移除特定的一道題目
@@ -836,8 +837,8 @@ def delete_exam_problem(
 async def report_exam_violation(
     exam_id: uuid.UUID,
     payload: ViolationReportSchema,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     接收前端上報的面試者切頁、大量複製貼上等誠信違規事件

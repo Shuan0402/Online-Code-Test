@@ -1,8 +1,10 @@
 import json
 import logging
 from uuid import UUID
-from typing import List, Optional
+from typing import List, Optional, Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from app.models.user import User
+from app.services.storage import StorageService
 from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
@@ -23,9 +25,9 @@ router = APIRouter()
 def create_submission(
     payload: SubmissionCreate,
     request: Request,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-    storage_service = Depends(deps.get_storage) 
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)] 
 ):
     """
     建立程式碼提交並送入評測佇列。
@@ -206,9 +208,9 @@ def create_submission(
 def get_latest_submission(
     problem_id: int,
     exam_id: Optional[UUID] = None,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-    storage_service = Depends(deps.get_storage)
+    db: Annotated[Session, Depends(deps.get_db)] = None,
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None,
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)] = None
 ):
     """
     獲取特定題目最後一次提交 API
@@ -252,9 +254,9 @@ def get_latest_submission(
 @router.get("/{submission_id}", response_model=SubmissionRead)
 def get_submission_by_id(
     submission_id: UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-    storage_service = Depends(deps.get_storage)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)]
 ):
     """
     狀態查詢與明細 API
@@ -305,8 +307,8 @@ def get_submissions(
     order_by: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)] = None,
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None
 ):
     """
     獲取提交紀錄列表 API

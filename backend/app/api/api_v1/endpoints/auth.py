@@ -1,3 +1,4 @@
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -18,8 +19,8 @@ router = APIRouter()
 
 @router.post("/login", response_model=Token)
 def login(
-    db: Session = Depends(deps.get_db),
-    form_data: OAuth2PasswordRequestForm = Depends()
+    db: Annotated[Session, Depends(deps.get_db)],
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ):
     user = db.query(User).filter(User.username == form_data.username).first()
     
@@ -43,8 +44,8 @@ def login(
 
 @router.post("/logout")
 def logout(
-    current_user: User = Depends(deps.get_current_user),
-    token: str = Depends(deps.oauth2_scheme)
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    token: Annotated[str, Depends(deps.oauth2_scheme)]
 ):
     """
     登出 API。將 Token 放入 Redis 黑名單。
@@ -56,7 +57,7 @@ def logout(
 @router.post("/refresh", response_model=TokenRefreshResponse, tags=["🔒 認證相關"])
 def refresh_token(
     payload: TokenRefreshInput,
-    db: Session = Depends(deps.get_db)
+    db: Annotated[Session, Depends(deps.get_db)]
 ):
     """
     刷新 Access Token
@@ -108,7 +109,7 @@ def refresh_token(
 def forgot_password(
     payload: ForgotPasswordInput,
     request: Request,
-    db: Session = Depends(deps.get_db)
+    db: Annotated[Session, Depends(deps.get_db)]
 ):
     """
     忘記密碼請求
@@ -171,7 +172,7 @@ def forgot_password(
 @router.post("/reset-password")
 def reset_password(
     payload: ResetPasswordInput,
-    db: Session = Depends(deps.get_db)
+    db: Annotated[Session, Depends(deps.get_db)]
 ):
     """
     透過 Token 實體重設密碼

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Annotated
 from uuid import UUID
 
 from app.api import deps
@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[ProblemShortRead])
 def read_problems(
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     skip: int = 0,
     limit: int = 100
 ):
@@ -35,8 +35,8 @@ def read_problems(
 @router.get("/{problem_id}", response_model=ProblemRead)
 def read_problem(
     problem_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     獲取特定題目詳細資訊。
@@ -57,9 +57,9 @@ def read_problem(
 @router.post("/", response_model=ProblemRead, status_code=status.HTTP_201_CREATED)
 def create_problem(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     problem_in: ProblemCreate,
-    current_user: User = Depends(get_questioner_user)
+    current_user: Annotated[User, Depends(get_questioner_user)]
 ):
     """
     新增題目（含測試案例）。
@@ -87,10 +87,10 @@ def create_problem(
 @router.patch("/{problem_id}", response_model=ProblemRead)
 def update_problem(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     problem_id: int,
     problem_in: ProblemUpdate,
-    current_user: User = Depends(get_questioner_user)
+    current_user: Annotated[User, Depends(get_questioner_user)]
 ):
     """
     修改題目資訊與測資。
@@ -144,9 +144,9 @@ def update_problem(
 @router.delete("/{problem_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_problem(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     problem_id: int,
-    current_user: User = Depends(get_questioner_user)
+    current_user: Annotated[User, Depends(get_questioner_user)]
 ):
     """
     刪除題目。
@@ -164,8 +164,8 @@ def delete_problem(
 @router.get("/{id}/testcases", response_model=list[TestCaseRead])
 def get_problem_testcases(
     id: int,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     獲取指定題目的完整測試資料（包含隱密輸入/輸出）
@@ -189,8 +189,8 @@ def get_problem_testcases(
 def create_problem_testcase(
     id: int,
     obj_in: TestCaseCreate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     為指定題目新增一筆測試資料
@@ -222,9 +222,9 @@ def create_problem_testcase(
 @router.post("/{id}/rejudge", response_model=RejudgeResponse, status_code=status.HTTP_202_ACCEPTED)
 def rejudge_problem_submissions(
     id: int,
-    db: Session = Depends(deps.get_db),
-    storage_service: StorageService = Depends(deps.get_storage),
-    current_user = Depends(deps.get_questioner_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)],
+    current_user: Annotated[User, Depends(deps.get_questioner_user)]
 ):
     """
     一鍵重測該題目的所有歷史提交

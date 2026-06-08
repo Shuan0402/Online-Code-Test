@@ -12,6 +12,7 @@ Internal endpoints — 不對 user 開放、worker 等內部服務 callback 用�
 
 import logging
 
+from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -38,7 +39,7 @@ router = APIRouter()
 )
 def judge_callback(
     payload: JudgeCallbackPayload,
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
 ):
     # Step 9：根據 verdict 分兩條路徑、共用 `WHERE status IN ('Pending','Judging')` guard。
     if payload.verdict == "JudgeFailed":

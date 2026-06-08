@@ -1,4 +1,5 @@
 import psutil 
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -16,8 +17,8 @@ router = APIRouter()
 
 @router.get("/dashboard/summary", response_model=DashboardSummaryResponse)
 def get_dashboard_summary(
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_admin_user) 
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_admin_user)]
 ):
     """
     獲取管理員儀表板全域統計數據
@@ -44,8 +45,8 @@ def get_dashboard_summary(
 def get_dashboard_anomalies(
     page: int = 1,
     size: int = 10,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_admin_user)
+    db: Annotated[Session, Depends(deps.get_db)] = None,
+    current_user: Annotated[User, Depends(deps.get_admin_user)] = None
 ):
     """
     獲取即時異常提交流水燈

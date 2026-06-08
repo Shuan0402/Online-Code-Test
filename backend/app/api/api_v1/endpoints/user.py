@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Annotated
 from uuid import UUID
 
 from app.api import deps
@@ -15,8 +15,8 @@ router = APIRouter()
 @router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def create_user(
     obj_in: UserCreate, 
-    db: Session = Depends(deps.get_db), 
-    current_user: User = Depends(deps.get_interviewer_user)
+    db: Annotated[Session, Depends(deps.get_db)], 
+    current_user: Annotated[User, Depends(deps.get_interviewer_user)]
 ):
     user = db.query(User).filter(User.username == obj_in.username).first()
     if user:
@@ -34,11 +34,14 @@ def create_user(
     return new_user
 
 @router.get("/", response_model=List[UserRead])
-def read_users(db: Session = Depends(deps.get_db), current_user: User = Depends(deps.get_interviewer_user)):
+def read_users(
+    db: Annotated[Session, Depends(deps.get_db)], 
+    current_user: Annotated[User, Depends(deps.get_interviewer_user)]
+):
     return db.query(User).all()
 
 @router.get("/me", response_model=UserRead)
-def get_current_user_info(current_user: User = Depends(deps.get_current_user)):
+def get_current_user_info(current_user: Annotated[User, Depends(deps.get_current_user)]):
     """
     獲取當前登入使用者的詳細資訊。
     """
@@ -47,8 +50,8 @@ def get_current_user_info(current_user: User = Depends(deps.get_current_user)):
 @router.get("/{user_id}", response_model=UserRead)
 def read_user_by_id(
     user_id: UUID,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_interviewer_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_interviewer_user)]
 ):
     """
     獲取特定使用者細節。
@@ -65,8 +68,8 @@ def read_user_by_id(
 @router.patch("/me", response_model=UserRead)
 def update_current_user_profile(
     obj_in: UserUpdate,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user) # 已登入者皆可
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)] # 已登入者皆可
 ):
     """
     修改個人資料。
@@ -94,8 +97,8 @@ def update_current_user_profile(
 def update_user_by_id(
     user_id: UUID,
     obj_in: UserUpdate,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_admin_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_admin_user)]
 ):
     """
     修改特定使用者（改姓名或變更權限角色）。
@@ -122,8 +125,8 @@ def update_user_by_id(
 @router.put("/me/password", status_code=status.HTTP_200_OK)
 def update_my_password(
     payload: UserUpdatePassword,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     一般使用者/考生自行修改密碼。
@@ -145,8 +148,8 @@ def update_my_password(
 def reset_user_password(
     user_id: UUID,
     payload: UserPasswordReset,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_admin_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_admin_user)]
 ):
     """
     最高管理員強制重設他人密碼。
@@ -169,8 +172,8 @@ def reset_user_password(
 @router.delete("/{user_id}", status_code=status.HTTP_200_OK)
 def delete_user_by_id(
     user_id: UUID,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_admin_user) 
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_admin_user)] 
 ):
     """
     刪除使用者帳號。
