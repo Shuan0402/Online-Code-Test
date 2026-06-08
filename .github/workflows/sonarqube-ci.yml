@@ -37,7 +37,7 @@ jobs:
 
       - name: Install frontend deps
         working-directory: frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run frontend tests with coverage
         working-directory: frontend
@@ -73,7 +73,7 @@ jobs:
 
       - name: Install judge-worker deps
         working-directory: judge-worker
-        run: pip install -r requirements-dev.txt
+        run: pip install --only-binary :all: -r requirements-dev.txt
 
       - name: Run judge-worker tests with coverage
         working-directory: judge-worker

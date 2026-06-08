@@ -47,7 +47,7 @@ def test_source_written_to_tempdir_with_correct_filename():
     def fake_run(cmd, **kwargs):
         # docker run 觸發時 source 應該已經寫到 tempdir
         mount = _extract_mount_target(cmd)
-        host_dir = mount.split(":")[0]
+        host_dir = mount.rsplit(":/sandbox", 1)[0]
         source_path = Path(host_dir) / "source.py"
         captured["exists"] = source_path.exists()
         captured["content"] = source_path.read_text() if source_path.exists() else None
@@ -118,7 +118,7 @@ def test_tempdir_cleaned_up_on_success():
 
     def fake_run(cmd, **kwargs):
         mount = _extract_mount_target(cmd)
-        seen_dir["host"] = mount.split(":")[0]
+        seen_dir["host"] = mount.rsplit(":/sandbox", 1)[0]
         return _make_proc_result()
 
     with patch("subprocess.run", side_effect=fake_run):
@@ -143,7 +143,7 @@ def test_tempdir_cleaned_up_on_timeout():
         if call_count["n"] == 1:
             # 第一次：docker run、丟 TimeoutExpired
             mount = _extract_mount_target(cmd)
-            seen_dir["host"] = mount.split(":")[0]
+            seen_dir["host"] = mount.rsplit(":/sandbox", 1)[0]
             raise subprocess.TimeoutExpired(cmd=cmd, timeout=2)
         # 第二次：docker kill、靜默通過
         return _make_proc_result()
@@ -234,7 +234,7 @@ def test_cpp_uses_source_cpp_filename():
 
     def fake_run(cmd, **kwargs):
         mount = _extract_mount_target(cmd)
-        host_dir = mount.split(":")[0]
+        host_dir = mount.rsplit(":/sandbox", 1)[0]
         captured["files"] = sorted(p.name for p in Path(host_dir).iterdir())
         return _make_proc_result()
 

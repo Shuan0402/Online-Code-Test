@@ -46,7 +46,8 @@ def upload_to_minio(object_key: str, code_content: str) -> str:
             Bucket=BUCKET_NAME,
             Key=object_key,
             Body=code_content.encode("utf-8"),
-            ContentType="text/plain"
+            ContentType="text/plain",
+            ExpectedBucketOwner=os.getenv("AWS_ACCOUNT_ID")
         )
         logger.info(f"   [MinIO Sync] 實體程式碼上傳成功 -> Key: {object_key}")
         return object_key
@@ -78,7 +79,10 @@ def seed_demo_data(db: Session) -> None:
     now = datetime.now(timezone.utc)
 
     try:
-        s3_client.head_bucket(Bucket=BUCKET_NAME)
+        s3_client.head_bucket(
+            Bucket=BUCKET_NAME,
+            ExpectedBucketOwner=os.getenv("AWS_ACCOUNT_ID")
+        )
     except Exception:
         try:
             s3_client.create_bucket(Bucket=BUCKET_NAME)
