@@ -115,7 +115,7 @@ export default function SubmissionDetailPage() {
           try {
             // S3 presigned URL — must use plain fetch(), NOT api axios instance
             // （api 會補 /api 前綴且附上 Bearer token，對 S3 URL 兩者皆錯）
-            const sourceRes = await window.fetch(submissionData.presigned_url)
+            const sourceRes = await globalThis.fetch(submissionData.presigned_url)
             const text = await sourceRes.text()
             setSourceCode(text)
           } catch {

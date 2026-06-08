@@ -92,7 +92,7 @@ export function AuthProvider({ children }) {
     setUser(null)
     localStorage.removeItem('access_token')
     localStorage.removeItem('user')
-    window.location.href = '/login'
+    globalThis.location.href = '/login'
   }, [])
 
   return (
