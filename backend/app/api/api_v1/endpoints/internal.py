@@ -32,6 +32,53 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _build_weights_by_id(db: Session, tc_ids: list) -> dict:
+    """Fetch testcase score weights from DB, returning a {id: weight} dict."""
+    if not tc_ids:
+        return {}
+    return dict(
+        db.query(TestCase.id, TestCase.score_weight)
+          .filter(TestCase.id.in_(tc_ids)).all()
+    )
+
+
+def _insert_submission_details(
+    db: Session,
+    payload: "JudgeCallbackPayload",
+    weights_by_id: dict,
+) -> None:
+    """Persist per-testcase SubmissionDetail rows after a successful judgment."""
+    for tc in payload.per_testcase:
+        tc_weight = weights_by_id.get(tc.testcase_id, 0)
+        tc_score = tc_weight if tc.case_verdict == "AC" else 0
+
+        try:
+            js = JudgeStatus(tc.case_verdict)
+        except ValueError:
+            js = JudgeStatus.RE
+
+        detail = SubmissionDetail(
+            submission_id=payload.submission_id,
+            testcase_id=tc.testcase_id,
+            status=js,
+            execution_time=tc.exec_time_ms,
+            score=tc_score,
+            runtime_info=tc.runtime_info,
+        )
+        db.add(detail)
+    db.commit()
+
+
+def _refresh_exam_score(db: Session, submission_id) -> None:
+    """After judging, refresh the total score of the related exam."""
+    sub = db.query(Submission).filter(Submission.id == submission_id).first()
+    if sub and sub.exam_id and sub.submission_type == "OFFICIAL":
+        try:
+            exam_service.refresh_total_score(db, str(sub.exam_id))
+        except Exception as e:
+            log.warning("refresh_total_score after callback failed: %s", e)
+
+
 @router.post(
     "/judge-callback",
     status_code=status.HTTP_200_OK,
@@ -56,14 +103,11 @@ def judge_callback(
                 "sub_id": payload.submission_id,
             },
         )
+        weights_by_id = {}
     else:
         # Success path（Step 8 既有邏輯）：partial credit 算分 + 推 overall verdict
         tc_ids = [tc.testcase_id for tc in payload.per_testcase]
-        weights_by_id = {
-            tid: w
-            for tid, w in db.query(TestCase.id, TestCase.score_weight)
-                              .filter(TestCase.id.in_(tc_ids)).all()
-        } if tc_ids else {}
+        weights_by_id = _build_weights_by_id(db, tc_ids)
 
         verdict = aggregate_verdict(payload.per_testcase)
         score = calc_score(payload.per_testcase, weights_by_id)
@@ -92,34 +136,8 @@ def judge_callback(
     db.commit()
 
     if payload.verdict == "Success" and result.rowcount > 0:
-        for tc in payload.per_testcase:
-            tc_weight = weights_by_id.get(tc.testcase_id, 0)
-            tc_score = tc_weight if tc.case_verdict == "AC" else 0
-
-            try:
-                js = JudgeStatus(tc.case_verdict)
-            except ValueError:
-                js = JudgeStatus.RE
-
-            detail = SubmissionDetail(
-                submission_id=payload.submission_id,
-                testcase_id=tc.testcase_id,
-                status=js,
-                execution_time=tc.exec_time_ms,
-                score=tc_score,
-                runtime_info=tc.runtime_info,
-            )
-            db.add(detail)
-        db.commit()
-
-        # 評測完成 → 同步刷新該場考試的「目前總分」，讓 ExamListPage 列表分數即時正確。
-        # （refresh_total_score 內部已過濾 submission_type=OFFICIAL、所以 RUN_ONLY 試跑不會污染）
-        sub = db.query(Submission).filter(Submission.id == payload.submission_id).first()
-        if sub and sub.exam_id and sub.submission_type == "OFFICIAL":
-            try:
-                exam_service.refresh_total_score(db, str(sub.exam_id))
-            except Exception as e:
-                log.warning("refresh_total_score after callback failed: %s", e)
+        _insert_submission_details(db, payload, weights_by_id)
+        _refresh_exam_score(db, payload.submission_id)
 
     if result.rowcount == 0:
         log.info(

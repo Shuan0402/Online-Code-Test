@@ -18,12 +18,91 @@ from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, Exa
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
 
+EXAM_NOT_FOUND = "找不到指定的考試項目。"
 
 class ViolationReportSchema(BaseModel):
     violation_type: str
     details: str
 
 router = APIRouter()
+
+
+def _parse_date_start(date_str: str):
+    """Parse a date/datetime string into a UTC-aware datetime for start filtering."""
+    try:
+        return datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
+    except ValueError:
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+
+def _parse_date_end(date_str: str):
+    """Parse a date/datetime string into a UTC-aware datetime for end filtering.
+    Pure dates are extended to 23:59:59 so the whole day is included.
+    """
+    if len(date_str) == 10:
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+        except ValueError:
+            pass
+    try:
+        return datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _apply_staff_exam_filters(query, current_user, candidate_id, mine, created_start, created_end):
+    """Apply staff-only (Interviewer/Admin) query filters."""
+    if candidate_id:
+        query = query.filter(Exam.candidate_id == candidate_id)
+    if mine:
+        query = query.filter(Exam.creator_id == current_user.id)
+    if created_start:
+        start_dt = _parse_date_start(created_start)
+        if start_dt:
+            query = query.filter(Exam.created_at >= start_dt)
+    if created_end:
+        end_dt = _parse_date_end(created_end)
+        if end_dt:
+            query = query.filter(Exam.created_at <= end_dt)
+    return query
+
+
+def _sort_exam_list(filtered_exams: list, order_by: str) -> list:
+    """Sort a list of (exam, pct) tuples according to the order_by parameter."""
+    sort_keys = {
+        "finished_at": (lambda x: (x[0].end_time is None, x[0].end_time), False),
+        "-finished_at": (lambda x: (x[0].end_time is None, x[0].end_time), True),
+        "score": (lambda x: x[1], False),
+        "-score": (lambda x: x[1], True),
+    }
+    if order_by in sort_keys:
+        key_fn, reverse = sort_keys[order_by]
+        filtered_exams.sort(key=key_fn, reverse=reverse)
+    else:
+        filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
+    return filtered_exams
+
+
+def _sort_problem_results(filtered_results: list, order_by: str) -> list:
+    """Sort a list of ExamProblemResultRead according to the order_by parameter."""
+    sort_map = {
+        "finished_at": (lambda x: (x.finished_at is None, x.finished_at), False),
+        "-finished_at": (lambda x: (x.finished_at is None, x.finished_at), True),
+        "score": (lambda x: x.candidate_score, False),
+        "-score": (lambda x: x.candidate_score, True),
+    }
+    if order_by in sort_map:
+        key_fn, reverse = sort_map[order_by]
+        filtered_results.sort(key=key_fn, reverse=reverse)
+    else:
+        filtered_results.sort(key=lambda x: x.sequence)
+    return filtered_results
+
 
 @router.get("/", response_model=List[CandidateExamListRead])
 def get_candidate_exams(
@@ -48,61 +127,17 @@ def get_candidate_exams(
             joinedload(Exam.exam_problems).joinedload(ExamProblem.problem),
             joinedload(Exam.candidate)
         )
-        
-        if candidate_id:
-            query = query.filter(Exam.candidate_id == candidate_id)
-            
-        if mine:
-            query = query.filter(Exam.creator_id == current_user.id)
-            
-        if created_start:
-            try:
-                start_dt = datetime.fromisoformat(created_start).replace(tzinfo=timezone.utc)
-            except ValueError:
-                try:
-                    start_dt = datetime.strptime(created_start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                except ValueError:
-                    start_dt = None
-            if start_dt:
-                query = query.filter(Exam.created_at >= start_dt)
-
-        if created_end:
-            # 純日期 (YYYY-MM-DD) 必須優先用 strptime 解析、補上 23:59:59 變成「當天結束」；
-            # 否則 datetime.fromisoformat("2026-06-01") 在 Python 3.11+ 會被解析成 00:00:00、
-            # 變成「<= 該日 00:00:00」、把當天的考試全部排除。
-            end_dt = None
-            if len(created_end) == 10:
-                try:
-                    end_dt = datetime.strptime(created_end, "%Y-%m-%d").replace(
-                        hour=23, minute=59, second=59, tzinfo=timezone.utc
-                    )
-                except ValueError:
-                    pass
-            if end_dt is None:
-                try:
-                    end_dt = datetime.fromisoformat(created_end).replace(tzinfo=timezone.utc)
-                except ValueError:
-                    end_dt = None
-            if end_dt:
-                query = query.filter(Exam.created_at <= end_dt)
-
+        query = _apply_staff_exam_filters(query, current_user, candidate_id, mine, created_start, created_end)
         exams = query.all()
-        
     else:
         exams = (
             db.query(Exam)
-            .options(
-                joinedload(Exam.exam_problems).joinedload(ExamProblem.problem)
-            )
-            .filter(
-                Exam.candidate_id == current_user.id,
-                Exam.status != ExamStatus.Draft
-            )
+            .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
+            .filter(Exam.candidate_id == current_user.id, Exam.status != ExamStatus.Draft)
             .all()
         )
-        
-    # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，
-    # 避免在雙重迴圈裡每場考試每題都打一次 DB（N+1）。
+
+    # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，避免 N+1。
     problem_ids = {ep.problem_id for exam in exams for ep in exam.exam_problems}
     if problem_ids:
         weight_rows = (
@@ -115,36 +150,22 @@ def get_candidate_exams(
     else:
         weight_by_problem = {}
 
-    # Python-side filtering & sorting for percentage range and finished_at
     filtered_exams = []
     for exam in exams:
-        total_points = 0
-        for ep in exam.exam_problems:
-            total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
-            if total_tc_weight == 0:
-                total_tc_weight = ep.points
-            total_points += total_tc_weight
+        total_points = sum(
+            weight_by_problem.get(ep.problem_id, 0) or ep.points
+            for ep in exam.exam_problems
+        )
         pct = (exam.score / total_points * 100.0) if total_points > 0 else 0.0
-        
         if score_gte is not None and pct < score_gte:
             continue
         if score_lte is not None and pct > score_lte:
             continue
         filtered_exams.append((exam, pct))
 
-    if order_by:
-        if order_by == "finished_at":
-            filtered_exams.sort(key=lambda x: (x[0].end_time is None, x[0].end_time))
-        elif order_by == "-finished_at":
-            filtered_exams.sort(key=lambda x: (x[0].end_time is None, x[0].end_time), reverse=True)
-        elif order_by == "score":
-            filtered_exams.sort(key=lambda x: x[1])
-        elif order_by == "-score":
-            filtered_exams.sort(key=lambda x: x[1], reverse=True)
-        else:
-            filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
-    else:
-        filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
+    filtered_exams = _sort_exam_list(filtered_exams, order_by) if order_by else sorted(
+        filtered_exams, key=lambda x: x[0].created_at, reverse=True
+    )
 
     return [x[0] for x in filtered_exams]
 
@@ -170,7 +191,7 @@ def start_exam(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if exam.candidate_id != current_user.id:
@@ -232,7 +253,7 @@ def submit_exam(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if exam.candidate_id != current_user.id:
@@ -279,7 +300,7 @@ def get_exam_result(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if current_user.role == UserRole.Candidate and exam.candidate_id != current_user.id:
@@ -353,28 +374,15 @@ def get_exam_result(
         )
 
     # Python-side filtering & sorting for single exam problems
-    filtered_results = []
-    for r in problem_results:
-        pct = (r.candidate_score / r.max_points * 100.0) if r.max_points > 0 else 0.0
-        if score_gte is not None and pct < score_gte:
-            continue
-        if score_lte is not None and pct > score_lte:
-            continue
-        filtered_results.append(r)
+    filtered_results = [
+        r for r in problem_results
+        if (score_gte is None or (r.candidate_score / r.max_points * 100.0 if r.max_points > 0 else 0.0) >= score_gte)
+        and (score_lte is None or (r.candidate_score / r.max_points * 100.0 if r.max_points > 0 else 0.0) <= score_lte)
+    ]
 
-    if order_by:
-        if order_by == "finished_at":
-            filtered_results.sort(key=lambda x: (x.finished_at is None, x.finished_at))
-        elif order_by == "-finished_at":
-            filtered_results.sort(key=lambda x: (x.finished_at is None, x.finished_at), reverse=True)
-        elif order_by == "score":
-            filtered_results.sort(key=lambda x: x.candidate_score)
-        elif order_by == "-score":
-            filtered_results.sort(key=lambda x: x.candidate_score, reverse=True)
-        else:
-            filtered_results.sort(key=lambda x: x.sequence)
-    else:
-        filtered_results.sort(key=lambda x: x.sequence)
+    filtered_results = _sort_problem_results(filtered_results, order_by) if order_by else sorted(
+        filtered_results, key=lambda x: x.sequence
+    )
 
     return ExamResultRead(
         id=exam.id,
@@ -443,7 +451,7 @@ def generate_exam_problems(
 
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=EXAM_NOT_FOUND)
     
     if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
@@ -480,7 +488,10 @@ def generate_exam_problems(
                 .all()
             )
             if len(problems) < gap_count:
-                raise HTTPException(status_code=400, detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。")
+                raise HTTPException(  # NOSONAR
+                    status_code=400,
+                    detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。"
+                )
             
             new_selected_problems.extend(problems)
             allocated_ids.extend([p.id for p in problems])
@@ -529,7 +540,7 @@ def publish_exam_session(
         .first()
     )
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=EXAM_NOT_FOUND)
 
     if exam.status != ExamStatus.Draft:
         raise HTTPException(
@@ -580,7 +591,7 @@ def get_exam_session_by_id(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
@@ -620,13 +631,13 @@ def update_exam_session(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if exam.status == ExamStatus.Ongoing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"目前正在考試，無法修改考試資訊"
+            detail="目前正在考試，無法修改考試資訊"
         )
 
     update_data = obj_in.model_dump(exclude_unset=True)
@@ -685,8 +696,6 @@ def delete_exam_session(
 
     db.delete(exam)
     db.commit()
-    
-    return
 
 @router.post("/{exam_id}/problems", response_model=ExamRead)
 def add_exam_problem_manual(
@@ -727,7 +736,10 @@ def add_exam_problem_manual(
             .first()
         )
         if not random_prob:
-            raise HTTPException(status_code=400, detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選")
+            raise HTTPException(  # NOSONAR
+                status_code=400,
+                detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選"
+            )
         target_problem_id = random_prob.id
 
     existing_ep = db.get(ExamProblem, (exam_id, target_problem_id))
@@ -845,7 +857,7 @@ async def report_exam_violation(
     """
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=404, detail="找不到該場考試")
+        raise HTTPException(status_code=404, detail="找不到該場考試")  # NOSONAR
         
     new_log = ViolationLog(
         exam_id=exam_id,

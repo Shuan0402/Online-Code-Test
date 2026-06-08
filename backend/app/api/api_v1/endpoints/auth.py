@@ -118,7 +118,12 @@ def forgot_password(
     - 將發信任務打包成標準 JSON 灌入 Redis messages:email 佇列，交由獨立 Email Worker 發信
     """
     x_forwarded_for = request.headers.get("X-Forwarded-For")
-    client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else (request.client.host if request.client else "0.0.0.0")
+    if x_forwarded_for:
+        client_ip = x_forwarded_for.split(",")[0].strip()
+    elif request.client:
+        client_ip = request.client.host
+    else:
+        client_ip = "0.0.0.0"
 
     audit_extra = {
         "client_ip": client_ip,

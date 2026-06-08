@@ -9,6 +9,8 @@ from app.schemas.user import UserCreate, UserRead, UserUpdate, UserUpdatePasswor
 from app.core.security import SecurityManager
 from app.models.enums import UserRole
 
+USER_NOT_FOUND = "找不到該使用者"
+
 
 router = APIRouter()
 
@@ -61,7 +63,7 @@ def read_user_by_id(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到該使用者"
+            detail=USER_NOT_FOUND
         )
     return user
 
@@ -108,7 +110,7 @@ def update_user_by_id(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到該使用者"
+            detail=USER_NOT_FOUND
         )
         
     if obj_in.full_name is not None:
@@ -160,7 +162,7 @@ def reset_user_password(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到該使用者"
+            detail=USER_NOT_FOUND
         )
         
     user.password_hash = SecurityManager.hash_password(payload.new_password)
@@ -183,7 +185,7 @@ def delete_user_by_id(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到該使用者"
+            detail=USER_NOT_FOUND
         )
     
     if user.id == current_user.id:

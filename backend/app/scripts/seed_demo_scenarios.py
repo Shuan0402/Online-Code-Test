@@ -28,7 +28,7 @@ MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_USER", "octest-admin")        
 MINIO_SECRET_KEY = os.getenv("MINIO_PASSWORD", "changeme-minio")  
 BUCKET_NAME = "octest-submissions"
-DEMO_CLIENT_IP = os.getenv("DEMO_CLIENT_IP", "140.114.42.1")
+DEMO_CLIENT_IP = os.getenv("DEMO_CLIENT_IP", "140.114.42.1")  # NOSONAR — demo seed script only
 
 s3_client = boto3.client(
     "s3",
