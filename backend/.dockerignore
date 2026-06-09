@@ -1,17 +1,25 @@
-# Python bytecode & caches
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
+# === Security: Critical to prevent S6470 ===
+.git/
+.env*
+secrets.json
+*.pem
+*.key
 
-# Virtual envs (must never end up in an image)
-.venv/
-venv/
+# === Docker Configuration ===
+Dockerfile
+docker-compose*
+.dockerignore
 
-# Editors / OS noise
-.DS_Store
-.vscode/
-.idea/
+# === Testing & Quality ===
+tests/
+.coverage
+htmlcov/
+.tox/
+.ruff_cache/
+.flake8
 
-# Local dev databases (B's test.db is a dev artifact, not source)
-*.db
+# === Documentation & CI/CD ===
+README.md
+LICENSE
+.github/
+.gitlab-ci.yml

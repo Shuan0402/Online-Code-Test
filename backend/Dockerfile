@@ -15,7 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt \
     fi
 
 # Source code last — this layer is the only one that rebuilds on code edits.
-COPY . .
+COPY alembic.ini .
+COPY app/ ./app/
 
 EXPOSE 8000
 
