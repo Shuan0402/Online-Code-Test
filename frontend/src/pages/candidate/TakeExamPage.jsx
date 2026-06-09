@@ -76,7 +76,7 @@ export default function TakeExamPage() {
   const [isTimeout, setIsTimeout] = useState(false)
 
   // ── 提交錯誤（inline，取代 alert()） ─────────────────────────────────────────
-  const [submitError, setSubmitError] = useState(null) // { problemId, message }
+  const [submitError, setSubmitError] = useState(null)
 
   const [violationType, setViolationType] = useState(null) // 'TAB_SWITCH' | 'LARGE_PASTE'
   const [showViolationModal, setShowViolationModal] = useState(false)
