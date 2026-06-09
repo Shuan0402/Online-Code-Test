@@ -141,7 +141,7 @@ def update_problem(
     return db_problem
 
 
-@router.delete("/{problem_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{problem_id}", status_code=status.HTTP_204_NO_CONTENT, responses={404: {"description": "題目不存在"}})
 def delete_problem(
     *,
     db: Annotated[Session, Depends(deps.get_db)],
