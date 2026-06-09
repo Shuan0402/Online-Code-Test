@@ -8,7 +8,7 @@ WORKDIR /app
 
 COPY requirements.txt .
 # NOSONAR — dependencies version locking is managed via requirements.txt and checked by developer
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --only-binary :all: -r requirements.txt
 
 # Create log directory and set ownership
 RUN mkdir -p /var/log/app && \
