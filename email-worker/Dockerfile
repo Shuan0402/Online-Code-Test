@@ -13,8 +13,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir -p /var/log/app && \
     chown -R appuser:appuser /app /var/log/app
 
-# NOSONAR — chmod 0555 removes write permissions, and .dockerignore prevents sensitive files copy
-COPY --chown=appuser:appuser --chmod=0555 . .
+# NOSONAR — directories are writeable by appuser, but all copied files are read-only (0555) to prevent modification
+COPY --chown=appuser:appuser . .
+RUN find /app -type d -exec chmod 0755 {} + && \
+    find /app -type f -exec chmod 0555 {} +
 
 USER appuser
 
