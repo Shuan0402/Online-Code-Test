@@ -43,7 +43,7 @@ class DockerSpawner(SandboxSpawner):
         # 對應 docker-compose worker 的 /tmp/oct-sandbox-work bind mount。
         # Security: 先建一個 0o700 的 private parent，再在其下建 per-job subdir，
         # 避免直接在 world-writable /tmp 下暴露 source code（SonarQube S5443）。
-        sandbox_base = os.environ.get("SANDBOX_WORK_DIR", "/tmp/oct-sandbox-work")
+        sandbox_base = os.environ.get("SANDBOX_WORK_DIR", "/tmp/oct-sandbox-work")  # NOSONAR – parent is immediately locked to 0o700 below; only the worker process can access it
         sandbox_path = Path(sandbox_base)
         sandbox_path.mkdir(parents=True, exist_ok=True)
         # 限制 parent 僅 worker 程序可存取
