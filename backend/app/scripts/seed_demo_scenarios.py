@@ -52,7 +52,7 @@ def upload_to_minio(object_key: str, code_content: str) -> None:
         )
         logger.info(f"   [MinIO Sync] 實體程式碼上傳成功 -> Key: {object_key}")
     except Exception as e:
-        logger.error(f"[MinIO Error] 檔案上傳失敗，請檢查 MinIO 服務或 Bucket 設定: {e}")
+        logger.exception(f"[MinIO Error] 檔案上傳失敗，請檢查 MinIO 服務或 Bucket 設定: {e}")
 
 
 def seed_demo_data(db: Session) -> None:
