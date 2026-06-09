@@ -23,7 +23,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response?.status === 401) {
       localStorage.removeItem('access_token')
       localStorage.removeItem('user')
       // Use window.location to force a full navigation — avoids stale router state.
