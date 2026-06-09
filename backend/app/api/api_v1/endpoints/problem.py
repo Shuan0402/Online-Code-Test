@@ -161,7 +161,7 @@ def delete_problem(
     db.commit()
     return None
 
-@router.get("/{id}/testcases", response_model=list[TestCaseRead])
+@router.get("/{id}/testcases", response_model=list[TestCaseRead], responses={404: {"description": "找不到指定的題目。"}})
 def get_problem_testcases(
     id: int,
     db: Annotated[Session, Depends(deps.get_db)],
@@ -185,7 +185,7 @@ def get_problem_testcases(
 
     return testcases
 
-@router.post("/{id}/testcases", response_model=TestCaseRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{id}/testcases", response_model=TestCaseRead, status_code=status.HTTP_201_CREATED, responses={404: {"description": "找不到指定的題目。"}})
 def create_problem_testcase(
     id: int,
     obj_in: TestCaseCreate,
