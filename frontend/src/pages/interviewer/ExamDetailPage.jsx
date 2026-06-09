@@ -218,28 +218,30 @@ export default function ExamDetailPage() {
   // 過濾掉已加入的題目，避免重複加入
   const availableProblems = problemBank.filter((p) => !addedIds.has(p.id))
 
+  // 前端擋：不可超過建立考試時設定的各難度題數上限
+  // 回傳錯誤訊息字串，無違規時回傳 null
+  const _getQuotaError = (problemId) => {
+    const target = problemBank.find((p) => p.id === problemId)
+    if (!target || !exam) return null
+    const quotaKey = { Easy: 'easy_count', Medium: 'medium_count', Hard: 'hard_count' }[target.difficulty]
+    const quota = exam[quotaKey] ?? 0
+    const currentCount = (exam.exam_problems ?? []).filter((ep) => ep.difficulty === target.difficulty).length
+    if (quota !== undefined && quota !== null && currentCount >= quota) {
+      return `已達${DIFFICULTY_LABELS[target.difficulty]}題數上限（${quota}）`
+    }
+    return null
+  }
+
   // --- 加入題目（problem_id 必須是 int，不能是字串） ---
   const handleAddProblem = async (problemId) => {
     setAddingId(problemId)
     setAddError(null)
 
-    // 前端擋：不可超過建立考試時設定的各難度題數上限
-    const target = problemBank.find((p) => p.id === problemId)
-    if (target && exam) {
-      const quotaKey = {
-        Easy: 'easy_count',
-        Medium: 'medium_count',
-        Hard: 'hard_count',
-      }[target.difficulty]
-      const quota = exam[quotaKey] ?? 0
-      const currentCount = (exam.exam_problems ?? []).filter(
-        (ep) => ep.difficulty === target.difficulty
-      ).length
-      if (quota !== undefined && quota !== null && currentCount >= quota) {
-        setAddError(`已達${DIFFICULTY_LABELS[target.difficulty]}題數上限（${quota}）`)
-        setAddingId(null)
-        return
-      }
+    const quotaError = _getQuotaError(problemId)
+    if (quotaError) {
+      setAddError(quotaError)
+      setAddingId(null)
+      return
     }
 
     try {
