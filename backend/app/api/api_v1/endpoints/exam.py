@@ -141,8 +141,8 @@ def _filter_exams_by_score(
     return result
 
 
-def _check_exam_start_preconditions(exam, now: datetime) -> None:
-    """Raise HTTPException for invalid start-exam states; mutates exam when transitioning Published→Ongoing.
+def _check_exam_start_preconditions(exam) -> None:
+    """Raise HTTPException for invalid start-exam states.
 
     This guard is intentionally side-effect-free for all error paths so that the
     caller can commit only on the happy path.
@@ -276,7 +276,7 @@ def start_exam(
 
     now = datetime.now(timezone.utc)
 
-    _check_exam_start_preconditions(exam, now)
+    _check_exam_start_preconditions(exam)
 
     if exam.status == ExamStatus.Published:
         exam.status = ExamStatus.Ongoing
