@@ -17,7 +17,7 @@
 # digest 抓法：
 #   docker pull debian:bookworm-slim
 #   docker inspect --format='{{index .RepoDigests 0}}' debian:bookworm-slim
-FROM debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
+FROM debian@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 
 # 裝 g++ + 必要 deps（libstdc++, binutils 等會被 apt 自動帶進來）
 #   --no-install-recommends：只裝 hard deps，不裝「文件、debugger、其他語言」
