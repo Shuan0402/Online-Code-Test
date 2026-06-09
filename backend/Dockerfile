@@ -21,7 +21,7 @@ RUN mkdir -p /var/log/app && \
     chown -R appuser:appuser /app /var/log/app
 
 # Source code last
-COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser --chmod=0555 . .
 
 USER appuser
 
