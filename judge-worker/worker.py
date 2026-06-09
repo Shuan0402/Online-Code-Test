@@ -425,6 +425,10 @@ def main() -> None:
 
     r = redis.from_url(REDIS_URL, decode_responses=False)
     http = requests.Session()
+    # Disable automatic redirects: the callback target (BACKEND_URL) is a known
+    # internal endpoint. Allowing redirects could silently send judge results
+    # (including source code presigned URLs) to an attacker-controlled host.
+    http.max_redirects = 0
     spawner = DockerSpawner()
 
     log.info(f"Worker 評測大腦正在啟動；redis={REDIS_URL} backend={BACKEND_URL}")
