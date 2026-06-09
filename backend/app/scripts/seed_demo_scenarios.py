@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("demo_seed")
 
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000") 
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")  # NOSONAR — internal Docker Compose networking 
 MINIO_ACCESS_KEY = os.getenv("MINIO_USER", "octest-admin")        
 MINIO_SECRET_KEY = os.getenv("MINIO_PASSWORD", "changeme-minio")  
 BUCKET_NAME = "octest-submissions"
