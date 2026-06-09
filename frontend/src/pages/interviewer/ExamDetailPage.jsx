@@ -32,6 +32,105 @@ const DIFFICULTY_COLORS = {
   Hard: 'bg-red-100 text-red-800',
 }
 
+// 發佈考試按鈕（含題目充足性判斷）
+function PublishButton({ exam, isDraft, publishing, onPublish }) {
+  const expected = (exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0)
+  const actual = exam.exam_problems.length
+  const tooFew = actual === 0 || actual < expected
+  const hint = tooFew ? `題目不足（設定 ${expected} 題，已配置 ${actual} 題）` : ''
+  return (
+    <Button
+      onClick={onPublish}
+      disabled={!isDraft || tooFew || publishing}
+      title={hint}
+    >
+      {publishing ? '發佈中…' : '發佈考試'}
+    </Button>
+  )
+}
+
+// 題目選擇器 Dialog 內容
+function ProblemPickerBody({
+  bankLoading, bankError, availableProblems, problemBank,
+  previewId, problemDescriptions, addingId,
+  onTogglePreview, onAddProblem,
+}) {
+  if (bankLoading) {
+    return (
+      <div className="flex justify-center py-8">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+  if (bankError) {
+    return <p className="text-sm font-medium text-destructive">{bankError}</p>
+  }
+  if (availableProblems.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground text-center py-8">
+        {problemBank.length === 0 ? '題庫中尚無題目' : '所有題目已加入考試'}
+      </p>
+    )
+  }
+  return (
+    <table className="w-full text-sm">
+      <thead className="bg-muted text-muted-foreground">
+        <tr>
+          <th className="px-3 py-2 text-left font-medium">題目名稱</th>
+          <th className="px-3 py-2 text-left font-medium w-20">難度</th>
+          <th className="px-3 py-2 text-left font-medium w-32">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {availableProblems.map((p) => (
+          <Fragment key={p.id}>
+            <tr className="border-t hover:bg-muted/30 transition-colors">
+              <td className="px-3 py-2 font-medium">{p.title}</td>
+              <td className="px-3 py-2">
+                <span
+                  className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    DIFFICULTY_COLORS[p.difficulty] ?? 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {DIFFICULTY_LABELS[p.difficulty] ?? p.difficulty}
+                </span>
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => onTogglePreview(p.id)}>
+                    {previewId === p.id ? '收合' : '預覽'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onAddProblem(p.id)}
+                    disabled={addingId !== null}
+                  >
+                    {addingId === p.id ? '加入中…' : '加入'}
+                  </Button>
+                </div>
+              </td>
+            </tr>
+            {previewId === p.id && (
+              <tr className="border-t bg-muted/20">
+                <td colSpan={3} className="px-4 py-3">
+                  {problemDescriptions[p.id] === undefined ? (
+                    <p className="text-muted-foreground italic animate-pulse">載入中…</p>
+                  ) : problemDescriptions[p.id] ? (
+                    <MarkdownView className="text-sm">{problemDescriptions[p.id]}</MarkdownView>
+                  ) : (
+                    <p className="text-muted-foreground italic">（此題目沒有描述）</p>
+                  )}
+                </td>
+              </tr>
+            )}
+          </Fragment>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 export default function ExamDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -531,23 +630,12 @@ export default function ExamDetailPage() {
         </Button>
 
         {/* 發佈考試（Draft 且題數足夠才啟用） */}
-        {(() => {
-          const expected = (exam.easy_count || 0) + (exam.medium_count || 0) + (exam.hard_count || 0)
-          const actual = exam.exam_problems.length
-          const tooFew = actual === 0 || actual < expected
-          const publishDisabledHint = tooFew
-            ? `題目不足（設定 ${expected} 題，已配置 ${actual} 題）`
-            : ''
-          return (
-            <Button
-              onClick={handlePublish}
-              disabled={!isDraft || tooFew || publishing}
-              title={publishDisabledHint}
-            >
-              {publishing ? '發佈中…' : '發佈考試'}
-            </Button>
-          )
-        })()}
+        <PublishButton
+          exam={exam}
+          isDraft={isDraft}
+          publishing={publishing}
+          onPublish={handlePublish}
+        />
 
         {/* 刪除考試 */}
         <Button
@@ -584,79 +672,17 @@ export default function ExamDetailPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {bankLoading ? (
-            <div className="flex justify-center py-8">
-              <LoadingSpinner />
-            </div>
-          ) : bankError ? (
-            <p className="text-sm font-medium text-destructive">{bankError}</p>
-          ) : availableProblems.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              {problemBank.length === 0 ? '題庫中尚無題目' : '所有題目已加入考試'}
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-muted text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 text-left font-medium">題目名稱</th>
-                  <th className="px-3 py-2 text-left font-medium w-20">難度</th>
-                  <th className="px-3 py-2 text-left font-medium w-32">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availableProblems.map((p) => (
-                  <Fragment key={p.id}>
-                    <tr className="border-t hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-2 font-medium">{p.title}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            DIFFICULTY_COLORS[p.difficulty] ?? 'bg-gray-100 text-gray-700'
-                          }`}
-                        >
-                          {DIFFICULTY_LABELS[p.difficulty] ?? p.difficulty}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleTogglePreview(p.id)}
-                          >
-                            {previewId === p.id ? '收合' : '預覽'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleAddProblem(p.id)}
-                            disabled={addingId !== null}
-                          >
-                            {addingId === p.id ? '加入中…' : '加入'}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                    {previewId === p.id && (
-                      <tr className="border-t bg-muted/20">
-                        <td colSpan={3} className="px-4 py-3">
-                          {problemDescriptions[p.id] === undefined ? (
-                            <p className="text-muted-foreground italic animate-pulse">載入中…</p>
-                          ) : problemDescriptions[p.id] ? (
-                            <MarkdownView className="text-sm">
-                              {problemDescriptions[p.id]}
-                            </MarkdownView>
-                          ) : (
-                            <p className="text-muted-foreground italic">（此題目沒有描述）</p>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <ProblemPickerBody
+            bankLoading={bankLoading}
+            bankError={bankError}
+            availableProblems={availableProblems}
+            problemBank={problemBank}
+            previewId={previewId}
+            problemDescriptions={problemDescriptions}
+            addingId={addingId}
+            onTogglePreview={handleTogglePreview}
+            onAddProblem={handleAddProblem}
+          />
 
           {/* 加入失敗的 inline 錯誤 */}
           {addError && (
