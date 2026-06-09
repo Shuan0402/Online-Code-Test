@@ -177,7 +177,7 @@ def run_official(
         elif case_verdict == "RE":
             runtime_info = result.stderr or "Runtime Error (No stderr)"
         elif case_verdict == "TLE":
-            runtime_info = f"Time Limit Exceeded"
+            runtime_info = "Time Limit Exceeded"
         elif case_verdict == "MLE":
             runtime_info = "Memory Limit Exceeded"
         elif case_verdict == "CE":
