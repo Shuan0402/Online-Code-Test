@@ -95,7 +95,7 @@ def poll(token: str, sub_id: str, max_wait_sec: int = 30) -> dict:
 
 
 def report(result: dict) -> None:
-    print(f"[4/4] 結果：")
+    print("[4/4] 結果：")
     print(f"      status         = {result['status']}")
     print(f"      score          = {result.get('score')}")
     print(f"      execution_time = {result.get('execution_time')} ms")
