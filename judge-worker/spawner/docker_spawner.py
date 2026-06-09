@@ -12,10 +12,11 @@ Step 8 sandbox protocol 變動：
 - stdin 純粹是 testcase input、餵 process stdin
 - 跑完 finally 清 tempdir
 
-Step 7 會在 _build_run_cmd() 加 runtime 安全旗標
-（--network=none --read-only --tmpfs /tmp --cap-drop=ALL --memory --pids-limit ...），
-worker 主流程不需要動。注意：/sandbox 是 readonly mount、不能再 tmpfs；
-cpp 的 a.out 寫 /tmp、所以 /tmp 要保留 tmpfs rw。
+Step 7 sandbox 加固（已在 _build_run_cmd() 套上）：
+--network=none / --memory / --cpus / --pids-limit / --cap-drop=ALL /
+no-new-privileges / --read-only + tmpfs /tmp。worker 主流程不需要動。
+注意：/sandbox 是 readonly bind mount、不能再 tmpfs；cpp 的 a.out 寫 /tmp、
+所以 /tmp 要保留 tmpfs rw,exec。
 """
 
 import os
@@ -96,11 +97,30 @@ class DockerSpawner(SandboxSpawner):
         container_name: str,
         host_dir: Path,
     ) -> list[str]:
-        # Step 7 會在這裡加 --network=none / --read-only / --memory / ...
-        # 注意：/sandbox 已是 readonly bind mount、別再 --tmpfs /sandbox
+        # Step 7 sandbox 加固（先前是 TODO、現補上）。
+        # 攻擊面與對應旗標：
+        #   --network=none      lateral 訪問 backend / pg / minio / redis 內網
+        #   --memory / -swap    user code 吃光 worker host RAM (DoS 其他提交)
+        #   --pids-limit        fork 炸彈
+        #   --cpus              CPU 占用
+        #   --cap-drop=ALL      預設保留的 setuid/sys_chroot 等危險 capability
+        #   no-new-privileges   setuid binary 也升不了權
+        #   --read-only         寫 rootfs 留 trace / 改 binary
+        #   --tmpfs /tmp:rw,exec  cpp 需 /tmp 寫 a.out 並執行;size cap 防灌爆
+        # 註：memory=512m 是「不爆 host 的底線」、不取代題目層 memory_limit_mb。
+        # 題目層的判題用 verdict 規則（Step 10 cgroup measurement 加進來）。
         return [
             "docker", "run", "--rm", "-i",
             "--name", container_name,
+            "--network=none",
+            "--memory=512m",
+            "--memory-swap=512m",
+            "--cpus=1",
+            "--pids-limit=64",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,exec,size=64m",
             "-v", f"{host_dir}:/sandbox:ro",
             image,
         ]
