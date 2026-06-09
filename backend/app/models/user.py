@@ -6,6 +6,8 @@ from sqlalchemy.sql import func
 from app.db.base import Base
 from app.models.enums import UserRole
 
+CASCADE_ALL_DELETE = "all, delete-orphan"
+
 
 class User(Base):
     """User (使用者)：記錄系統中的使用者資訊。
@@ -32,7 +34,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
 
     # 定義關聯
-    managed_exams = relationship("Exam", foreign_keys="[Exam.creator_id]", back_populates="interviewer", cascade="all, delete-orphan")
-    assigned_exams = relationship("Exam", foreign_keys="[Exam.candidate_id]", back_populates="candidate", cascade="all, delete-orphan")
+    managed_exams = relationship("Exam", foreign_keys="[Exam.creator_id]", back_populates="interviewer", cascade=CASCADE_ALL_DELETE)
+    assigned_exams = relationship("Exam", foreign_keys="[Exam.candidate_id]", back_populates="candidate", cascade=CASCADE_ALL_DELETE)
     created_problems = relationship("Problem", back_populates="questioner")
-    submissions = relationship("Submission", back_populates="user", cascade="all, delete-orphan")
+    submissions = relationship("Submission", back_populates="user", cascade=CASCADE_ALL_DELETE)
