@@ -109,11 +109,11 @@ export default function ProfilePage() {
 
         {/* Read-only fields */}
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">帳號</label>
+          <span className="block text-sm font-medium text-muted-foreground">帳號</span>
           <p className="text-sm border rounded-md px-3 py-2 bg-muted">{user.username}</p>
         </div>
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">角色</label>
+          <span className="block text-sm font-medium text-muted-foreground">角色</span>
           <p className="text-sm border rounded-md px-3 py-2 bg-muted">
             {ROLE_LABEL[user.role] ?? user.role}
           </p>
