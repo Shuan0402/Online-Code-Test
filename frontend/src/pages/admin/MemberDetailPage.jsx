@@ -129,24 +129,24 @@ export default function MemberDetailPage() {
         <h2 className="text-lg font-semibold">基本資料</h2>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">姓名</label>
+          <span className="block text-sm font-medium text-muted-foreground">姓名</span>
           <p className="text-sm border rounded-md px-3 py-2 bg-muted">
             {member.full_name ?? '—'}
           </p>
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">帳號（不可更改）</label>
+          <span className="block text-sm font-medium text-muted-foreground">帳號（不可更改）</span>
           <p className="text-sm border rounded-md px-3 py-2 bg-muted">{member.username}</p>
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">角色</label>
+          <span className="block text-sm font-medium text-muted-foreground">角色</span>
           <p className="text-sm border rounded-md px-3 py-2 bg-muted">{member.role}</p>
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium text-muted-foreground">密碼</label>
+          <span className="block text-sm font-medium text-muted-foreground">密碼</span>
           {/* There is no password field in UserRead — always render a masked placeholder */}
           <p className="text-sm border rounded-md px-3 py-2 bg-muted tracking-widest">
             ••••••••
