@@ -64,10 +64,9 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examId, problemId])
 
-  const handleCodeChange = (value) => {
-    const newCode = value ?? ''
-    setCode(newCode)
-    codeRef.current = newCode
+  const handleCodeChange = (value = '') => {
+    setCode(value)
+    codeRef.current = value
     // 防抖 1 秒後寫入 localStorage（key 是「當下語言」）
     if (debounceRef.current) clearTimeout(debounceRef.current)
     const keyAtTimeOfChange = draftKeyFor(langRef.current)
