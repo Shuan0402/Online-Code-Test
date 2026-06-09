@@ -17,6 +17,11 @@ RUN pip install --no-cache-dir -r requirements.txt \
 # Source code last — this layer is the only one that rebuilds on code edits.
 COPY . .
 
+# Run as non-root user to follow the principle of least privilege.
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser \
+ && chown -R appuser:appgroup /app
+USER appuser
+
 EXPOSE 8000
 
 CMD ["sh", "-c", "python app/db/init_db.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
