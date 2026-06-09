@@ -86,6 +86,34 @@ def create_problem(
     return db_problem
 
 
+def _sync_test_cases(db: Session, db_problem: "Problem", tc_list: list) -> None:
+    """Synchronise the test-case set of a problem from an incoming list.
+
+    - Existing test cases present in tc_list are updated in-place.
+    - Existing test cases absent from tc_list are deleted.
+    - Items in tc_list without a matching id are created as new rows.
+    """
+    current_tcs = {tc.id: tc for tc in db_problem.test_cases}
+    incoming_tc_ids = []
+
+    for tc_data in tc_list:
+        if tc_data.id and tc_data.id in current_tcs:
+            target_tc = current_tcs[tc_data.id]
+            for field, value in tc_data.model_dump(exclude_unset=True).items():
+                setattr(target_tc, field, value)
+            incoming_tc_ids.append(tc_data.id)
+        else:
+            new_tc = TestCase(
+                **tc_data.model_dump(exclude={"id"}),
+                problem_id=db_problem.id
+            )
+            db.add(new_tc)
+
+    for tc_id, tc_obj in current_tcs.items():
+        if tc_id not in incoming_tc_ids:
+            db.delete(tc_obj)
+
+
 @router.patch("/{problem_id}", response_model=ProblemRead, responses={404: {"description": "題目不存在"}})
 def update_problem(
     *,
@@ -118,26 +146,7 @@ def update_problem(
         setattr(db_problem, field, value)
 
     if problem_in.test_cases is not None:
-        current_tcs = {tc.id: tc for tc in db_problem.test_cases}
-        incoming_tc_ids = []
-
-        for tc_data in problem_in.test_cases:
-            if tc_data.id and tc_data.id in current_tcs:
-                target_tc = current_tcs[tc_data.id]
-                for field, value in tc_data.model_dump(exclude_unset=True).items():
-                    setattr(target_tc, field, value)
-                incoming_tc_ids.append(tc_data.id)
-            else:
-                new_tc = TestCase(
-                    **tc_data.model_dump(exclude={"id"}), 
-                    problem_id=db_problem.id
-                )
-                db.add(new_tc)
-                
-        for tc_id, tc_obj in current_tcs.items():
-            if tc_id not in incoming_tc_ids:
-                db.delete(tc_obj)
-
+        _sync_test_cases(db, db_problem, problem_in.test_cases)
     db.commit()
     db.refresh(db_problem)
     return db_problem
