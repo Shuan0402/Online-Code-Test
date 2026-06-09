@@ -15,3 +15,20 @@ venv/
 
 # Local dev databases (B's test.db is a dev artifact, not source)
 *.db
+
+# Test artifacts and coverage reports — not needed at runtime
+tests/
+htmlcov/
+coverage.xml
+.coverage
+*.coveragerc
+
+# Environment / secrets — never bake into image
+.env
+.env.*
+*.secret
+
+# Git metadata
+.git/
+.gitignore
+.gitattributes
