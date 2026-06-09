@@ -82,50 +82,61 @@ function ProblemPickerBody({
         </tr>
       </thead>
       <tbody>
-        {availableProblems.map((p) => (
-          <Fragment key={p.id}>
-            <tr className="border-t hover:bg-muted/30 transition-colors">
-              <td className="px-3 py-2 font-medium">{p.title}</td>
-              <td className="px-3 py-2">
-                <span
-                  className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    DIFFICULTY_COLORS[p.difficulty] ?? 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {DIFFICULTY_LABELS[p.difficulty] ?? p.difficulty}
-                </span>
-              </td>
-              <td className="px-3 py-2">
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => onTogglePreview(p.id)}>
-                    {previewId === p.id ? '收合' : '預覽'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onAddProblem(p.id)}
-                    disabled={addingId !== null}
+        {availableProblems.map((p) => {
+          let previewContent = null;
+          if (problemDescriptions[p.id] === undefined) {
+            previewContent = (
+              <p className="text-muted-foreground italic animate-pulse">載入中…</p>
+            );
+          } else if (problemDescriptions[p.id]) {
+            previewContent = (
+              <MarkdownView className="text-sm">{problemDescriptions[p.id]}</MarkdownView>
+            );
+          } else {
+            previewContent = (
+              <p className="text-muted-foreground italic">（此題目沒有描述）</p>
+            );
+          }
+
+          return (
+            <Fragment key={p.id}>
+              <tr className="border-t hover:bg-muted/30 transition-colors">
+                <td className="px-3 py-2 font-medium">{p.title}</td>
+                <td className="px-3 py-2">
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      DIFFICULTY_COLORS[p.difficulty] ?? 'bg-gray-100 text-gray-700'
+                    }`}
                   >
-                    {addingId === p.id ? '加入中…' : '加入'}
-                  </Button>
-                </div>
-              </td>
-            </tr>
-            {previewId === p.id && (
-              <tr className="border-t bg-muted/20">
-                <td colSpan={3} className="px-4 py-3">
-                  {problemDescriptions[p.id] === undefined ? (
-                    <p className="text-muted-foreground italic animate-pulse">載入中…</p>
-                  ) : problemDescriptions[p.id] ? (
-                    <MarkdownView className="text-sm">{problemDescriptions[p.id]}</MarkdownView>
-                  ) : (
-                    <p className="text-muted-foreground italic">（此題目沒有描述）</p>
-                  )}
+                    {DIFFICULTY_LABELS[p.difficulty] ?? p.difficulty}
+                  </span>
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => onTogglePreview(p.id)}>
+                      {previewId === p.id ? '收合' : '預覽'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onAddProblem(p.id)}
+                      disabled={addingId !== null}
+                    >
+                      {addingId === p.id ? '加入中…' : '加入'}
+                    </Button>
+                  </div>
                 </td>
               </tr>
-            )}
-          </Fragment>
-        ))}
+              {previewId === p.id && (
+                <tr className="border-t bg-muted/20">
+                  <td colSpan={3} className="px-4 py-3">
+                    {previewContent}
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}
       </tbody>
     </table>
   )
