@@ -84,7 +84,7 @@ def create_problem(
     return db_problem
 
 
-@router.patch("/{problem_id}", response_model=ProblemRead)
+@router.patch("/{problem_id}", response_model=ProblemRead, responses={404: {"description": "題目不存在"}})
 def update_problem(
     *,
     db: Annotated[Session, Depends(deps.get_db)],
