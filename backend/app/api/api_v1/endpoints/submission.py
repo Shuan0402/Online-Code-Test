@@ -33,8 +33,6 @@ def _get_client_ip(request: Request) -> str:
 def _validate_submission_candidate(
     current_user: User,
     exam: "Exam",
-    payload: "SubmissionCreate",
-    db: Session,
     audit_extra: dict,
 ) -> None:
     """Guard rails that only apply when the requester is a Candidate."""
@@ -118,7 +116,7 @@ def create_submission(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次。")
     
     if current_user.role == UserRole.Candidate:
-        _validate_submission_candidate(current_user, exam, payload, db, audit_extra)
+        _validate_submission_candidate(current_user, exam, audit_extra)
 
     ep = db.query(ExamProblem).filter(
         ExamProblem.exam_id == payload.exam_id,
