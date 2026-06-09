@@ -724,6 +724,29 @@ def delete_exam_session(
     db.delete(exam)
     db.commit()
 
+def _resolve_target_problem_id(db: Session, obj_in, exam):
+    """Return the problem_id to add, resolving random_difficulty when no explicit id given.
+
+    Raises HTTPException when random mode finds no available problem.
+    """
+    if not (obj_in.random_difficulty and not obj_in.problem_id):
+        return obj_in.problem_id
+    exist_ids = [ep.problem_id for ep in exam.exam_problems]
+    random_prob = (
+        db.query(Problem)
+        .filter(Problem.difficulty == obj_in.random_difficulty)
+        .filter(~Problem.id.in_(exist_ids) if exist_ids else True)
+        .order_by(func.random())
+        .first()
+    )
+    if not random_prob:
+        raise HTTPException(  # NOSONAR
+            status_code=400,
+            detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選"
+        )
+    return random_prob.id
+
+
 @router.post("/{exam_id}/problems", response_model=ExamRead)
 def add_exam_problem_manual(
     exam_id: uuid.UUID,
@@ -734,45 +757,29 @@ def add_exam_problem_manual(
     """
     面試主管手動指派加題 API
     - 僅限管理員/面試官，且考卷必須處於 Draft 狀態才允許手動塞題。
-    """    
+    """
     if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="權限不足，只有面試官或管理員可以手動指派題目。"
         )
-    
+
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次")
-    
+
     if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"目前考場狀態為 {exam.status}，不允許變更題目配置。"
         )
-    
-    target_problem_id = obj_in.problem_id
 
-    if obj_in.random_difficulty and not target_problem_id:
-        exist_ids = [ep.problem_id for ep in exam.exam_problems]
-        random_prob = (
-            db.query(Problem)
-            .filter(Problem.difficulty == obj_in.random_difficulty)
-            .filter(~Problem.id.in_(exist_ids) if exist_ids else True)
-            .order_by(func.random())
-            .first()
-        )
-        if not random_prob:
-            raise HTTPException(  # NOSONAR
-                status_code=400,
-                detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選"
-            )
-        target_problem_id = random_prob.id
+    target_problem_id = _resolve_target_problem_id(db, obj_in, exam)
 
     existing_ep = db.get(ExamProblem, (exam_id, target_problem_id))
     if existing_ep:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="該題目已存在於本張試卷中，請勿重複添加。"
         )
 
