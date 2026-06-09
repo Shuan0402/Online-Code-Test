@@ -104,6 +104,101 @@ def _sort_problem_results(filtered_results: list, order_by: str) -> list:
     return filtered_results
 
 
+def _get_weight_by_problem(db: Session, problem_ids) -> dict:
+    """Batch-fetch total score_weight per problem_id; returns empty dict when no ids."""
+    if not problem_ids:
+        return {}
+    weight_rows = (
+        db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
+        .filter(TestCase.problem_id.in_(problem_ids))
+        .group_by(TestCase.problem_id)
+        .all()
+    )
+    return {pid: (w or 0) for pid, w in weight_rows}
+
+
+def _score_pct(score: float, total_points: float) -> float:
+    """Return percentage score, 0.0 when total_points is zero."""
+    return (score / total_points * 100.0) if total_points > 0 else 0.0
+
+
+def _filter_exams_by_score(
+    exams: list, weight_by_problem: dict, score_gte: Optional[float], score_lte: Optional[float]
+) -> list:
+    """Filter (exam, pct) pairs by score_gte / score_lte bounds."""
+    result = []
+    for exam in exams:
+        total_points = sum(
+            weight_by_problem.get(ep.problem_id, 0) or ep.points
+            for ep in exam.exam_problems
+        )
+        pct = _score_pct(exam.score, total_points)
+        if score_gte is not None and pct < score_gte:
+            continue
+        if score_lte is not None and pct > score_lte:
+            continue
+        result.append((exam, pct))
+    return result
+
+
+def _check_exam_start_preconditions(exam, now: datetime) -> None:
+    """Raise HTTPException for invalid start-exam states; mutates exam when transitioning Published→Ongoing.
+
+    This guard is intentionally side-effect-free for all error paths so that the
+    caller can commit only on the happy path.
+    """
+    if exam.status == ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="該場考試尚未對外發布。"
+        )
+    if exam.status in [ExamStatus.Finished, ExamStatus.Archived]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="您已完成本場考試，無法重複作答。"
+        )
+
+
+def _resolve_ep_title(ep) -> str:
+    """Return the best available title for an ExamProblem row."""
+    if hasattr(ep, "title") and ep.title:
+        return ep.title
+    if hasattr(ep, "problem") and ep.problem:
+        return ep.problem.title
+    return "Unknown Problem"
+
+
+def _build_problem_result(ep, latest_sub, total_tc_weight: int):
+    """Construct an ExamProblemResultRead from an ExamProblem and its latest submission."""
+    p_score = latest_sub.score if latest_sub else 0
+    p_status = latest_sub.status if latest_sub else "Unsubmitted"
+    p_finished_at = latest_sub.created_at if latest_sub else None
+    return ExamProblemResultRead(
+        problem_id=ep.problem_id,
+        title=_resolve_ep_title(ep),
+        sequence=ep.sequence,
+        max_points=total_tc_weight,
+        candidate_score=p_score,
+        submission_status=p_status,
+        finished_at=p_finished_at,
+    )
+
+
+def _filter_problem_results_by_score(
+    problem_results: list, score_gte: Optional[float], score_lte: Optional[float]
+) -> list:
+    """Filter ExamProblemResultRead items by per-problem percentage score bounds."""
+    filtered = []
+    for r in problem_results:
+        pct = _score_pct(r.candidate_score, r.max_points)
+        if score_gte is not None and pct < score_gte:
+            continue
+        if score_lte is not None and pct > score_lte:
+            continue
+        filtered.append(r)
+    return filtered
+
+
 @router.get("/", response_model=List[CandidateExamListRead])
 def get_candidate_exams(
     db: Annotated[Session, Depends(deps.get_db)],
@@ -139,30 +234,9 @@ def get_candidate_exams(
 
     # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，避免 N+1。
     problem_ids = {ep.problem_id for exam in exams for ep in exam.exam_problems}
-    if problem_ids:
-        weight_rows = (
-            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
-            .filter(TestCase.problem_id.in_(problem_ids))
-            .group_by(TestCase.problem_id)
-            .all()
-        )
-        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
-    else:
-        weight_by_problem = {}
+    weight_by_problem = _get_weight_by_problem(db, problem_ids)
 
-    filtered_exams = []
-    for exam in exams:
-        total_points = sum(
-            weight_by_problem.get(ep.problem_id, 0) or ep.points
-            for ep in exam.exam_problems
-        )
-        pct = (exam.score / total_points * 100.0) if total_points > 0 else 0.0
-        if score_gte is not None and pct < score_gte:
-            continue
-        if score_lte is not None and pct > score_lte:
-            continue
-        filtered_exams.append((exam, pct))
-
+    filtered_exams = _filter_exams_by_score(exams, weight_by_problem, score_gte, score_lte)
     filtered_exams = _sort_exam_list(filtered_exams, order_by) if order_by else sorted(
         filtered_exams, key=lambda x: x[0].created_at, reverse=True
     )
@@ -202,23 +276,13 @@ def start_exam(
 
     now = datetime.now(timezone.utc)
 
-    if exam.status == ExamStatus.Draft:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="該場考試尚未對外發布。"
-        )
+    _check_exam_start_preconditions(exam, now)
 
-    elif exam.status == ExamStatus.Published:
+    if exam.status == ExamStatus.Published:
         exam.status = ExamStatus.Ongoing
         exam.start_time = now
         db.commit()
         db.refresh(exam)
-
-    elif exam.status in [ExamStatus.Finished, ExamStatus.Archived]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="您已完成本場考試，無法重複作答。"
-        )
 
     total_duration_seconds = exam.duration_minutes * 60
     elapsed_seconds = (now - exam.start_time).total_seconds()
@@ -315,29 +379,17 @@ def get_exam_result(
             detail="該場考試尚未對外發布。"
         )
 
+    ep_problem_ids = [ep.problem_id for ep in exam.exam_problems]
+    weight_by_problem = _get_weight_by_problem(db, ep_problem_ids)
+
     problem_results = []
     accumulated_exam_points = 0
     accumulated_candidate_score = 0
 
-    # 一次 batch 取本場考試所有題目的 testcase 配分總和，避免逐題打 DB。
-    ep_problem_ids = [ep.problem_id for ep in exam.exam_problems]
-    if ep_problem_ids:
-        weight_rows = (
-            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
-            .filter(TestCase.problem_id.in_(ep_problem_ids))
-            .group_by(TestCase.problem_id)
-            .all()
-        )
-        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
-    else:
-        weight_by_problem = {}
-
     for ep in exam.exam_problems:
-        total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
-        if total_tc_weight == 0:
-            total_tc_weight = ep.points
+        total_tc_weight = weight_by_problem.get(ep.problem_id, 0) or ep.points
         accumulated_exam_points += total_tc_weight
-        
+
         latest_sub = (
             db.query(Submission)
             .filter(
@@ -348,38 +400,13 @@ def get_exam_result(
             .order_by(Submission.created_at.desc())
             .first()
         )
-        
-        p_score = latest_sub.score if latest_sub else 0
-        p_status = latest_sub.status if latest_sub else "Unsubmitted"
-        p_finished_at = latest_sub.created_at if latest_sub else None
-        
-        accumulated_candidate_score += p_score
-        
-        p_title = "Unknown Problem"
-        if hasattr(ep, "title") and ep.title:
-            p_title = ep.title
-        elif hasattr(ep, "problem") and ep.problem:
-            p_title = ep.problem.title
 
-        problem_results.append(
-            ExamProblemResultRead(
-                problem_id=ep.problem_id,
-                title=p_title,
-                sequence=ep.sequence,
-                max_points=total_tc_weight,
-                candidate_score=p_score,
-                submission_status=p_status,
-                finished_at=p_finished_at
-            )
-        )
+        entry = _build_problem_result(ep, latest_sub, total_tc_weight)
+        accumulated_candidate_score += entry.candidate_score
+        problem_results.append(entry)
 
     # Python-side filtering & sorting for single exam problems
-    filtered_results = [
-        r for r in problem_results
-        if (score_gte is None or (r.candidate_score / r.max_points * 100.0 if r.max_points > 0 else 0.0) >= score_gte)
-        and (score_lte is None or (r.candidate_score / r.max_points * 100.0 if r.max_points > 0 else 0.0) <= score_lte)
-    ]
-
+    filtered_results = _filter_problem_results_by_score(problem_results, score_gte, score_lte)
     filtered_results = _sort_problem_results(filtered_results, order_by) if order_by else sorted(
         filtered_results, key=lambda x: x.sequence
     )
