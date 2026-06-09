@@ -74,7 +74,7 @@ jobs:
       - name: Install judge-worker deps
         working-directory: judge-worker
         run: |
-          pip install --only-binary :all: -r requirements-dev.txt
+          pip install --only-binary :all: --require-hashes -r requirements-dev.lock
 
       - name: Run judge-worker tests with coverage
         working-directory: judge-worker
