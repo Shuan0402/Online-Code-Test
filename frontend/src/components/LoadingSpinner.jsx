@@ -12,8 +12,7 @@ export default function LoadingSpinner({ size = 'md' }) {
   }[size] ?? 'h-8 w-8 border-2'
 
   return (
-    <div
-      role="status"
+    <output
       aria-label="載入中"
       className={`inline-block rounded-full border-muted border-t-primary animate-spin ${sizeClass}`}
     />
