@@ -29,7 +29,7 @@ jobs:
 
       # ── Frontend coverage (Vitest + v8) ────────────────────────────
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@6012dfb26675065309e21032068981c6237f8e25 # v4.2.2
         with:
           node-version: 20
           cache: npm
@@ -65,7 +65,7 @@ jobs:
 
       # ── Judge-worker coverage (pytest + fakeredis, on host) ────────
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@f67e240f6d553de3a7c6460fa770c67761066446 # v5.4.0
         with:
           python-version: '3.11'
           cache: pip
@@ -99,7 +99,7 @@ jobs:
 
       # ── SonarCloud scan ────────────────────────────────────────────
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@v3.0.0
+        uses: SonarSource/sonarcloud-github-action@fdd1ee3e2bdf2a26569ec2a8c62c2f741da8aa3d
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
