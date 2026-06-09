@@ -14,7 +14,7 @@ USER_NOT_FOUND = "找不到該使用者"
 
 router = APIRouter()
 
-@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=UserRead, status_code=status.HTTP_201_CREATED, responses={400: {"description": "帳號名稱已存在"}})
 def create_user(
     obj_in: UserCreate, 
     db: Annotated[Session, Depends(deps.get_db)], 
