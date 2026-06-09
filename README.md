@@ -115,7 +115,7 @@ docker compose exec backend pytest
 ```bash
 echo "print(2+2)" | docker run --rm -i sandbox:python   # 4
 printf '#include <iostream>\nint main(){std::cout<<2+2;}\n' \
-  | docker run --rm -i sandbox:cpp                       # 4
+  | docker run --rm -i sandbox:cpp
 ```
 
 ## Backend 合約（給 @Shuan0402）
