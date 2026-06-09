@@ -71,7 +71,7 @@ const EditorPanel = forwardRef(function EditorPanel({ examId, problemId, onSubmi
     if (debounceRef.current) clearTimeout(debounceRef.current)
     const keyAtTimeOfChange = draftKeyFor(langRef.current)
     debounceRef.current = setTimeout(() => {
-      localStorage.setItem(keyAtTimeOfChange, newCode)
+      localStorage.setItem(keyAtTimeOfChange, value)
     }, 1000)
   }
 
