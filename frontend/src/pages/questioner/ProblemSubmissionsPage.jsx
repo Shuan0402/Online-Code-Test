@@ -20,7 +20,7 @@ import {
 function formatDateTime(isoString) {
   if (!isoString) return '—'
   const d = new Date(isoString)
-  if (isNaN(d.getTime())) return isoString
+  if (Number.isNaN(d.getTime())) return isoString
   return d.toLocaleString('zh-TW', {
     year: 'numeric',
     month: '2-digit',
