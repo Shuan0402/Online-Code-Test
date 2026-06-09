@@ -31,6 +31,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY spawner /app/spawner
 COPY worker.py /app/
 
+# Run as non-root user to follow the principle of least privilege.
+# Note: docker.sock access at runtime requires the compose GID mapping
+# (see docker-compose.yml worker.group_add) rather than baking GID here.
+RUN addgroup --system workergroup && adduser --system --ingroup workergroup workeruser \
+ && chown -R workeruser:workergroup /app
+USER workeruser
+
 # WORKER_SECRET is required at startup (worker.main() exits if unset).
 # Provide it via compose env / k8s Secret — do not bake into image.
 CMD ["python3", "worker.py"]
