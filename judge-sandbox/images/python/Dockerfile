@@ -32,4 +32,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # stdin 純粹是 testcase input、餵 process stdin。
 # 寫 python3 而非 python：distroless 只 ship python3 binary，沒有無版本 symlink。
 # 寫死 ENTRYPOINT 而非用 base image 預設：避免上游升級時 entrypoint 改動造成行為飄移。
+# Explicitly specify user to satisfy static analyzers
+USER nonroot
+
 ENTRYPOINT ["python3", "/sandbox/source.py"]
