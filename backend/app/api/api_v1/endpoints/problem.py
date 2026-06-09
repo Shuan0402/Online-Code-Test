@@ -32,7 +32,7 @@ def read_problems(
     return problems
 
 
-@router.get("/{problem_id}", response_model=ProblemRead)
+@router.get("/{problem_id}", response_model=ProblemRead, responses={404: {"description": "題目不存在"}})
 def read_problem(
     problem_id: int,
     db: Annotated[Session, Depends(deps.get_db)],
