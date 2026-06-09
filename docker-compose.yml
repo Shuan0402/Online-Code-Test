@@ -21,6 +21,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
 
   backend:
     image: backend:dev
@@ -60,6 +61,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    restart: unless-stopped
 
   redis:
     image: redis:alpine
@@ -70,6 +72,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    restart: unless-stopped
 
   minio:
     image: minio/minio:latest
@@ -90,6 +93,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
 
   worker:
     image: judge-worker:dev
@@ -132,6 +136,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    restart: unless-stopped
 
   promtail:
     image: grafana/promtail:2.8.2
@@ -141,6 +146,7 @@ services:
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+    restart: unless-stopped
 
   prometheus:
     build:
@@ -154,6 +160,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:9.5.2-ubuntu
@@ -168,6 +175,7 @@ services:
     depends_on:
       - loki
       - prometheus
+    restart: unless-stopped
 
   mailhog:
     image: mailhog/mailhog:latest
@@ -178,6 +186,7 @@ services:
     logging:
       options:
         tag: "mailhog"
+    restart: unless-stopped
 
   email-worker:
     build:
