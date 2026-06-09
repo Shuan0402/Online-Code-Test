@@ -1,4 +1,4 @@
-name: Build
+name: SonarQube CI
 on:
   push:
     branches:
@@ -37,7 +37,7 @@ jobs:
 
       - name: Install frontend deps
         working-directory: frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run frontend tests with coverage
         working-directory: frontend
@@ -73,7 +73,8 @@ jobs:
 
       - name: Install judge-worker deps
         working-directory: judge-worker
-        run: pip install -r requirements-dev.txt
+        run: |
+          pip install --only-binary :all: --require-hashes -r requirements-dev.lock
 
       - name: Run judge-worker tests with coverage
         working-directory: judge-worker
@@ -97,7 +98,8 @@ jobs:
           grep -m1 '<source>' judge-worker/coverage.xml
 
       # ── SonarCloud scan ────────────────────────────────────────────
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v3.0.0
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

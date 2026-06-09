@@ -30,3 +30,6 @@ scripts/e2e/test-results/
 
 # local-only — do not push
 /CLAUDE.md
+
+# SonarQube / SonarCloud scanner working directory
+.scannerwork/

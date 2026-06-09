@@ -1,8 +1,10 @@
 import json
 import logging
 from uuid import UUID
-from typing import List, Optional
+from typing import List, Optional, Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from app.models.user import User
+from app.services.storage import StorageService
 from sqlalchemy.orm import Session, joinedload
 
 from app.api import deps
@@ -19,13 +21,54 @@ logger = logging.getLogger("app")
 
 router = APIRouter()
 
+
+def _get_client_ip(request: Request) -> str:
+    """Extract real client IP, honouring X-Forwarded-For proxy header."""
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    if x_forwarded_for:
+        return x_forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "0.0.0.0"
+
+
+def _validate_submission_candidate(
+    current_user: User,
+    exam: "Exam",
+    audit_extra: dict,
+) -> None:
+    """Guard rails that only apply when the requester is a Candidate."""
+    if exam.candidate_id != current_user.id:
+        audit_extra["action"] = "security_violation_wrong_candidate"
+        logger.warning(
+            f"越權警告：用戶 {current_user.id} 企圖提交不屬於自己的考場場次 {exam.id}！",
+            extra=audit_extra
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="越權存取：您並非本場考試的指定受測對象。")
+
+    if exam.status != ExamStatus.Ongoing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"交卷失敗：目前考場狀態為 {exam.status}，只有在 Ongoing (進行中) 狀態才允許提交程式碼。"
+        )
+
+
+def _apply_order_by(query, order_by: str):
+    """Apply ordering to a Submission query based on the order_by string."""
+    order_map = {
+        "finished_at": Submission.created_at.asc(),
+        "-finished_at": Submission.created_at.desc(),
+        "score": Submission.score.asc(),
+        "-score": Submission.score.desc(),
+    }
+    return query.order_by(order_map.get(order_by, Submission.created_at.desc()))
+
+
 @router.post("/", response_model=SubmissionRead, status_code=status.HTTP_202_ACCEPTED)
 def create_submission(
     payload: SubmissionCreate,
     request: Request,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-    storage_service = Depends(deps.get_storage) 
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)] 
 ):
     """
     建立程式碼提交並送入評測佇列。
@@ -36,11 +79,7 @@ def create_submission(
     4. 生成 pre-signed URL 並與限制條件打包
     5. 送入 Redis Queue (submissions:pending) 觸發 Worker 判題
     """
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        client_ip = x_forwarded_for.split(",")[0].strip()
-    else:
-        client_ip = request.client.host if request.client else "0.0.0.0"
+    client_ip = _get_client_ip(request)
 
     audit_extra = {
         "user_id": str(current_user.id),
@@ -77,19 +116,7 @@ def create_submission(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次。")
     
     if current_user.role == UserRole.Candidate:
-        if exam.candidate_id != current_user.id:
-            audit_extra["action"] = "security_violation_wrong_candidate"
-            logger.warning(
-                f"越權警告：用戶 {current_user.id} 企圖提交不屬於自己的考場場次 {exam.id}！",
-                extra=audit_extra
-            )
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="越權存取：您並非本場考試的指定受測對象。")
-        
-        if exam.status != ExamStatus.Ongoing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail=f"交卷失敗：目前考場狀態為 {exam.status}，只有在 Ongoing (進行中) 狀態才允許提交程式碼。"
-            )
+        _validate_submission_candidate(current_user, exam, audit_extra)
 
     ep = db.query(ExamProblem).filter(
         ExamProblem.exam_id == payload.exam_id,
@@ -206,9 +233,9 @@ def create_submission(
 def get_latest_submission(
     problem_id: int,
     exam_id: Optional[UUID] = None,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-    storage_service = Depends(deps.get_storage)
+    db: Annotated[Session, Depends(deps.get_db)] = None,
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None,
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)] = None
 ):
     """
     獲取特定題目最後一次提交 API
@@ -252,9 +279,9 @@ def get_latest_submission(
 @router.get("/{submission_id}", response_model=SubmissionRead)
 def get_submission_by_id(
     submission_id: UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user),
-    storage_service = Depends(deps.get_storage)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)]
 ):
     """
     狀態查詢與明細 API
@@ -305,8 +332,8 @@ def get_submissions(
     order_by: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)] = None,
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None
 ):
     """
     獲取提交紀錄列表 API
@@ -335,16 +362,7 @@ def get_submissions(
         query = query.filter(Submission.score <= score_lte)
 
     if order_by:
-        if order_by == "finished_at":
-            query = query.order_by(Submission.created_at.asc())
-        elif order_by == "-finished_at":
-            query = query.order_by(Submission.created_at.desc())
-        elif order_by == "score":
-            query = query.order_by(Submission.score.asc())
-        elif order_by == "-score":
-            query = query.order_by(Submission.score.desc())
-        else:
-            query = query.order_by(Submission.created_at.desc())
+        query = _apply_order_by(query, order_by)
     else:
         query = query.order_by(Submission.created_at.desc())
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Annotated
 from uuid import UUID
 
 from app.api import deps
@@ -19,9 +19,11 @@ from app.services.queue_manager import queue_manager
 
 router = APIRouter()
 
+PROBLEM_NOT_FOUND = "找不到指定的題目。"
+
 @router.get("/", response_model=List[ProblemShortRead])
 def read_problems(
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     skip: int = 0,
     limit: int = 100
 ):
@@ -32,11 +34,11 @@ def read_problems(
     return problems
 
 
-@router.get("/{problem_id}", response_model=ProblemRead)
+@router.get("/{problem_id}", response_model=ProblemRead, responses={404: {"description": "題目不存在"}})
 def read_problem(
     problem_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     獲取特定題目詳細資訊。
@@ -57,9 +59,9 @@ def read_problem(
 @router.post("/", response_model=ProblemRead, status_code=status.HTTP_201_CREATED)
 def create_problem(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     problem_in: ProblemCreate,
-    current_user: User = Depends(get_questioner_user)
+    current_user: Annotated[User, Depends(get_questioner_user)]
 ):
     """
     新增題目（含測試案例）。
@@ -84,13 +86,41 @@ def create_problem(
     return db_problem
 
 
-@router.patch("/{problem_id}", response_model=ProblemRead)
+def _sync_test_cases(db: Session, db_problem: "Problem", tc_list: list) -> None:
+    """Synchronise the test-case set of a problem from an incoming list.
+
+    - Existing test cases present in tc_list are updated in-place.
+    - Existing test cases absent from tc_list are deleted.
+    - Items in tc_list without a matching id are created as new rows.
+    """
+    current_tcs = {tc.id: tc for tc in db_problem.test_cases}
+    incoming_tc_ids = []
+
+    for tc_data in tc_list:
+        if tc_data.id and tc_data.id in current_tcs:
+            target_tc = current_tcs[tc_data.id]
+            for field, value in tc_data.model_dump(exclude_unset=True).items():
+                setattr(target_tc, field, value)
+            incoming_tc_ids.append(tc_data.id)
+        else:
+            new_tc = TestCase(
+                **tc_data.model_dump(exclude={"id"}),
+                problem_id=db_problem.id
+            )
+            db.add(new_tc)
+
+    for tc_id, tc_obj in current_tcs.items():
+        if tc_id not in incoming_tc_ids:
+            db.delete(tc_obj)
+
+
+@router.patch("/{problem_id}", response_model=ProblemRead, responses={404: {"description": "題目不存在"}})
 def update_problem(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     problem_id: int,
     problem_in: ProblemUpdate,
-    current_user: User = Depends(get_questioner_user)
+    current_user: Annotated[User, Depends(get_questioner_user)]
 ):
     """
     修改題目資訊與測資。
@@ -116,37 +146,18 @@ def update_problem(
         setattr(db_problem, field, value)
 
     if problem_in.test_cases is not None:
-        current_tcs = {tc.id: tc for tc in db_problem.test_cases}
-        incoming_tc_ids = []
-
-        for tc_data in problem_in.test_cases:
-            if tc_data.id and tc_data.id in current_tcs:
-                target_tc = current_tcs[tc_data.id]
-                for field, value in tc_data.model_dump(exclude_unset=True).items():
-                    setattr(target_tc, field, value)
-                incoming_tc_ids.append(tc_data.id)
-            else:
-                new_tc = TestCase(
-                    **tc_data.model_dump(exclude={"id"}), 
-                    problem_id=db_problem.id
-                )
-                db.add(new_tc)
-                
-        for tc_id, tc_obj in current_tcs.items():
-            if tc_id not in incoming_tc_ids:
-                db.delete(tc_obj)
-
+        _sync_test_cases(db, db_problem, problem_in.test_cases)
     db.commit()
     db.refresh(db_problem)
     return db_problem
 
 
-@router.delete("/{problem_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{problem_id}", status_code=status.HTTP_204_NO_CONTENT, responses={404: {"description": "題目不存在"}})
 def delete_problem(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     problem_id: int,
-    current_user: User = Depends(get_questioner_user)
+    current_user: Annotated[User, Depends(get_questioner_user)]
 ):
     """
     刪除題目。
@@ -161,11 +172,11 @@ def delete_problem(
     db.commit()
     return None
 
-@router.get("/{id}/testcases", response_model=list[TestCaseRead])
+@router.get("/{id}/testcases", response_model=list[TestCaseRead], responses={404: {"description": "找不到指定的題目。"}})
 def get_problem_testcases(
     id: int,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     獲取指定題目的完整測試資料（包含隱密輸入/輸出）
@@ -179,18 +190,18 @@ def get_problem_testcases(
     
     problem = db.query(Problem).filter(Problem.id == id).first()
     if not problem:
-        raise HTTPException(status_code=404, detail="找不到指定的題目。")
+        raise HTTPException(status_code=404, detail=PROBLEM_NOT_FOUND)
     
     testcases = db.query(TestCase).filter(TestCase.problem_id == id).order_by(TestCase.id.asc()).all()
 
     return testcases
 
-@router.post("/{id}/testcases", response_model=TestCaseRead, status_code=status.HTTP_201_CREATED)
+@router.post("/{id}/testcases", response_model=TestCaseRead, status_code=status.HTTP_201_CREATED, responses={404: {"description": "找不到指定的題目。"}})
 def create_problem_testcase(
     id: int,
     obj_in: TestCaseCreate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     為指定題目新增一筆測試資料
@@ -204,7 +215,7 @@ def create_problem_testcase(
     
     problem = db.query(Problem).filter(Problem.id == id).first()
     if not problem:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的題目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PROBLEM_NOT_FOUND)
     
     db_obj = TestCase(
         problem_id=id,
@@ -222,9 +233,9 @@ def create_problem_testcase(
 @router.post("/{id}/rejudge", response_model=RejudgeResponse, status_code=status.HTTP_202_ACCEPTED)
 def rejudge_problem_submissions(
     id: int,
-    db: Session = Depends(deps.get_db),
-    storage_service: StorageService = Depends(deps.get_storage),
-    current_user = Depends(deps.get_questioner_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    storage_service: Annotated[StorageService, Depends(deps.get_storage)],
+    current_user: Annotated[User, Depends(deps.get_questioner_user)]
 ):
     """
     一鍵重測該題目的所有歷史提交
@@ -232,7 +243,7 @@ def rejudge_problem_submissions(
     """
     problem = db.query(Problem).filter(Problem.id == id).first()
     if not problem:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的題目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PROBLEM_NOT_FOUND)
 
     submissions = db.query(Submission).filter(Submission.problem_id == id).all()
     submission_count = len(submissions)
