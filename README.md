@@ -118,9 +118,46 @@ printf '#include <iostream>\nint main(){std::cout<<2+2;}\n' \
   | docker run --rm -i sandbox:cpp                       # 4
 ```
 
-## Backend 合約（給 @Shuan0402）
+## 程式碼品質與安全性檢查 (SonarQube)
+本專案引入 **SonarQube Build / SonarScanner** 來檢測程式碼中的潛在漏洞（Vulnerabilities）、安全性風險（Security Hotspots）以及代碼異味（Code Smells）。
+為了提高開發效率，我們採用 **「左移（Shift-Left）」** 策略。請在提交程式碼或推送到 GitHub Actions CI 之前，先在本地環境完成漏洞修補與驗證，避免頻繁觸發雲端 CI。
+### 1. 啟動本地 SonarQube 服務
+專案內建了本地 SonarQube 容器服務，已自動避開與 MinIO (9000) 的埠口衝突，改在 `9005` 監聽。
 
-`backend/app/main.py` 必須：
-- listen `0.0.0.0:8000`
-- 提供 `GET /health` 回 200（compose healthcheck 在打）
-- 從 env 讀 DB：`POSTGRES_HOST=pg`、`POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB`
+```bash
+# 啟動本地 SonarQube 服務 (首次啟動需等待約 30s-1min 初始化)
+docker compose up -d sonarqube
+
+# 檢查啟動狀態與日誌
+docker compose logs -f sonarqube
+```
+啟動後可使用瀏覽器造訪：http://localhost:9005 (預設帳密: admin / admin)。
+建議更改密碼為：password@123
+### 2. 本地快速掃描指令範本
+我們使用官方推薦的 pysonar 工具在 WSL2/Linux 環境下直連掃描。請先確保已切換至專案虛擬環境並安裝套件：
+
+```bash
+# 建立並啟用 Python 隔離環境 (若尚未建立)
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 安裝 Sonar 官方 Python 掃描器
+pip install pysonar
+```
+#### 掃描指令模板
+請複製以下指令，並將 --sonar-token 替換為你在本地 http://localhost:9005 個人帳號或專案中所產生的 Access Token：
+```Bash
+pysonar \
+  --sonar-host-url=http://localhost:9005 \
+  --sonar-token=YOUR_SONAR_TOKEN_HERE \
+  --sonar-project-key=Online-Code-Test
+```
+### 3. 符合一般軟體開發流程的修復循環 (Recommended Workflow)
+當你看到雲端 CI 或本地 Sonar 頁面跳出漏洞提示時，最有效率的日常修復節奏為：
+1. 程式碼修改：針對提示漏洞，直接於本地編輯器（建議搭配 IDE 的 SonarLint 套件）修改原始碼。
+2. 邏輯驗證：在本地 Docker 容器中快速執行全部單元測試，確保修補未改壞既有邏輯（Regression）。
+   ```Bash
+   docker compose exec backend pytest
+   ```
+3. 安全驗證：執行上述的 pysonar 模板指令，確認 SonarQube 上的漏洞紅字歸零。
+4. 點收成果：確認測試全過、漏洞全滅後，再執行 git commit 與 git push 送上雲端。
