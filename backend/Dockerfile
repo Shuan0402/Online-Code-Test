@@ -21,6 +21,7 @@ RUN mkdir -p /var/log/app && \
     chown -R appuser:appuser /app /var/log/app
 
 # Source code last
+# NOSONAR — chmod 0555 removes write permissions, and .dockerignore prevents sensitive files copy
 COPY --chown=appuser:appuser --chmod=0555 . .
 
 USER appuser
