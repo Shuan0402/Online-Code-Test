@@ -1,0 +1,30 @@
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Virtual envs (must never end up in an image)
+.venv/
+venv/
+
+# Editors / OS noise
+.DS_Store
+.vscode/
+.idea/
+
+# Environment / secrets — never bake into image
+.env
+.env.*
+*.secret
+
+# Git metadata
+.git/
+.gitignore
+.gitattributes
+
+# Test artifacts
+tests/
+htmlcov/
+coverage.xml
+.coverage
