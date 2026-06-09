@@ -216,10 +216,10 @@ class StorageService:
 def build_storage_from_env() -> StorageService:
     """Construct a StorageService from process env. Called from get_storage dep."""
     return StorageService(
-        endpoint=os.environ.get("MINIO_ENDPOINT", "http://minio:9000"),
+        endpoint=os.environ.get("MINIO_ENDPOINT", "http://minio:9000"),  # NOSONAR — internal Docker Compose networking
         access_key=os.environ["MINIO_USER"],
         secret_key=os.environ["MINIO_PASSWORD"],
         bucket=os.environ.get("MINIO_BUCKET", "octest-submissions"),
         expires_sec=int(os.environ.get("MINIO_PRESIGN_EXPIRES_SEC", "600")),
-        external_endpoint=os.environ.get("MINIO_EXTERNAL_ENDPOINT", "http://localhost:9000"),
+        external_endpoint=os.environ.get("MINIO_EXTERNAL_ENDPOINT", "http://localhost:9000"),  # NOSONAR — local development endpoint
     )
