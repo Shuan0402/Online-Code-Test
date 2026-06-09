@@ -66,7 +66,7 @@ class WorkerJSONFormatter(logging.Formatter):
 # ── config ─────────────────────────────────────────────────────────
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")  # NOSONAR — internal Docker Compose networking
 WORKER_SECRET = os.environ.get("WORKER_SECRET")          # required at runtime; tests inject
 QUEUE_PENDING = os.getenv("QUEUE_PENDING", "submissions:pending")
 QUEUE_PROCESSING = os.getenv("QUEUE_PROCESSING", "submissions:processing")
