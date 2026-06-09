@@ -3,7 +3,7 @@
 import socket
 
 try:
-    socket.create_connection(("1.1.1.1", 53), timeout=5)
+    socket.create_connection(("1.1.1.1", 53), timeout=5)  # NOSONAR – intentional test sentinel: verifies --network=none blocks all outbound traffic
     print("NETWORK_REACHABLE")
 except OSError:
     print("NETWORK_BLOCKED")

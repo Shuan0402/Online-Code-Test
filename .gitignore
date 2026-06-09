@@ -1,4 +1,5 @@
 .env
+.venv/
 
 # vim swap files
 *.swp
@@ -33,3 +34,4 @@ scripts/e2e/test-results/
 
 # SonarQube / SonarCloud scanner working directory
 .scannerwork/
+.sonar/

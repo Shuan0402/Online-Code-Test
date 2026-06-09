@@ -32,7 +32,7 @@ from app.models.testcase import TestCase
 from app.models.user import User
 
 # Backend service name 由 docker network DNS 解析；script 在 backend container 內跑、走 self loopback 也行
-BASE_URL = "http://backend:8000/api/v1"
+BASE_URL = "http://backend:8000/api/v1"  # NOSONAR — internal Docker Compose networking
 DEFAULT_PASSWORD = "password123"
 
 # 幾個 sentinel 名稱方便冪等

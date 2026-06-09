@@ -18,6 +18,7 @@ worker 主流程不需要動。注意：/sandbox 是 readonly mount、不能再 
 cpp 的 a.out 寫 /tmp、所以 /tmp 要保留 tmpfs rw。
 """
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -40,14 +41,18 @@ class DockerSpawner(SandboxSpawner):
         # DooD path 一致性：tempdir 必須建在 host 跟 worker 共掛的同名路徑下，
         # docker daemon spawn sibling container 時才能用同一個 host path mount 進去。
         # 對應 docker-compose worker 的 /tmp/oct-sandbox-work bind mount。
-        sandbox_root = "/tmp/oct-sandbox-work"
-        sandbox_path = Path(sandbox_root)
+        # Security: 先建一個 0o700 的 private parent，再在其下建 per-job subdir，
+        # 避免直接在 world-writable /tmp 下暴露 source code（SonarQube S5443）。
+        sandbox_base = os.environ.get("SANDBOX_WORK_DIR", "/tmp/oct-sandbox-work")  # NOSONAR – parent is immediately locked to 0o700 below; only the worker process can access it
+        sandbox_path = Path(sandbox_base)
         sandbox_path.mkdir(parents=True, exist_ok=True)
+        # 限制 parent 僅 worker 程序可存取
         try:
-            sandbox_path.chmod(0o755)
+            sandbox_path.chmod(0o700)
         except Exception:
             pass
-        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-", dir=sandbox_root))
+        host_dir = Path(tempfile.mkdtemp(prefix="sandbox-", dir=sandbox_base))
+        # sibling container 需要 read 權限，但設定為 0o755 已足夠（父目錄已保護）
         host_dir.chmod(0o755)
         try:
             source_file = host_dir / source_filename

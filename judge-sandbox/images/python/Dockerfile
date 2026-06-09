@@ -17,7 +17,7 @@
 #   docker inspect --format='{{index .RepoDigests 0}}' \
 #       gcr.io/distroless/python3-debian12:nonroot
 # 換 base image 時要重抓。
-FROM gcr.io/distroless/python3-debian12:nonroot@sha256:7d1042ce588ab97019fe95c24ffca7bc5a82ccdac572511d5e09bda4435c89c5
+FROM gcr.io/distroless/python3-debian12@sha256:7d1042ce588ab97019fe95c24ffca7bc5a82ccdac572511d5e09bda4435c89c5
 
 # user code 的 cwd；Step 7 會把 /sandbox 換成 tmpfs（記憶體 fs，容器死即消滅）
 WORKDIR /sandbox
@@ -32,4 +32,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # stdin 純粹是 testcase input、餵 process stdin。
 # 寫 python3 而非 python：distroless 只 ship python3 binary，沒有無版本 symlink。
 # 寫死 ENTRYPOINT 而非用 base image 預設：避免上游升級時 entrypoint 改動造成行為飄移。
+# Explicitly specify user to satisfy static analyzers
+USER nonroot
+
 ENTRYPOINT ["python3", "/sandbox/source.py"]

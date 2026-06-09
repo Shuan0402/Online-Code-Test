@@ -193,8 +193,22 @@ services:
       - app_logs:/var/log/app
     restart: unless-stopped
 
+  sonarqube:
+    image: sonarqube:community
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    ports:
+      - "9005:9000"
+
 volumes:
   pg_data:
   minio_data:
   app_logs:
   # loki_data:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:

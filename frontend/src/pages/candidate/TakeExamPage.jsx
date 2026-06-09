@@ -76,7 +76,7 @@ export default function TakeExamPage() {
   const [isTimeout, setIsTimeout] = useState(false)
 
   // ── 提交錯誤（inline，取代 alert()） ─────────────────────────────────────────
-  const [submitError, setSubmitError] = useState(null) // { problemId, message }
+  const [submitError, setSubmitError] = useState(null)
 
   const [violationType, setViolationType] = useState(null) // 'TAB_SWITCH' | 'LARGE_PASTE'
   const [showViolationModal, setShowViolationModal] = useState(false)
@@ -467,7 +467,7 @@ export function SubmissionResultPanel({ result }) {
     // panel 放在頁面下半（外層 scroll 容器負責滾動）、自然 expand 把全部 testcase 顯示
     <div className="border-t bg-muted/5">
       <p className="px-3 py-2 text-sm font-medium border-b bg-background flex items-center gap-2">
-        最新提交 Testcase 明細
+        <span>最新提交 Testcase 明細</span>
         <span className="ml-auto text-xs text-muted-foreground">共 {details.length} 筆</span>
       </p>
       <table className="w-full text-xs">
