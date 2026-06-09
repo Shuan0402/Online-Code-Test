@@ -457,6 +457,42 @@ def create_exam_session(
     db.refresh(new_exam)
     return new_exam
 
+def _count_problems_by_difficulty(exam_problems: list) -> dict:
+    """Count existing ExamProblem entries grouped by difficulty level."""
+    counts = {
+        DifficultyLevel.Easy: 0,
+        DifficultyLevel.Medium: 0,
+        DifficultyLevel.Hard: 0,
+    }
+    for ep in exam_problems:
+        if ep.problem and ep.problem.difficulty:
+            counts[ep.problem.difficulty] += 1
+    return counts
+
+
+def _select_problems_for_gap(
+    db: Session, diff_level, gap_count: int, allocated_ids: list
+) -> list:
+    """Fetch `gap_count` random problems of `diff_level` excluding `allocated_ids`.
+
+    Raises HTTPException(400) when the pool is insufficient.
+    """
+    problems = (
+        db.query(Problem)
+        .filter(Problem.difficulty == diff_level)
+        .filter(~Problem.id.in_(allocated_ids) if allocated_ids else True)
+        .order_by(func.random())
+        .limit(gap_count)
+        .all()
+    )
+    if len(problems) < gap_count:
+        raise HTTPException(  # NOSONAR
+            status_code=400,
+            detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。"
+        )
+    return problems
+
+
 @router.post("/{exam_id}/problems/generate", response_model=ExamRead)
 def generate_exam_problems(
     exam_id: uuid.UUID,
@@ -479,26 +515,18 @@ def generate_exam_problems(
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=EXAM_NOT_FOUND)
-    
+
     if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"目前考試狀態為 {exam.status}，不允許變更題目配置。"
         )
-    
-    current_counts = {
-        DifficultyLevel.Easy: 0,
-        DifficultyLevel.Medium: 0,
-        DifficultyLevel.Hard: 0
-    }
-    for ep in exam.exam_problems:
-        if ep.problem and ep.problem.difficulty:
-            current_counts[ep.problem.difficulty] += 1
 
+    current_counts = _count_problems_by_difficulty(exam.exam_problems)
     difficulty_gap = [
         (DifficultyLevel.Easy, max(0, exam.easy_count - current_counts[DifficultyLevel.Easy])),
         (DifficultyLevel.Medium, max(0, exam.medium_count - current_counts[DifficultyLevel.Medium])),
-        (DifficultyLevel.Hard, max(0, exam.hard_count - current_counts[DifficultyLevel.Hard]))
+        (DifficultyLevel.Hard, max(0, exam.hard_count - current_counts[DifficultyLevel.Hard])),
     ]
 
     allocated_ids = [ep.problem_id for ep in exam.exam_problems]
@@ -506,20 +534,7 @@ def generate_exam_problems(
 
     for diff_level, gap_count in difficulty_gap:
         if gap_count > 0:
-            problems = (
-                db.query(Problem)
-                .filter(Problem.difficulty == diff_level)
-                .filter(~Problem.id.in_(allocated_ids) if allocated_ids else True)
-                .order_by(func.random())
-                .limit(gap_count)
-                .all()
-            )
-            if len(problems) < gap_count:
-                raise HTTPException(  # NOSONAR
-                    status_code=400,
-                    detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。"
-                )
-            
+            problems = _select_problems_for_gap(db, diff_level, gap_count, allocated_ids)
             new_selected_problems.extend(problems)
             allocated_ids.extend([p.id for p in problems])
 
@@ -534,7 +549,7 @@ def generate_exam_problems(
         db.add(ep)
 
     db.commit()
-    
+
     return (
         db.query(Exam)
         .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
