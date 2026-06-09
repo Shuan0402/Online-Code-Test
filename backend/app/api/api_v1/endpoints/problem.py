@@ -19,6 +19,8 @@ from app.services.queue_manager import queue_manager
 
 router = APIRouter()
 
+PROBLEM_NOT_FOUND = "找不到指定的題目。"
+
 @router.get("/", response_model=List[ProblemShortRead])
 def read_problems(
     db: Annotated[Session, Depends(deps.get_db)],
@@ -179,7 +181,7 @@ def get_problem_testcases(
     
     problem = db.query(Problem).filter(Problem.id == id).first()
     if not problem:
-        raise HTTPException(status_code=404, detail="找不到指定的題目。")
+        raise HTTPException(status_code=404, detail=PROBLEM_NOT_FOUND)
     
     testcases = db.query(TestCase).filter(TestCase.problem_id == id).order_by(TestCase.id.asc()).all()
 
@@ -204,7 +206,7 @@ def create_problem_testcase(
     
     problem = db.query(Problem).filter(Problem.id == id).first()
     if not problem:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的題目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PROBLEM_NOT_FOUND)
     
     db_obj = TestCase(
         problem_id=id,
@@ -232,7 +234,7 @@ def rejudge_problem_submissions(
     """
     problem = db.query(Problem).filter(Problem.id == id).first()
     if not problem:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的題目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=PROBLEM_NOT_FOUND)
 
     submissions = db.query(Submission).filter(Submission.problem_id == id).all()
     submission_count = len(submissions)
