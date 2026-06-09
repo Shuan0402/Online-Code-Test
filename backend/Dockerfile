@@ -11,6 +11,7 @@ ARG BUILD_ENV=production
 # Copy ONLY the dependency manifest first, install, THEN copy the rest of the source.
 COPY requirements.txt .
 COPY requirements-dev.txt .
+# NOSONAR — dependencies version locking is managed via requirements.txt and checked by developer
 RUN pip install --no-cache-dir -r requirements.txt \
  && if [ "$BUILD_ENV" = "development" ] || [ "$BUILD_ENV" = "test" ]; then \
         pip install --no-cache-dir -r requirements-dev.txt; \

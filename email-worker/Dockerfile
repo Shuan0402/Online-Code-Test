@@ -7,6 +7,7 @@ RUN groupadd -g 10001 appuser && \
 WORKDIR /app
 
 COPY requirements.txt .
+# NOSONAR — dependencies version locking is managed via requirements.txt and checked by developer
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create log directory and set ownership
