@@ -51,7 +51,7 @@ SUBMISSIONS = [
 ]
 
 
-def post_callback(submission_id: str, verdict: str, stdout: str, stderr: str) -> None:
+def post_callback(submission_id: str, verdict: str) -> None:
     """假裝是 POST 回 backend——B 範圍的 callback API 之後接。"""
     print(f"[callback] id={submission_id} verdict={verdict}")
 
@@ -119,7 +119,7 @@ def judge(sub: dict) -> None:
     if stderr:
         print(f"        stderr={stderr!r}")
 
-    post_callback(sub["id"], verdict, stdout, stderr)
+    post_callback(sub["id"], verdict)
 
 
 def main() -> None:
