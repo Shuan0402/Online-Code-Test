@@ -27,19 +27,19 @@ jobs:
       # failure-threshold: error → 只有 error 級問題會擋 CI;
       # warning(如 DL3008 未釘 apt 版本)只顯示、不擋。
       - name: Lint judge-worker/Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@218bc4170138656755452d3a37ccb810d7a6e133
         with:
           dockerfile: judge-worker/Dockerfile
           failure-threshold: error
 
       - name: Lint judge-sandbox python Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@218bc4170138656755452d3a37ccb810d7a6e133
         with:
           dockerfile: judge-sandbox/images/python/Dockerfile
           failure-threshold: error
 
       - name: Lint judge-sandbox cpp Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@218bc4170138656755452d3a37ccb810d7a6e133
         with:
           dockerfile: judge-sandbox/images/cpp/Dockerfile
           failure-threshold: error
