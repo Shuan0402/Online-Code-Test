@@ -1,0 +1,121 @@
+name: E2E Playwright CI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "judge-worker/**"
+      - "judge-sandbox/**"
+      - "scripts/e2e/**"
+      - "docker-compose.yml"
+      - ".github/workflows/e2e-ci.yml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "frontend/**"
+      - "backend/**"
+      - "judge-worker/**"
+      - "judge-sandbox/**"
+      - "scripts/e2e/**"
+      - "docker-compose.yml"
+      - ".github/workflows/e2e-ci.yml"
+
+jobs:
+  e2e-test:
+    name: Run Playwright E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      POSTGRES_USER: octest
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: octest
+      BUILD_ENV: test
+      JWT_SECRET: replace-me-with-openssl-rand-base64-32
+      WORKER_SECRET: replace-me-with-openssl-rand-base64-32
+      MINIO_USER: octest-admin
+      MINIO_PASSWORD: changeme-minio
+      GRAFANA_PASSWORD: admin
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      # 1. 建置各個 Docker 映像檔
+      - name: Build sandbox:python image
+        run: docker build -t sandbox:python judge-sandbox/images/python
+
+      - name: Build sandbox:cpp image
+        run: docker build -t sandbox:cpp judge-sandbox/images/cpp
+
+      - name: Build backend image
+        run: docker build --build-arg BUILD_ENV=test -t backend:dev ./backend
+
+      - name: Build judge-worker image
+        run: docker build -t judge-worker:dev ./judge-worker
+
+      # 2. 建立 worker 運作所需的 sandbox tmp 資料夾，並啟動 Docker Compose
+      - name: Create spawner sandbox working directory
+        run: sudo mkdir -p /tmp/oct-sandbox-work && sudo chmod 777 /tmp/oct-sandbox-work
+
+      - name: Start Docker Compose Stack
+        run: |
+          docker compose up -d pg redis minio backend worker mailhog email-worker
+
+      # 3. 設定 Node.js 與安裝 Frontend 依賴
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # 4. 在背景啟動 Frontend Vite Dev Server 並等待它就緒
+      - name: Start Frontend Vite Server
+        working-directory: frontend
+        run: npm run dev -- --host &
+
+      - name: Wait for Frontend Server (Port 5173) to be ready
+        run: |
+          timeout 60s sh -c 'until curl -s http://localhost:5173 > /dev/null; do sleep 1; done'
+          echo "Frontend server is ready!"
+
+      # 5. 安裝 E2E 測試依賴與 Playwright 瀏覽器
+      - name: Install E2E dependencies
+        working-directory: scripts/e2e
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        working-directory: scripts/e2e
+        run: npx playwright install --with-deps chromium
+
+      # 6. 在資料庫中灌入 E2E 測試情境資料 (使用 -T 停用 TTY)
+      - name: Seed E2E Candidates & Interviewers
+        run: |
+          docker compose exec -T backend python -m app.scripts.seed_e2e_candidate
+          docker compose exec -T backend python -m app.scripts.seed_e2e_interviewer
+
+      # 7. 執行 Playwright E2E 測試
+      - name: Run E2E Tests
+        working-directory: scripts/e2e
+        run: npx playwright test
+
+      # 8. 若測試失敗，上傳 Playwright HTML 報告與截圖/錄影作為 Artifact
+      - name: Upload Playwright Report on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: scripts/e2e/playwright-report/
+          retention-days: 15
+
+      # 9. 清理 Docker 容器與相關網路/Volume
+      - name: Clean up Docker resources
+        if: always()
+        run: docker compose down -v
