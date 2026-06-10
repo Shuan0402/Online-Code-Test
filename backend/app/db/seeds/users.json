@@ -36,6 +36,12 @@
     "role": "Candidate"
   },
   {
+    "username": "candidate@nthu.edu.tw",
+    "full_name": "其他考生",
+    "password": "password123",
+    "role": "Candidate"
+  },
+  {
     "username": "demo_questioner",
     "full_name": "Demo Questioner",
     "password": "password123",
