@@ -1,8 +1,9 @@
-# AWS Learner Lab — 最基本部署手冊
+# AWS 個人帳號 — 最基本部署手冊
 
-> **目標**：把整套 Online Code Test 部署到一台 EC2、用 EC2 的 public DNS 連線、網站運作正常、**沒有 CORS 問題**。
-> **適用**：AWS Academy Learner Lab（無 Route 53 / ACM / CloudFront、4 小時 credentials、session 結束 EC2 stop）。
+> **目標**：把整套 Online Code Test 部署到一台 EC2、用 Elastic IP 對應的 public DNS 連線、網站運作正常、**沒有 CORS 問題**。
+> **適用**：個人 AWS 帳號（Elastic IP 讓 stop/start 後 IP 不會變、HTTP only）。
 > **架構**：單台 EC2 跑全部 docker-compose 服務、nginx 在 :80 同源反向代理（避免 CORS）。
+> **成本提醒**：t3.large running 24/7 約 USD 60/月、EBS 30 GB gp3 約 USD 2.4/月、Elastic IP attach 到 running instance 不收費（detach 後才收 USD 3.6/月）。Demo 結束記得 stop instance 或 terminate。
 
 ---
 
@@ -21,19 +22,37 @@
 
 ---
 
-## 步驟 1：在 Learner Lab 開 EC2
+## 步驟 1：開 EC2 + Elastic IP
 
-1. 登入 AWS Academy → **Start Lab** → 等綠燈 → 點 **AWS** 進 Console
-2. 進 **EC2** → **Launch instance**
-   - **Name**：`octest-prod`
-   - **AMI**：Amazon Linux 2023（預設選項）
-   - **Instance type**：`t3.large`（2 vCPU / 8 GB RAM）
-   - **Key pair**：建一組新的、下載 `.pem`、`chmod 400 octest.pem`
-   - **Network settings → Edit → Security group**：建新的、加兩條 inbound rule
-     - SSH (22) — Source: My IP
-     - HTTP (80) — Source: Anywhere (`0.0.0.0/0`)
-   - **Storage**：30 GB gp3
-3. **Launch instance** → 進 instance detail page → 抄 **Public IPv4 DNS**（長這樣 `ec2-XX-XX-XX-XX.compute-1.amazonaws.com`）
+### 1a. 用 IAM user 登入 AWS Console
+
+用個人 AWS 帳號的 IAM user（不是 root）登入 Console、切到要部署的 region（建議離你近的、例如 `ap-northeast-1` 東京、`us-east-1` 維吉尼亞）。Region 一旦選定、後面所有資源（EC2、EIP、security group）都要在同一個 region 才能互相 attach。
+
+### 1b. Launch EC2 instance
+
+進 **EC2** → **Launch instance**
+
+- **Name**：`octest-prod`
+- **AMI**：Amazon Linux 2023（預設選項）
+- **Instance type**：`t3.large`（2 vCPU / 8 GB RAM）
+- **Key pair**：建一組新的、下載 `.pem`、本機 `chmod 400 octest.pem`
+- **Network settings → Edit → Security group**：建新的、加兩條 inbound rule
+  - SSH (22) — Source: My IP
+  - HTTP (80) — Source: Anywhere (`0.0.0.0/0`)
+- **Storage**：30 GB gp3
+
+**Launch instance** → 等 instance state 變 `Running`。
+
+### 1c. 申請 Elastic IP 並 attach 到 instance
+
+進 **EC2 → Elastic IPs** → **Allocate Elastic IP address** → 預設 region pool、**Allocate**。
+
+剛拿到的 EIP → 選它 → **Actions → Associate Elastic IP address**：
+- **Resource type**：Instance
+- **Instance**：選剛開的 `octest-prod`
+- **Associate**
+
+回 instance detail page、抄 **Public IPv4 DNS**（會自動更新成 EIP 對應的、長這樣 `ec2-XX-XX-XX-XX.compute-1.amazonaws.com`）。之後 stop/start instance 這個 DNS 都不會變。
 
 ---
 
@@ -133,32 +152,35 @@ exit
 
 ---
 
-## Learner Lab 的眉角
+## 個人帳號的眉角
 
-### 1. Session 結束 EC2 會被 stop、public DNS 會換
+### 1. Stop / Start instance 省錢
 
-下次再來：
-1. Start Lab → 進 Console → EC2 → 找到 instance → **Start** 它
-2. 抄**新的** Public IPv4 DNS
-3. SSH 進去：
-   ```bash
-   cd Online-Code-Test
-   nano .env                 # 改 PUBLIC_HOST 成新 DNS
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-   ```
-4. 不用 rebuild image、不用重 seed 資料（pg / minio 都用 named volume、host 重啟資料還在）
+Demo 結束沒在用、想省 EC2 hourly 費用：
 
-### 2. 4 小時 credentials 到期
+```bash
+# EC2 Console → 選 instance → Instance state → Stop
+```
 
-只影響 AWS CLI / SDK 操作（你這次部署沒用到、不會被影響）。EC2 instance 本身一旦起來、後續會持續跑直到你 Stop Lab。
+EIP 已 attach、stop 後 IP 不會變。下次 Start：
+1. EC2 Console → Start instance
+2. SSH 進去 → `cd Online-Code-Test && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+3. **不用改 .env**（EIP 沒變）、**不用 rebuild image**、**不用重 seed**（pg / minio 都用 named volume、資料還在）
+
+注意：stop 後 instance 不收 hourly，但 **EBS volume 還在收**（30 GB gp3 ~ USD 2.4/月）、且 **EIP 從 attached running → attached stopped 開始收費**（USD 3.6/月）。要徹底省錢就 **disassociate EIP** 或 release（但下次要重新 associate / 拿新的）。
+
+### 2. 帳單監控
+
+開個 **Budget alert**：Billing & Cost Management → Budgets → Create budget → Monthly cost > $5 寄信。t3.large 24/7 + EBS + EIP attached running ~ USD 62/月，記得 demo 完 stop instance 或 terminate。
 
 ### 3. 沒有 HTTPS
 
-Learner Lab 給不了 ACM、也沒 Route 53 可以串自訂 domain。只能用 HTTP。Demo 給人看時直接貼 `http://...` 網址、瀏覽器會說「Not Secure」但能用。
+這份 minimal guide 沒設 ACM / Route 53 / 自訂 domain，所以只能用 HTTP。Demo 給人看時直接貼 `http://...` 網址、瀏覽器會說「Not Secure」但能用。
 
-如果之後要 HTTPS，最簡單是：
-- 用個人的 Cloudflare 帳號 → Quick Tunnel（`cloudflared tunnel --url http://localhost:80`）→ 拿到一條 `*.trycloudflare.com` 的免費 HTTPS URL
-- 不需要 ACM、不需要 domain、ephemeral 但 demo 夠用
+如果要 HTTPS，由低到高複雜度：
+- **Cloudflare Quick Tunnel**（`cloudflared tunnel --url http://localhost:80`）→ 拿到一條 `*.trycloudflare.com` 的免費 HTTPS URL，不需要 domain、ephemeral 但 demo 夠用
+- **Let's Encrypt + Certbot 直接裝 EC2** → 需要自己的 domain 指向 EIP，certbot 自動續憑證
+- **ALB + ACM**（個人帳號可以用）→ ACM 出免費 cert、ALB 做 TLS termination 後再 forward 給 EC2 :80。最 prod-grade、也最貴（ALB 約 USD 18/月）
 
 ---
 
@@ -178,7 +200,7 @@ Learner Lab 給不了 ACM、也沒 Route 53 可以串自訂 domain。只能用 H
 
 ---
 
-## 收尾 / 關機省 credit
+## 收尾 / 關機省錢
 
 ```bash
 # 暫時關掉所有 container（資料保留）
@@ -188,4 +210,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
 ```
 
-EC2 那邊到 Console **Stop Instance**（不要 Terminate、Terminate 會掉 volume）。下次 Start 起來只要重設 `PUBLIC_HOST` 就好。
+EC2 那邊到 Console **Stop Instance**（不要 Terminate、Terminate 會掉 EBS volume 跟資料）。EIP 有 attach 不需要動、下次 Start 起來 `PUBLIC_HOST` 也不用改。
+
+**徹底不用了**：
+1. EC2 → **Terminate instance**（會刪 EBS volume 跟所有資料）
+2. Elastic IPs → 選 EIP → **Release Elastic IP address**（不 release 會繼續被收 detach 費）
+3. Security Groups → 刪掉專門開的 group（避免 inventory 越堆越多）
