@@ -4,10 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 import uuid
 from contextlib import contextmanager
+import os
 
 from app.main import app
 from app.db.base import Base
-from app.db.session import engine as prod_engine, SQLALCHEMY_DATABASE_URL
 from app.api.deps import get_db
 from app.models import user, problem, submission, exam, testcase
 from app.models.user import User
@@ -24,7 +24,9 @@ from app.services.queue_manager import queue_manager
 
 @pytest.fixture(scope="session")
 def setup_db():
-    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    # Use SQLite for testing when DATABASE_URL env is not set
+    db_url = os.getenv("DATABASE_URL", "sqlite:///:memory:")
+    engine = create_engine(db_url, connect_args={"check_same_thread": False} if "sqlite" in db_url else {})
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield engine
