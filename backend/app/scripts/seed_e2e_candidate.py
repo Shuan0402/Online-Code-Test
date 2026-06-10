@@ -20,7 +20,7 @@ from app.models.problem import Problem
 from app.models.exam import Exam, ExamProblem
 from app.models.submission import Submission, SubmissionDetail
 from app.models.testcase import TestCase
-from app.models.enums import ExamStatus, JudgeStatus
+from app.models.enums import DifficultyLevel, ExamStatus, JudgeStatus
 
 logger = logging.getLogger("seed-e2e-candidate")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -47,12 +47,32 @@ def _get_any_questioner(db: Session) -> User:
     return q
 
 
-def _get_first_problem(db: Session) -> Problem:
+def _get_or_create_demo_problem(db: Session, creator_id) -> Problem:
     p = db.query(Problem).filter(Problem.title == "兩數相加 (demo)").first()
-    if not p:
-        p = db.query(Problem).order_by(Problem.id.asc()).first()
-    if not p:
-        sys.exit("DB 沒有任何題目，請先建一題。")
+    if p is None:
+        p = Problem(
+            creator_id=creator_id,
+            title="兩數相加 (demo)",
+            description=(
+                "讀取一行兩個以空白分隔的整數 a b，輸出 a+b。\n"
+                "例如：輸入 `3 5`，輸出 `8`。"
+            ),
+            difficulty=DifficultyLevel.Easy,
+            time_limit_ms=1000,
+            memory_limit_mb=128,
+        )
+        db.add(p)
+        db.flush()
+        logger.info(f"[建立] demo problem {p.title} id={p.id}")
+
+    testcases = db.query(TestCase).filter(TestCase.problem_id == p.id).order_by(TestCase.id.asc()).all()
+    if len(testcases) == 0:
+        db.add(TestCase(problem_id=p.id, input_data="3 5\n", expected_output="8\n", is_sample=True, score_weight=50))
+        db.add(TestCase(problem_id=p.id, input_data="100 200\n", expected_output="300\n", is_sample=False, score_weight=50))
+        db.commit()
+        db.refresh(p)
+        logger.info(f"[建立] demo problem testcases for {p.title} id={p.id}")
+
     return p
 
 
@@ -189,9 +209,22 @@ def seed(db: Session) -> None:
     demo_candidate = _get_required_user(db, DEMO_CANDIDATE_USERNAME)
     other_candidate = _get_required_user(db, OTHER_CANDIDATE_USERNAME)
     questioner = _get_any_questioner(db)
-    problem = _get_first_problem(db)
+    problem = _get_or_create_demo_problem(db, questioner.id)
 
     now = datetime.now(timezone.utc)
+
+    # Demo 種子考試：happy path 測試專用
+    _upsert_exam(
+        db,
+        title="Demo Exam (happy path)",
+        creator_id=questioner.id,
+        candidate_id=demo_candidate.id,
+        status=ExamStatus.Ongoing,
+        duration_minutes=120,
+        start_time=now - timedelta(seconds=5),
+        end_time=None,
+        problem_id=problem.id,
+    )
 
     # C3 / D1 — 普通進行中考試（每次 reset start_time，duration 留 60 分鐘充裕）
     _upsert_exam(
