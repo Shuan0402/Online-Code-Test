@@ -136,6 +136,87 @@ def test_get_dashboard_anomalies_includes_judge_failed_with_reason(
     assert len(judge_failed_items) >= 1
 
     item = judge_failed_items[0]
-    assert item["failure_reason"] is not None
     assert "SpawnerError" in item["failure_reason"]
     assert "docker daemon" in item["failure_reason"]
+
+
+def test_get_dashboard_summary_with_positive_pending_tasks(client, override_auth, admin_user, monkeypatch):
+    """
+    驗證當 Redis 佇列有堆積任務時，pending_tasks_count 欄位能精準呈現大於 0 的數值。
+    """
+    override_auth(admin_user)
+    
+    # 模擬 redis_client.llen 回傳 5 筆待處理任務
+    monkeypatch.setattr("app.api.api_v1.endpoints.admin.redis_client", type("MockRedis", (), {"llen": lambda self, name: 5})())
+
+    response = client.get("/api/v1/admin/dashboard/summary")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pending_tasks_count"] == 5
+
+
+def test_get_dashboard_anomalies_fallback_null_fields(
+    client, override_auth, admin_user, create_test_user, create_test_problem, create_test_exam, create_mock_submission, db_session
+):
+    """
+    驗證異常提交中的可選欄位(full_name, client_ip, judge_log)為空或 Null 時，系統是否能正確呈現預設 fallback 字串。
+    """
+    override_auth(admin_user)
+
+    # 建立一個 full_name 為 None (Null) 的考生
+    student = create_test_user(username="null_name_student", full_name=None)
+    prob = create_test_problem(title="null_fallback_problem")
+    exam = create_test_exam(title="null_fallback_exam", candidate_id=student.id, status=ExamStatus.Ongoing)
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+
+    # 建立 client_ip 與 judge_log 為 None 的異常提交
+    mock_sub = create_mock_submission(user_id=student.id, problem_id=prob.id, status="TLE", score=0)
+    mock_sub.exam_id = exam.id
+    mock_sub.client_ip = None
+    mock_sub.judge_log = None
+    db_session.commit()
+
+    response = client.get("/api/v1/admin/dashboard/anomalies?page=1&size=10")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert len(data["items"]) >= 1
+    
+    anomaly_item = [item for item in data["items"] if item["username"] == "null_name_student"][0]
+    assert anomaly_item["candidate_name"] == "未填寫姓名"
+    assert anomaly_item["client_ip"] == "Unknown IP"
+    assert anomaly_item["error_detail"] == "無詳細錯誤日誌"
+
+
+def test_get_dashboard_anomalies_empty_page(
+    client, override_auth, admin_user, create_test_user, create_test_problem, create_test_exam, create_mock_submission, db_session
+):
+    """
+    驗證當請求的分頁頁數 (page) 超出實際數據範圍時，系統應回傳空列表，且總數 (total) 維持不變。
+    """
+    override_auth(admin_user)
+
+    student = create_test_user(username="page_student")
+    prob = create_test_problem(title="page_problem")
+    exam = create_test_exam(title="page_exam", candidate_id=student.id, status=ExamStatus.Ongoing)
+    
+    ep = ExamProblem(exam_id=exam.id, problem_id=prob.id, sequence=1, points=100)
+    db_session.add(ep)
+    db_session.commit()
+
+    mock_sub = create_mock_submission(user_id=student.id, problem_id=prob.id, status="MLE", score=0)
+    mock_sub.exam_id = exam.id
+    db_session.commit()
+
+    # 請求 page=2, size=10，但實際只有 1 筆異常提交
+    response = client.get("/api/v1/admin/dashboard/anomalies?page=2&size=10")
+    assert response.status_code == 200
+    
+    data = response.json()
+    assert len(data["items"]) == 0
+    assert data["total"] >= 1
+    assert data["page"] == 2
+    assert data["size"] == 10
