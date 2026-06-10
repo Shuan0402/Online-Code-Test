@@ -3,5 +3,6 @@ source =
     .
     ../judge-sandbox/tests/fixtures
     ../scripts
+    ../email-worker
 omit =
     worker_naive.py

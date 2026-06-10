@@ -81,7 +81,7 @@ jobs:
         working-directory: judge-worker
         run: |
           python -m pytest tests/ \
-            --cov=. --cov=../judge-sandbox/tests/fixtures --cov=../scripts \
+            --cov=. --cov=../judge-sandbox/tests/fixtures --cov=../scripts --cov=../email-worker \
             --cov-report=xml:coverage.xml \
             --cov-report=term
 
