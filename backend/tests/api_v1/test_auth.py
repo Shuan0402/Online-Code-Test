@@ -209,3 +209,174 @@ def test_reset_password_replay_attack_prevented(client, candidate_user):
     res2 = client.post("/api/v1/auth/reset-password", json={"token": token, "new_password": "Pass2!"})
     assert res2.status_code == 400
     assert "已失效或已被使用" in res2.json()["detail"]
+
+
+# --- POST /refresh Edge Cases ---
+
+def test_refresh_token_invalid_type(client, candidate_user):
+    """
+    使用 Access Token (非 Refresh Token) 去戳 /refresh 應該被拒絕，回傳 401。
+    """
+    # 建立 access token
+    access_token = SecurityManager.create_access_token(subject=candidate_user.id)
+    response = client.post("/api/v1/auth/refresh", json={"refresh_token": access_token})
+    assert response.status_code == 401
+    assert "無效的憑證類型" in response.json()["detail"]
+
+
+def test_refresh_token_expired_or_corrupt(client):
+    """
+    使用過期或損毀的 JWT Token 戳 /refresh，應回傳 401。
+    """
+    response = client.post("/api/v1/auth/refresh", json={"refresh_token": "corrupt.token.here"})
+    assert response.status_code == 401
+    assert "已過期或損毀" in response.json()["detail"]
+
+
+def test_refresh_token_user_not_found(client, db_session):
+    """
+    Refresh Token 結構有效，但該使用者已被刪除，應回傳 404。
+    """
+    import uuid
+    non_existent_id = uuid.uuid4()
+    refresh_token = SecurityManager.create_refresh_token(subject=non_existent_id)
+    response = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert response.status_code == 404
+    assert "找不到對應的使用者" in response.json()["detail"]
+
+
+# --- POST /forgot-password Edge Cases ---
+
+def test_forgot_password_x_forwarded_for(client, candidate_user, monkeypatch):
+    """
+    忘記密碼請求帶有 X-Forwarded-For 標頭時，應正確解析客戶端 IP。
+    """
+    mock_push = MagicMock()
+    monkeypatch.setattr(queue_manager, "push_to_queue", mock_push)
+
+    headers = {"X-Forwarded-For": "203.0.113.195, 70.41.3.18"}
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"username": candidate_user.username},
+        headers=headers
+    )
+    assert response.status_code == 200
+    assert mock_push.call_count == 1
+
+
+def test_forgot_password_no_client_info(client, candidate_user, monkeypatch):
+    """
+    在沒有 client 資訊的極端情況下，IP 應安全回退為 0.0.0.0。
+    """
+    mock_push = MagicMock()
+    monkeypatch.setattr(queue_manager, "push_to_queue", mock_push)
+
+    from fastapi import Request
+    # 模擬 request.client 為 None，且無 X-Forwarded-For
+    monkeypatch.setattr(Request, "client", None, raising=False)
+
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"username": candidate_user.username}
+    )
+    assert response.status_code == 200
+    assert mock_push.call_count == 1
+
+
+def test_forgot_password_email_already_contains_at(client, create_test_user, monkeypatch):
+    """
+    當 username 已經是帶有 @ 的信箱格式時，不應重複附加後綴。
+    """
+    mock_push = MagicMock()
+    monkeypatch.setattr(queue_manager, "push_to_queue", mock_push)
+
+    user = create_test_user(username="test_email@example.com")
+
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"username": "test_email@example.com"}
+    )
+    assert response.status_code == 200
+    mock_push.assert_called_once()
+    args, kwargs = mock_push.call_args
+    payload = kwargs.get("data") or args[1]
+    
+    assert payload["to_email"] == "test_email@example.com"  # 維持原樣，沒有加 @mock-test.com
+
+
+def test_forgot_password_queue_push_failure(client, candidate_user, monkeypatch):
+    """
+    模擬 Redis 發信任務佇列推送失敗時，回傳 503 服務不可用。
+    """
+    # 模擬佇列推送失敗 (回傳 False)
+    monkeypatch.setattr(queue_manager, "push_to_queue", lambda queue_name, data: False)
+
+    response = client.post(
+        "/api/v1/auth/forgot-password",
+        json={"username": candidate_user.username}
+    )
+    assert response.status_code == 503
+    assert "郵件調度伺服器繁忙" in response.json()["detail"]
+
+
+# --- POST /reset-password Edge Cases ---
+
+def test_reset_password_invalid_token_type(client, candidate_user):
+    """
+    使用 Refresh Token 去戳 /reset-password 應該被拒絕，回傳 400。
+    """
+    token = SecurityManager.create_refresh_token(subject=candidate_user.id)
+    response = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "NewPassword123!"}
+    )
+    assert response.status_code == 400
+    assert "憑證類型錯誤" in response.json()["detail"]
+
+
+def test_reset_password_expired_or_corrupt(client):
+    """
+    使用損毀或過期的 Token 去重設密碼，應回傳 400。
+    """
+    response = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": "corrupt.reset.token", "new_password": "NewPassword123!"}
+    )
+    assert response.status_code == 400
+    assert "重設密碼連結已過期或毀損" in response.json()["detail"]
+
+
+def test_reset_password_user_inactive(client, db_session, candidate_user):
+    """
+    當對應的使用者被停用 (is_active = False) 時，應回傳 404。
+    """
+    token = SecurityManager.create_password_reset_token(subject=candidate_user.id)
+    
+    # 停用該使用者
+    candidate_user.is_active = False
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "NewPassword123!"}
+    )
+    assert response.status_code == 404
+    assert "該帳號不存在或已被停用" in response.json()["detail"]
+
+
+def test_reset_password_user_deleted(client, db_session, candidate_user):
+    """
+    當對應的使用者被刪除時，應回傳 404。
+    """
+    token = SecurityManager.create_password_reset_token(subject=candidate_user.id)
+    
+    # 從資料庫刪除該使用者
+    db_session.delete(candidate_user)
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/auth/reset-password",
+        json={"token": token, "new_password": "NewPassword123!"}
+    )
+    assert response.status_code == 404
+    assert "該帳號不存在或已被停用" in response.json()["detail"]
