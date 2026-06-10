@@ -146,6 +146,12 @@ services:
     command: -config.file=/etc/promtail/config.yml
     depends_on:
       - loki
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9080 && printf 'GET /ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q Ready <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 
   prometheus:
@@ -160,6 +166,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy | grep -q Healthy || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 
   grafana:
@@ -175,6 +187,12 @@ services:
     depends_on:
       - loki
       - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health | grep -q '\"database\": *\"ok\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   mailhog:
