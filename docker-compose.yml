@@ -46,6 +46,7 @@ services:
     volumes:
       - ./backend/app:/app/app:ro  
       - app_logs:/var/log/app
+      - ./scripts:/app/scripts:ro
     depends_on:
       pg:
         condition: service_healthy
