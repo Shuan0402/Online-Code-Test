@@ -116,3 +116,31 @@ def test_submission_read_uuid_handling():
     assert sub.id == mock_id
     assert sub.submission_type == "OFFICIAL"
     assert sub.score == 100
+
+
+def test_schemas_init_exports_expected_items():
+    """
+    測試 app.schemas 包的 __init__.py 是否正確匯出模型。
+    """
+    import app.schemas as schemas
+
+    expected_exports = [
+        "UserCreate",
+        "UserRead",
+        "Token",
+        "TokenPayload",
+        "ProblemCreate",
+        "TestCaseRead",
+        "ExamCreate",
+        "ExamRead",
+        "SubmissionRead",
+    ]
+
+    for attr in expected_exports:
+        assert hasattr(schemas, attr), f"app.schemas 缺少 {attr}"
+
+    from app.schemas import UserCreate, Token, ProblemCreate
+
+    assert UserCreate.__name__ == "UserCreate"
+    assert Token.__name__ == "Token"
+    assert ProblemCreate.__name__ == "ProblemCreate"
