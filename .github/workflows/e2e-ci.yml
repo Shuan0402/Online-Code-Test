@@ -74,7 +74,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       # 4. 在背景啟動 Frontend Vite Dev Server 並等待它就緒
       - name: Start Frontend Vite Server
@@ -89,11 +89,11 @@ jobs:
       # 5. 安裝 E2E 測試依賴與 Playwright 瀏覽器
       - name: Install E2E dependencies
         working-directory: scripts/e2e
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install Playwright Browsers
         working-directory: scripts/e2e
-        run: npx playwright install --with-deps chromium
+        run: npx --yes --ignore-scripts playwright@1.60.0 install --with-deps chromium
 
       # 6. 在資料庫中灌入 E2E 測試情境資料 (使用 -T 停用 TTY)
       - name: Seed E2E Candidates & Interviewers
@@ -104,7 +104,7 @@ jobs:
       # 7. 執行 Playwright E2E 測試
       - name: Run E2E Tests
         working-directory: scripts/e2e
-        run: npx playwright test
+        run: npx --yes --ignore-scripts playwright@1.60.0 test
 
       # 8. 若測試失敗，上傳 Playwright HTML 報告與截圖/錄影作為 Artifact
       - name: Upload Playwright Report on Failure
