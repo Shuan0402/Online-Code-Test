@@ -36,6 +36,9 @@ class TestModelsInitImport:
 
     def test_module_is_importable(self):
         """app.models 應能成功 import，不拋出任何異常。"""
+        import sys
+        if "app.models" in sys.modules:
+            importlib.reload(sys.modules["app.models"])
         mod = importlib.import_module("app.models")
         assert mod is not None
 
