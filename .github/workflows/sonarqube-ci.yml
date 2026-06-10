@@ -55,14 +55,15 @@ jobs:
           docker compose -f docker-compose.yml run --rm \
             --user root \
             -v "$PWD/backend:/app" \
+            -v "$PWD/scripts:/app/scripts" \
             backend python -m pytest tests/ \
-              --cov=app --cov=tests \
+              --cov=app --cov=tests --cov=/app/scripts \
               --cov-report=xml:coverage.xml \
               --cov-report=term
 
       - name: Clean up backend Docker resources
-        if: always()
-        run: docker compose -f docker-compose.yml down -v
+         if: always()
+         run: docker compose -f docker-compose.yml down -v
 
       # ── Judge-worker coverage (pytest + fakeredis, on host) ────────
       - name: Set up Python
@@ -93,6 +94,7 @@ jobs:
         run: |
           sed -i 's|<source>/app/app</source>|<source>backend/app</source>|' backend/coverage.xml
           sed -i 's|<source>/app/tests</source>|<source>backend/tests</source>|' backend/coverage.xml
+          sed -i 's|<source>/app/scripts</source>|<source>scripts</source>|' backend/coverage.xml
           sed -i 's|<source>.*judge-worker</source>|<source>judge-worker</source>|' judge-worker/coverage.xml
           echo "--- backend/coverage.xml <source> ---"
           grep -m1 '<source>' backend/coverage.xml
