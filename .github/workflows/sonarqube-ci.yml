@@ -56,7 +56,7 @@ jobs:
             --user root \
             -v "$PWD/backend:/app" \
             backend python -m pytest tests/ \
-              --cov=app \
+              --cov=app --cov=tests \
               --cov-report=xml:coverage.xml \
               --cov-report=term
 
@@ -92,6 +92,7 @@ jobs:
       - name: Rewrite coverage.xml source paths for Sonar
         run: |
           sed -i 's|<source>/app/app</source>|<source>backend/app</source>|' backend/coverage.xml
+          sed -i 's|<source>/app/tests</source>|<source>backend/tests</source>|' backend/coverage.xml
           sed -i 's|<source>.*judge-worker</source>|<source>judge-worker</source>|' judge-worker/coverage.xml
           echo "--- backend/coverage.xml <source> ---"
           grep -m1 '<source>' backend/coverage.xml
