@@ -1,3 +1,4 @@
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -18,8 +19,8 @@ router = APIRouter()
 
 @router.post("/login", response_model=Token)
 def login(
-    db: Session = Depends(deps.get_db),
-    form_data: OAuth2PasswordRequestForm = Depends()
+    db: Annotated[Session, Depends(deps.get_db)],
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ):
     user = db.query(User).filter(User.username == form_data.username).first()
     
@@ -43,8 +44,8 @@ def login(
 
 @router.post("/logout")
 def logout(
-    current_user: User = Depends(deps.get_current_user),
-    token: str = Depends(deps.oauth2_scheme)
+    current_user: Annotated[User, Depends(deps.get_current_user)],
+    token: Annotated[str, Depends(deps.oauth2_scheme)]
 ):
     """
     登出 API。將 Token 放入 Redis 黑名單。
@@ -56,7 +57,7 @@ def logout(
 @router.post("/refresh", response_model=TokenRefreshResponse, tags=["🔒 認證相關"])
 def refresh_token(
     payload: TokenRefreshInput,
-    db: Session = Depends(deps.get_db)
+    db: Annotated[Session, Depends(deps.get_db)]
 ):
     """
     刷新 Access Token
@@ -108,7 +109,7 @@ def refresh_token(
 def forgot_password(
     payload: ForgotPasswordInput,
     request: Request,
-    db: Session = Depends(deps.get_db)
+    db: Annotated[Session, Depends(deps.get_db)]
 ):
     """
     忘記密碼請求
@@ -117,7 +118,12 @@ def forgot_password(
     - 將發信任務打包成標準 JSON 灌入 Redis messages:email 佇列，交由獨立 Email Worker 發信
     """
     x_forwarded_for = request.headers.get("X-Forwarded-For")
-    client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else (request.client.host if request.client else "0.0.0.0")
+    if x_forwarded_for:
+        client_ip = x_forwarded_for.split(",")[0].strip()
+    elif request.client:
+        client_ip = request.client.host
+    else:
+        client_ip = "0.0.0.0"
 
     audit_extra = {
         "client_ip": client_ip,
@@ -171,7 +177,7 @@ def forgot_password(
 @router.post("/reset-password")
 def reset_password(
     payload: ResetPasswordInput,
-    db: Session = Depends(deps.get_db)
+    db: Annotated[Session, Depends(deps.get_db)]
 ):
     """
     透過 Token 實體重設密碼

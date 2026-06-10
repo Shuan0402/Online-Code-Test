@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 
 # 從環境變數讀取資料庫連線資訊，並提供預設值
 POSTGRES_USER = os.getenv("POSTGRES_USER", "octest")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "changeme")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")  # nosec B105 – empty default; real credential must be injected via env var
 POSTGRES_SERVER = os.getenv("POSTGRES_HOST", "pg")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "octest")
 

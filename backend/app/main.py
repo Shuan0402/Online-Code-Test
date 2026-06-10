@@ -93,7 +93,7 @@ def db_check():
             pg_db = os.environ.get("POSTGRES_DB", "postgres")
             db_url = f"postgresql://{pg_user}:{pg_pass}@{pg_host}:5432/{pg_db}"
 
-        logger.info(f"正在連線至資料庫目標...")
+        logger.info("正在連線至資料庫目標...")
         with psycopg.connect(db_url) as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT version()")

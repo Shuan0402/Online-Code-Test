@@ -17,7 +17,7 @@
 # digest 抓法：
 #   docker pull debian:bookworm-slim
 #   docker inspect --format='{{index .RepoDigests 0}}' debian:bookworm-slim
-FROM debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
+FROM debian@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 
 # 裝 g++ + 必要 deps（libstdc++, binutils 等會被 apt 自動帶進來）
 #   --no-install-recommends：只裝 hard deps，不裝「文件、debugger、其他語言」
@@ -33,7 +33,7 @@ RUN groupadd -g 65532 nonroot \
  && useradd -u 65532 -g nonroot -s /usr/sbin/nologin -M nonroot
 
 # wrapper script，root 期間 COPY 進去並設成 nonroot 可讀執行
-COPY --chown=nonroot:nonroot --chmod=0755 \
+COPY --chown=nonroot:nonroot --chmod=0555 \
      entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # 從這邊起所有指令以 nonroot 身份執行

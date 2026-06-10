@@ -9,6 +9,7 @@ Judge Worker 主流程（Step 9 / 判題失敗處理合約）。
   log stderr 收工、submission 維持 Pending、admin 從 docker logs 撈來人工 reconcile
   （見 docs/judge-failure-handling.md §3c）。
 - consume_once **永遠 ACK**——permanent callback failure 仍 ACK 是刻意的（doc §3b invariant）。
+- consume_once 回傳值：True = 有成功執行 process_submission；False = 訊息被 discard（壞 JSON / 不支援的 type）。
 
 Exception → 行為真值表（Step 9）：
 | 情境                              | 處理                                              |
@@ -65,7 +66,7 @@ class WorkerJSONFormatter(logging.Formatter):
 # ── config ─────────────────────────────────────────────────────────
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")  # NOSONAR — internal Docker Compose networking
 WORKER_SECRET = os.environ.get("WORKER_SECRET")          # required at runtime; tests inject
 QUEUE_PENDING = os.getenv("QUEUE_PENDING", "submissions:pending")
 QUEUE_PROCESSING = os.getenv("QUEUE_PROCESSING", "submissions:processing")
@@ -181,7 +182,7 @@ def run_official(
         elif case_verdict == "RE":
             runtime_info = result.stderr or "Runtime Error (No stderr)"
         elif case_verdict == "TLE":
-            runtime_info = f"Time Limit Exceeded"
+            runtime_info = "Time Limit Exceeded"
         elif case_verdict == "MLE":
             runtime_info = "Memory Limit Exceeded"
         elif case_verdict == "CE":
@@ -367,9 +368,13 @@ def consume_once(
 ) -> bool:
     """處理一筆 message、無論成功失敗都 ACK（LREM）。
 
-    Returns True 永遠。Step 9：永遠 ACK——permanent callback failure 由
+    Step 9：永遠 ACK——permanent callback failure 由
     post_callback_with_retry log stderr 處理、不靠 redelivery（docker-compose worker
     不會被 evict、k8s 後再加 redelivery / message claim）。
+
+    Returns:
+        True  — process_submission 有被執行（submission 判題流程正常啟動）。
+        False — 訊息被 discard（JSON 解析失敗 或 不支援的 submission_type）。
     """
     raw = r.blmove(QUEUE_PENDING, QUEUE_PROCESSING, timeout=0, src="LEFT", dest="RIGHT")
 
@@ -382,7 +387,7 @@ def consume_once(
             extra={"action": "bad_payload_ack"}
         )
         r.lrem(QUEUE_PROCESSING, 1, raw)
-        return True
+        return False
 
     sub_id = msg.get("submission_id", "?")
     sub_type = msg.get("submission_type")
@@ -400,7 +405,7 @@ def consume_once(
             }
         )
         r.lrem(QUEUE_PROCESSING, 1, raw)
-        return True
+        return False
 
     # process_submission 永不 raise、failure 內部處理成 JudgeFailed callback
     process_submission(spawner, http, msg)

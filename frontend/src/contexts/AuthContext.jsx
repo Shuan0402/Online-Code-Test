@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import api from '@/lib/api'
 
 const AuthContext = createContext(null)
@@ -92,11 +92,16 @@ export function AuthProvider({ children }) {
     setUser(null)
     localStorage.removeItem('access_token')
     localStorage.removeItem('user')
-    window.location.href = '/login'
+    globalThis.location.href = '/login'
   }, [])
 
+  const contextValue = useMemo(
+    () => ({ user, token, loading, login, logout }),
+    [user, token, loading, login, logout]
+  )
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   )

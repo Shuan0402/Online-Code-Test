@@ -51,9 +51,31 @@ SUBMISSIONS = [
 ]
 
 
-def post_callback(submission_id: str, verdict: str, stdout: str, stderr: str) -> None:
+def post_callback(submission_id: str, verdict: str) -> None:
     """假裝是 POST 回 backend——B 範圍的 callback API 之後接。"""
     print(f"[callback] id={submission_id} verdict={verdict}")
+
+
+def _decode_output(raw) -> str:
+    """Decode bytes-or-str output from a timed-out subprocess, returning '' for None."""
+    if raw is None:
+        return ""
+    if isinstance(raw, bytes):
+        return raw.decode()
+    return raw
+
+
+def _decide_verdict(timed_out: bool, exit_code: int, stdout: str, sub: dict) -> str:
+    """Map execution results to a verdict string."""
+    if timed_out:
+        return "TLE"
+    if exit_code == 100 and sub["language"] == "cpp":
+        return "CE"
+    if exit_code != 0:
+        return "RE"
+    if stdout != sub["expected_output"]:
+        return "WA"
+    return "AC"
 
 
 def judge(sub: dict) -> None:
@@ -83,22 +105,13 @@ def judge(sub: dict) -> None:
         # subprocess kill 了 docker CLI，但 sandbox container 可能還在 host 上跑！
         # 真正要殺 container 還得另外 docker kill <id>，這裡 anti-pattern 偷懶沒處理。
         timed_out = True
-        stdout = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
-        stderr = (e.stderr or b"").decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
+        stdout = _decode_output(e.stdout)
+        stderr = _decode_output(e.stderr)
 
     duration = time.monotonic() - start
 
     # ── verdict 判定（這部分是 worker 的責任，沒問題）──────────
-    if timed_out:
-        verdict = "TLE"
-    elif exit_code == 100 and sub["language"] == "cpp":
-        verdict = "CE"
-    elif exit_code != 0:
-        verdict = "RE"
-    elif stdout != sub["expected_output"]:
-        verdict = "WA"
-    else:
-        verdict = "AC"
+    verdict = _decide_verdict(timed_out, exit_code, stdout, sub)
 
     print(f"[judge] id={sub['id']:12s} verdict={verdict} exit={exit_code} duration={duration:.2f}s")
     if stdout:
@@ -106,7 +119,7 @@ def judge(sub: dict) -> None:
     if stderr:
         print(f"        stderr={stderr!r}")
 
-    post_callback(sub["id"], verdict, stdout, stderr)
+    post_callback(sub["id"], verdict)
 
 
 def main() -> None:

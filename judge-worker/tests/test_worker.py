@@ -234,7 +234,7 @@ def test_consume_once_unknown_type_acks_without_callback(r, fake_spawner, fake_h
 
     acked = worker.consume_once(r, fake_spawner, fake_http)
 
-    assert acked is True
+    assert acked is False
     assert r.llen(worker.QUEUE_PROCESSING) == 0
     fake_spawner.run.assert_not_called()
     fake_http.post.assert_not_called()
@@ -246,7 +246,7 @@ def test_consume_once_bad_json_acks_without_callback(r, fake_spawner, fake_http)
 
     acked = worker.consume_once(r, fake_spawner, fake_http)
 
-    assert acked is True
+    assert acked is False
     assert r.llen(worker.QUEUE_PROCESSING) == 0
     fake_http.post.assert_not_called()
 

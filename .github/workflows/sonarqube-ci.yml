@@ -1,4 +1,4 @@
-name: Build
+name: SonarQube CI
 on:
   push:
     branches:
@@ -9,11 +9,98 @@ jobs:
   sonarqube:
     name: SonarQube
     runs-on: ubuntu-24.04
+
+    env:
+      # docker-compose 與 backend 測試用的預設值（與 backend-ci.yml 對齊）
+      POSTGRES_USER: octest
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: octest
+      BUILD_ENV: test
+      JWT_SECRET: replace-me-with-openssl-rand-base64-32
+      WORKER_SECRET: replace-me-with-openssl-rand-base64-32
+      MINIO_USER: octest-admin
+      MINIO_PASSWORD: changeme-minio
+      GRAFANA_PASSWORD: admin
+
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995 # v8.1.0
+
+      # ── Frontend coverage (Vitest + v8) ────────────────────────────
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci --ignore-scripts
+
+      - name: Run frontend tests with coverage
+        working-directory: frontend
+        run: npm run test:coverage
+
+      # ── Backend coverage (pytest + pytest-cov, in Docker) ──────────
+      - name: Build backend image
+        run: docker build --build-arg BUILD_ENV=test -t backend:dev ./backend
+
+      # mount backend/ 讓 container 內產生的 coverage.xml 落到 host 路徑
+      # （image 預裝的程式碼會被 host volume 覆蓋，但因為 source 一致、deps 已裝在
+      # site-packages，所以不影響執行）
+      - name: Run backend tests with coverage
+        run: |
+          docker compose -f docker-compose.yml run --rm \
+            --user root \
+            -v "$PWD/backend:/app" \
+            backend python -m pytest tests/ \
+              --cov=app \
+              --cov-report=xml:coverage.xml \
+              --cov-report=term
+
+      - name: Clean up backend Docker resources
+        if: always()
+        run: docker compose -f docker-compose.yml down -v
+
+      # ── Judge-worker coverage (pytest + fakeredis, on host) ────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: judge-worker/requirements-dev.txt
+
+      - name: Install judge-worker deps
+        working-directory: judge-worker
+        run: |
+          pip install --only-binary :all: --require-hashes -r requirements-dev.lock
+
+      - name: Run judge-worker tests with coverage
+        working-directory: judge-worker
+        run: |
+          python -m pytest tests/ \
+            --cov=. \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term
+
+      # pytest-cov 寫到 coverage.xml 的 <source> 是容器/runner cwd 的絕對路徑
+      # (如 "/app/app" 或 "/home/runner/.../judge-worker")，Sonar 從 repo root 解
+      # 不到。改寫成 repo-relative path 後 Sonar 才能 join filename → 找到對應
+      # source 檔，否則會吐 "Cannot resolve N file paths, ignoring coverage"。
+      - name: Rewrite coverage.xml source paths for Sonar
+        run: |
+          sed -i 's|<source>/app/app</source>|<source>backend/app</source>|' backend/coverage.xml
+          sed -i 's|<source>.*judge-worker</source>|<source>judge-worker</source>|' judge-worker/coverage.xml
+          echo "--- backend/coverage.xml <source> ---"
+          grep -m1 '<source>' backend/coverage.xml
+          echo "--- judge-worker/coverage.xml <source> ---"
+          grep -m1 '<source>' judge-worker/coverage.xml
+
+      # ── SonarCloud scan ────────────────────────────────────────────
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@v3.0.0
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

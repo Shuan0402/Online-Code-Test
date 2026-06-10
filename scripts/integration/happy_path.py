@@ -22,7 +22,7 @@ import httpx as requests  # noqa: alias so 後面 .post/.get/.raise_for_status �
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000") + "/api/v1"
 
 CANDIDATE_USERNAME = os.environ.get("CANDIDATE_USERNAME", "demo_candidate")
-CANDIDATE_PASSWORD = os.environ.get("CANDIDATE_PASSWORD", "password123")
+CANDIDATE_PASSWORD = os.environ.get("CANDIDATE_PASSWORD", "")  # nosec B105 – real credential injected via env var; empty default causes auth to fail loudly
 PROBLEM_ID = int(os.environ.get("PROBLEM_ID", "1"))
 EXAM_ID = os.environ.get("EXAM_ID")
 if not EXAM_ID:
@@ -95,7 +95,7 @@ def poll(token: str, sub_id: str, max_wait_sec: int = 30) -> dict:
 
 
 def report(result: dict) -> None:
-    print(f"[4/4] 結果：")
+    print("[4/4] 結果：")
     print(f"      status         = {result['status']}")
     print(f"      score          = {result.get('score')}")
     print(f"      execution_time = {result.get('execution_time')} ms")

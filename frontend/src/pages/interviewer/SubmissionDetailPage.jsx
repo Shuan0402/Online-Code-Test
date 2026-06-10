@@ -115,7 +115,7 @@ export default function SubmissionDetailPage() {
           try {
             // S3 presigned URL — must use plain fetch(), NOT api axios instance
             // （api 會補 /api 前綴且附上 Bearer token，對 S3 URL 兩者皆錯）
-            const sourceRes = await window.fetch(submissionData.presigned_url)
+            const sourceRes = await globalThis.fetch(submissionData.presigned_url)
             const text = await sourceRes.text()
             setSourceCode(text)
           } catch {
@@ -246,17 +246,23 @@ export default function SubmissionDetailPage() {
         <div className="px-4 py-3 bg-muted">
           <h2 className="text-base font-semibold">提交程式碼</h2>
         </div>
-        {sourceUnavailable ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground text-center">程式碼暫無法顯示</p>
-        ) : sourceCode !== null ? (
-          <pre className="bg-muted rounded p-4 text-sm overflow-auto whitespace-pre-wrap break-words">
-            {sourceCode}
-          </pre>
-        ) : (
-          <div className="flex justify-center py-6">
-            <LoadingSpinner />
-          </div>
-        )}
+        {(() => {
+          if (sourceUnavailable) {
+            return <p className="px-4 py-6 text-sm text-muted-foreground text-center">程式碼暫無法顯示</p>
+          }
+          if (sourceCode !== null) {
+            return (
+              <pre className="bg-muted rounded p-4 text-sm overflow-auto whitespace-pre-wrap break-words">
+                {sourceCode}
+              </pre>
+            )
+          }
+          return (
+            <div className="flex justify-center py-6">
+              <LoadingSpinner />
+            </div>
+          )
+        })()}
       </section>
 
       {/* 測資結果 */}

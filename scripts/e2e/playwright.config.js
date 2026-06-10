@@ -4,7 +4,10 @@ export default defineConfig({
   testDir: '.',
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  reporter: [['list']],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: 'playwright-report' }],
+  ],
   workers: 1,
   fullyParallel: false,
   use: {

@@ -1,7 +1,9 @@
 # backend/app/api/api_v1/endpoints/testcase.py
 
+from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
+from app.models.user import User
 
 from app.api import deps
 from app.models.enums import UserRole
@@ -15,8 +17,8 @@ router = APIRouter()
 def update_testcase(
     id: int,
     obj_in: TestCaseUpdate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_staff_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_staff_user)]
 ):
     """
     修改指定 ID 的測試資料
@@ -39,8 +41,8 @@ def update_testcase(
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_testcase(
     id: int,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_questioner_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_questioner_user)]
 ):
     """
     刪除指定 ID 的測試資料

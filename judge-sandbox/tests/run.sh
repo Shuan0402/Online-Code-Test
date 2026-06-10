@@ -7,9 +7,12 @@
 # 用法:bash judge-sandbox/tests/run.sh
 #
 # 功能測試:把「已知答案」的程式掛進 sandbox 跑,比對輸出 / exit code。
-# 安全測試:用 worker 同款的 docker run 加固旗標跑惡意程式,確認被擋 / 被殺。
-#   註:加固旗標(--memory / --network=none / 逾時)目前由本腳本直接帶入;
-#       worker 的 _build_run_cmd() 尚未套用(judge-worker 的 Step 7 TODO)。
+# 安全測試 (test 4-6):用本腳本「手動帶入」旗標跑惡意程式,驗證 docker 引擎
+#   會 enforce 那些旗標(設計層 spec)。
+# e2e 安全測試 (test 7):走 worker production code path、直接呼叫
+#   DockerSpawner.run() 跑 netattempt 並斷言 NETWORK_BLOCKED → 驗證「實作層」
+#   真有套上旗標。過去 worker._build_run_cmd() 是 TODO 沒套、test 4-6 PASS
+#   但 production 裸跑;這條 e2e 是 regression guard、未來 anyone 拔旗標立刻紅。
 
 set -u
 
@@ -78,6 +81,31 @@ check "無窮迴圈跑不停、需被 docker kill 強制中斷" "yes" "$still_ru
 out="$(docker run --rm -i --network=none \
   -v "$FIX/netattempt.py:/sandbox/source.py:ro" sandbox:python 2>/dev/null)"
 check "對外連線被 --network=none 阻擋" "NETWORK_BLOCKED" "$out"
+
+echo "── e2e 安全測試(走 worker production code path)──"
+
+# 7. 直接呼叫 worker DockerSpawner.run() 跑 netattempt → 驗證實作層真套了 --network=none。
+#    這是 P1 regression guard:若 worker._build_run_cmd() 哪天被改掉、忘了帶旗標、
+#    test 4-6 還是 PASS(因為它們各自手動 hardcode 旗標)、但 test 7 會立刻紅。
+WORKER_DIR="$(cd "$(dirname "$0")/../../judge-worker" && pwd)"
+out="$(cd "$WORKER_DIR" && python3 -c "
+import sys
+sys.path.insert(0, '.')
+from spawner.docker_spawner import DockerSpawner
+
+with open('$FIX/netattempt.py') as f:
+    src = f.read()
+
+r = DockerSpawner().run(
+    image='sandbox:python',
+    source=src,
+    source_filename='source.py',
+    stdin='',
+    timeout=10,
+)
+print(r.stdout.strip())
+" 2>/dev/null)"
+check "worker 實際 spawn 套上 --network=none(production)" "NETWORK_BLOCKED" "$out"
 
 echo "──────────────────────────────────────────────"
 echo "結果:$PASS 通過,$FAIL 失敗"

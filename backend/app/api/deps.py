@@ -1,6 +1,6 @@
 import os
 from functools import lru_cache
-from typing import Generator, List
+from typing import Generator, List, Annotated
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
@@ -54,8 +54,8 @@ def get_db() -> Generator:
         db.close()
 
 def get_current_user(
-    db: Session = Depends(get_db), 
-    token: str = Depends(oauth2_scheme)
+    db: Annotated[Session, Depends(get_db)], 
+    token: Annotated[str, Depends(oauth2_scheme)]
 ) -> User:
     """
     權限驗證依賴項：驗證 JWT 有效性、檢查 Redis 黑名單、並回傳當前使用者。
@@ -97,7 +97,7 @@ class RoleChecker:
     def __init__(self, allowed_roles: List[str]):
         self.allowed_roles = set(allowed_roles) | {UserRole.Admin}
 
-    def __call__(self, current_user: User = Depends(get_current_user)):
+    def __call__(self, current_user: Annotated[User, Depends(get_current_user)]):
         if current_user.role not in self.allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
