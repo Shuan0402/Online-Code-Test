@@ -217,7 +217,7 @@ export default function ExamListPage() {
       {/* 篩選列：狀態 + 「只看我的」+ 時間區段 + 答對率 */}
       <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/20 p-3">
         <div className="flex items-center gap-2">
-          <label htmlFor="status-filter" className="text-sm font-medium">
+          <label htmlFor="status-filter" className="text-sm font-medium whitespace-nowrap">
             篩選狀態：
           </label>
           <select
@@ -235,7 +235,7 @@ export default function ExamListPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="tag-filter" className="text-sm font-medium">
+          <label htmlFor="tag-filter" className="text-sm font-medium whitespace-nowrap">
             篩選標籤：
           </label>
           <select
@@ -257,7 +257,7 @@ export default function ExamListPage() {
           id="mine-only-toggle"
           type="button"
           onClick={() => setMineOnly((prev) => !prev)}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium border transition-colors ${
+          className={`rounded-md px-3 py-1.5 text-sm font-medium border transition-colors whitespace-nowrap ${
             mineOnly
               ? 'bg-primary text-primary-foreground border-primary'
               : 'bg-background text-foreground border-input hover:bg-muted'
@@ -268,7 +268,7 @@ export default function ExamListPage() {
 
         {/* 時間區段（建立時間） */}
         <div className="flex items-center gap-2">
-          <label htmlFor="created-start" className="text-sm font-medium text-muted-foreground">
+          <label htmlFor="created-start" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
             建立時間：
           </label>
           <input
@@ -290,7 +290,7 @@ export default function ExamListPage() {
 
         {/* 答對率區間 % */}
         <div className="flex items-center gap-2">
-          <label htmlFor="score-gte" className="text-sm font-medium text-muted-foreground">
+          <label htmlFor="score-gte" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
             答對率 (%)：
           </label>
           <input
@@ -320,9 +320,23 @@ export default function ExamListPage() {
           id="reset-filters"
           type="button"
           onClick={resetFilters}
-          className="ml-auto rounded-md px-3 py-1.5 text-xs font-medium border border-input bg-background text-foreground hover:bg-muted"
+          title="重設篩選"
+          className="ml-auto rounded-md p-1.5 border border-input bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
-          重設篩選
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
         </button>
       </div>
 
