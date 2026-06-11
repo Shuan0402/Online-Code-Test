@@ -157,6 +157,8 @@ export default function ExamDetailPage() {
 
   // --- 行內編輯欄位狀態（草稿模式才啟用） ---
   const [editTitle, setEditTitle] = useState('')
+  const [editTag, setEditTag] = useState('')
+  const [existingTags, setExistingTags] = useState([])
   const [editDuration, setEditDuration] = useState(120)
   // Bug 7：草稿狀態允許改題數配比
   const [editEasy, setEditEasy] = useState(0)
@@ -164,6 +166,33 @@ export default function ExamDetailPage() {
   const [editHard, setEditHard] = useState(0)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  const [isOpen, setIsOpen] = useState(false)
+
+  // Click outside dropdown handler
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      const container = document.getElementById('tag-container')
+      if (container && !container.contains(e.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('click', handleOutsideClick)
+    return () => {
+      document.removeEventListener('click', handleOutsideClick)
+    }
+  }, [])
+
+  const filteredTags = Array.isArray(existingTags)
+    ? existingTags.filter((t) => t.toLowerCase().includes(editTag.toLowerCase()))
+    : []
+
+  const handleAddNewTag = () => {
+    const trimmed = editTag.trim()
+    if (trimmed && !existingTags.includes(trimmed)) {
+      setExistingTags((prev) => [...prev, trimmed])
+    }
+    setIsOpen(false)
+  }
 
   // --- 自動生成題目 ---
   const [generating, setGenerating] = useState(false)
@@ -196,9 +225,10 @@ export default function ExamDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      const [examRes, usersRes] = await Promise.all([
+      const [examRes, usersRes, tagsRes] = await Promise.all([
         api.get(`/api/v1/exams/${id}`),
         api.get('/api/v1/users/'),
+        api.get('/api/v1/exams/tags').catch(() => ({ data: [] })),
       ])
 
       const examData = examRes.data
@@ -209,10 +239,12 @@ export default function ExamDetailPage() {
         map[u.id] = u.full_name || u.username
       })
       setUsersMap(map)
+      setExistingTags(Array.isArray(tagsRes.data) ? tagsRes.data : [])
 
       setExam(examData)
       // 同步編輯欄位
       setEditTitle(examData.title)
+      setEditTag(examData.tag || '')
       setEditDuration(examData.duration_minutes)
       setEditEasy(examData.easy_count ?? 0)
       setEditMedium(examData.medium_count ?? 0)
@@ -246,6 +278,7 @@ export default function ExamDetailPage() {
     const parsedHard = Number(editHard)
     const body = {
       title: editTitle.trim() || exam.title,
+      tag: editTag.trim() || null,
       duration_minutes:
         Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 120,
       easy_count: Number.isFinite(parsedEasy) && parsedEasy >= 0 ? parsedEasy : 0,
@@ -256,6 +289,7 @@ export default function ExamDetailPage() {
       const res = await api.patch(`/api/v1/exams/${id}`, body)
       setExam(res.data)
       setEditTitle(res.data.title)
+      setEditTag(res.data.tag || '')
       setEditDuration(res.data.duration_minutes)
       setEditEasy(res.data.easy_count ?? 0)
       setEditMedium(res.data.medium_count ?? 0)
@@ -462,6 +496,10 @@ export default function ExamDetailPage() {
           <span>{candidateName}</span>
         </div>
         <div>
+          <span className="font-medium text-muted-foreground">考試標籤：</span>
+          <span>{exam.tag || '—'}</span>
+        </div>
+        <div>
           <span className="font-medium text-muted-foreground">難度配額：</span>
           <span>
             簡單 {exam.easy_count} ／ 中等 {exam.medium_count} ／ 困難 {exam.hard_count}
@@ -482,6 +520,88 @@ export default function ExamDetailPage() {
               onChange={(e) => setEditTitle(e.target.value)}
               disabled={!isDraft}
             />
+          </div>
+
+          {/* 考試標籤 */}
+          <div className="space-y-1 relative" id="tag-container">
+            <Label htmlFor="edit-tag">考試標籤</Label>
+            <div className="relative">
+              <Input
+                id="edit-tag"
+                type="text"
+                value={editTag}
+                onChange={(e) => {
+                  setEditTag(e.target.value)
+                  setIsOpen(true)
+                }}
+                onFocus={() => setIsOpen(true)}
+                placeholder="例如: 2026 校園徵才 - 前端工程師 (可輸入或篩選選取)"
+                autoComplete="off"
+                disabled={!isDraft}
+                className="pr-10"
+              />
+              {isDraft && (
+                <div
+                  className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground p-1"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setIsOpen((prev) => !prev)
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </div>
+              )}
+            </div>
+
+            {isOpen && isDraft && (
+              <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md z-50">
+                <ul className="py-1 text-sm">
+                  {filteredTags.length > 0 ? (
+                    filteredTags.map((t) => (
+                      <li
+                        key={t}
+                        onClick={() => {
+                          setEditTag(t)
+                          setIsOpen(false)
+                        }}
+                        className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
+                      >
+                        {t}
+                      </li>
+                    ))
+                  ) : (
+                    editTag.trim() ? null : (
+                      <li className="px-3 py-2 text-muted-foreground text-center">
+                        目前沒有現有標籤
+                      </li>
+                    )
+                  )}
+
+                  {/* 若篩選結果為空，且使用者有輸入內容，則提供新增標籤的選項 */}
+                  {editTag.trim() && filteredTags.length === 0 && (
+                    <li
+                      onClick={handleAddNewTag}
+                      className="px-3 py-2 text-primary hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium border-t border-muted transition-colors"
+                    >
+                      + 新增標籤「{editTag}」
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
           </div>
           <div className="space-y-1">
             <Label htmlFor="edit-duration">考試時長（分鐘）</Label>
