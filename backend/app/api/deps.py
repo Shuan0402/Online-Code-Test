@@ -1,4 +1,5 @@
 import os
+import uuid
 from functools import lru_cache
 from typing import Generator, List, Annotated
 from fastapi import Depends, Header, HTTPException, status
@@ -86,7 +87,12 @@ def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user: Optional[User] = db.query(User).filter(User.id == token_data.sub).first()
+    try:
+        user_uuid = uuid.UUID(token_data.sub)
+    except (ValueError, TypeError):
+        user_uuid = token_data.sub
+
+    user: Optional[User] = db.query(User).filter(User.id == user_uuid).first()
 
     if not user or not user.is_active:
         raise credentials_exception
