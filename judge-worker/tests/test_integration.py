@@ -132,9 +132,14 @@ def test_python_wa_fail_fast_full_path(real_redis, callback_recorder, source_ser
 
 def test_cpp_ce_full_path(real_redis, callback_recorder, source_server):
     """g++ 編譯失敗 → entrypoint exit 100 → decide_case_verdict 判 CE。"""
+    import pathlib
+    fixture_path = pathlib.Path(__file__).parent.parent.parent / "judge-sandbox" / "tests" / "fixtures" / "bad.cpp"
+    with open(fixture_path, "r", encoding="utf-8") as f:
+        bad_cpp_code = f.read()
+
     source_url = source_server(
         "/sub-cpp-ce.cpp",
-        "int main() { broken syntax }\n",
+        bad_cpp_code,
     )
     msg = {
         "submission_id": "int-cpp-ce",

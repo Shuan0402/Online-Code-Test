@@ -45,16 +45,32 @@ jobs:
 
       # 1. 建置各個 Docker 映像檔
       - name: Build sandbox:python image
-        run: docker build -t sandbox:python judge-sandbox/images/python
+        run: |
+          for i in {1..3}; do
+            docker build -t sandbox:python judge-sandbox/images/python && exit 0 || sleep 10
+          done
+          exit 1
 
       - name: Build sandbox:cpp image
-        run: docker build -t sandbox:cpp judge-sandbox/images/cpp
+        run: |
+          for i in {1..3}; do
+            docker build -t sandbox:cpp judge-sandbox/images/cpp && exit 0 || sleep 10
+          done
+          exit 1
 
       - name: Build backend image
-        run: docker build --build-arg BUILD_ENV=test -t backend:dev ./backend
+        run: |
+          for i in {1..3}; do
+            docker build --build-arg BUILD_ENV=test -t backend:dev ./backend && exit 0 || sleep 10
+          done
+          exit 1
 
       - name: Build judge-worker image
-        run: docker build -t judge-worker:dev ./judge-worker
+        run: |
+          for i in {1..3}; do
+            docker build -t judge-worker:dev ./judge-worker && exit 0 || sleep 10
+          done
+          exit 1
 
       # 2. 建立 worker 運作所需的 sandbox tmp 資料夾，並啟動 Docker Compose
       - name: Create spawner sandbox working directory

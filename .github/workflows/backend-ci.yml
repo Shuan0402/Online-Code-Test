@@ -28,12 +28,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      # 建置 Backend Image
+      # 建置 Backend Image (含網路超時重試機制)
       - name: Build backend image
         run: |
-          docker build \
-            --build-arg BUILD_ENV=test \
-            -t backend:dev ./backend
+          for i in {1..3}; do
+            docker build --build-arg BUILD_ENV=test -t backend:dev ./backend && break || {
+              if [ $i -eq 3 ]; then
+                echo "Failed to build backend image after 3 attempts."
+                exit 1
+              fi
+              echo "Build failed due to network or registry issues. Retrying in 10 seconds ($i/3)..."
+              sleep 10
+            }
+          done
 
       # 啟動依賴服務並執行測試
       - name: Run Tests with pytest
