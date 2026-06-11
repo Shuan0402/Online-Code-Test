@@ -159,6 +159,8 @@ const EditorPanel = forwardRef(function EditorPanel(
             scrollBeyondLastLine: false,
             wordWrap: 'on',
             automaticLayout: true,
+            // editor 內沒得 scroll 時把 wheel event 放行給外層 page 滾
+            scrollbar: { alwaysConsumeMouseWheel: false },
           }}
         />
       </div>
