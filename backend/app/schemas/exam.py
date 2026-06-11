@@ -148,6 +148,20 @@ class BatchExamCreateResult(BaseModel):
     failed_count: int = Field(default=0, description="建立失敗的數量")
     errors: List[str] = Field(default=[], description="錯誤訊息列表")
 
+class BatchExamActionRequest(BaseModel):
+    """
+    批次操作考試的請求：指定要操作的考試 ID 清單。
+    """
+    exam_ids: List[UUID] = Field(..., min_length=1, description="欲操作的考試 ID 清單")
+
+class BatchExamActionResult(BaseModel):
+    """
+    批次操作考試的結果。
+    """
+    success_count: int = Field(..., description="成功的數量")
+    failed_count: int = Field(default=0, description="失敗的數量")
+    errors: List[str] = Field(default=[], description="錯誤訊息列表")
+
 class ExamProblemResultRead(BaseModel):
     """
     考試中單一題目的最新評測狀態。

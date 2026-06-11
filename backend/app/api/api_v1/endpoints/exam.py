@@ -15,7 +15,7 @@ from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.testcase import TestCase
 from app.models.problem import Problem
-from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate, ExamBatchCreate, BatchExamCreateResult
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate, ExamBatchCreate, BatchExamCreateResult, BatchExamActionRequest, BatchExamActionResult
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
 from app.services.tags import get_all_unique_tags
@@ -1082,6 +1082,104 @@ def delete_exam_problem(
     db.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.post("/batch/publish", response_model=BatchExamActionResult)
+def batch_publish_exams(
+    obj_in: BatchExamActionRequest,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    批次發布考試 API。
+    - 限制只有 Interviewer 或 Admin 角色可以使用。
+    - 只會發布狀態為 Draft 且已有題目的考試。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以批次發布考試。"
+        )
+
+    success_count = 0
+    errors = []
+
+    for exam_id in obj_in.exam_ids:
+        try:
+            exam = (
+                db.query(Exam)
+                .options(joinedload(Exam.exam_problems))
+                .filter(Exam.id == exam_id)
+                .first()
+            )
+            if not exam:
+                errors.append(f"考試 {exam_id} 不存在")
+                continue
+            if exam.status != ExamStatus.Draft:
+                errors.append(f"考試 {exam_id} 狀態為 {exam.status}，只有草稿狀態才能發布")
+                continue
+            if not exam.exam_problems or len(exam.exam_problems) == 0:
+                errors.append(f"考試 {exam_id} 尚未配置題目，無法發布")
+                continue
+
+            exam.status = ExamStatus.Published
+            success_count += 1
+        except Exception as e:
+            errors.append(f"考試 {exam_id} 發布失敗: {str(e)}")
+
+    db.commit()
+    return BatchExamActionResult(
+        success_count=success_count,
+        failed_count=len(obj_in.exam_ids) - success_count,
+        errors=errors,
+    )
+
+
+@router.post("/batch/delete", response_model=BatchExamActionResult)
+def batch_delete_exams(
+    obj_in: BatchExamActionRequest,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    批次刪除/封存考試 API。
+    - 限制只有 Interviewer 或 Admin 角色可以使用。
+    - Draft/Published 狀態：直接刪除
+    - Finished 狀態：設為 Archived
+    - Ongoing 狀態：禁止操作
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以批次刪除考試。"
+        )
+
+    success_count = 0
+    errors = []
+
+    for exam_id in obj_in.exam_ids:
+        try:
+            exam = db.query(Exam).filter(Exam.id == exam_id).first()
+            if not exam:
+                errors.append(f"考試 {exam_id} 不存在")
+                continue
+            if exam.status == ExamStatus.Ongoing:
+                errors.append(f"考試 {exam_id} 正在進行中，無法刪除")
+                continue
+            if exam.status == ExamStatus.Finished:
+                exam.status = ExamStatus.Archived
+            else:
+                db.delete(exam)
+            success_count += 1
+        except Exception as e:
+            errors.append(f"考試 {exam_id} 刪除失敗: {str(e)}")
+
+    db.commit()
+    return BatchExamActionResult(
+        success_count=success_count,
+        failed_count=len(obj_in.exam_ids) - success_count,
+        errors=errors,
+    )
+
 
 @router.post("/{exam_id}/violation", status_code=status.HTTP_201_CREATED)
 async def report_exam_violation(

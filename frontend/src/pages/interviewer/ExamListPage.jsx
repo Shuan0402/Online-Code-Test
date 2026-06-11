@@ -65,6 +65,13 @@ export default function ExamListPage() {
   const [batchResult, setBatchResult] = useState(null)
   const [batchResultVisible, setBatchResultVisible] = useState(true)
 
+  // 多選狀態
+  const [selectedIds, setSelectedIds] = useState(new Set())
+
+  // 批量操作狀態
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkError, setBulkError] = useState(null)
+
   useEffect(() => {
     if (location.state?.batchResult) {
       setBatchResult(location.state.batchResult)
@@ -92,6 +99,7 @@ export default function ExamListPage() {
       if (scoreLte !== '') params.score_lte = Number(scoreLte)
       const res = await api.get('/api/v1/exams/', { params })
       setExams(res.data)
+      setSelectedIds(new Set())
     } catch (err) {
       setError(err.response?.data?.detail ?? '載入考試列表失敗，請稍後再試')
     } finally {
@@ -124,6 +132,74 @@ export default function ExamListPage() {
       })
   }, [])
 
+  // 依狀態篩選（client-side）：statusFilter 為空字串時顯示全部
+  // 注意：此處必須在所有引用 filteredExams 的程式碼之前定義
+  const filteredExams = statusFilter
+    ? exams.filter((e) => e.status === statusFilter)
+    : exams
+
+  const allSelected = filteredExams.length > 0 && selectedIds.size === filteredExams.length
+
+  // --- 多選邏輯 ---
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredExams.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredExams.map((e) => e.id)))
+    }
+  }
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  // --- 批量發布 ---
+  const handleBatchPublish = async () => {
+    if (selectedIds.size === 0) return
+    setBulkLoading(true)
+    setBulkError(null)
+    try {
+      const res = await api.post('/api/v1/exams/batch/publish', {
+        exam_ids: Array.from(selectedIds),
+      })
+      const result = res.data
+      alert(`發布完成：${result.success_count} 筆成功，${result.failed_count} 筆失敗`)
+      fetchExams()
+    } catch (err) {
+      setBulkError(err.response?.data?.detail ?? '批量發布失敗')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
+  // --- 批量刪除 ---
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return
+    if (!window.confirm(`確定要刪除/封存選取的 ${selectedIds.size} 場考試嗎？`)) return
+    setBulkLoading(true)
+    setBulkError(null)
+    try {
+      const res = await api.post('/api/v1/exams/batch/delete', {
+        exam_ids: Array.from(selectedIds),
+      })
+      const result = res.data
+      alert(`刪除完成：${result.success_count} 筆成功，${result.failed_count} 筆失敗`)
+      fetchExams()
+    } catch (err) {
+      setBulkError(err.response?.data?.detail ?? '批量刪除失敗')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   // --- 刪除考試 ---
   const openDeleteDialog = (exam) => {
     setDeleteError(null)
@@ -136,24 +212,21 @@ export default function ExamListPage() {
     setDeleteError(null)
     try {
       await api.delete(`/api/v1/exams/${deleteTarget.id}`)
-      // 刪除成功後從 state 中移除該筆（不重新 fetch）
       setExams((prev) => prev.filter((e) => e.id !== deleteTarget.id))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(deleteTarget.id)
+        return next
+      })
       setDeleteTarget(null)
     } catch (err) {
-      // 顯示 inline 錯誤，Dialog 保持開著讓使用者知道失敗
       setDeleteError(err.response?.data?.detail ?? '刪除失敗，請稍後再試')
     } finally {
       setDeleteLoading(false)
     }
   }
 
-  // 依狀態篩選（client-side）：statusFilter 為空字串時顯示全部
-  const filteredExams = statusFilter
-    ? exams.filter((e) => e.status === statusFilter)
-    : exams
-
   // --- 渲染 ---
-  // 首次載入才顯示整頁 spinner；換篩選時 refetch 保留現有列表（避免 input 被 unmount、UI flicker）
   if (loading && !hasLoadedOnce) {
     return (
       <div className="flex justify-center items-center py-20">
@@ -214,7 +287,7 @@ export default function ExamListPage() {
         </div>
       )}
 
-      {/* 篩選列：狀態 + 「只看我的」+ 時間區段 + 答對率 */}
+      {/* 篩選列 */}
       <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/20 p-3">
         <div className="flex items-center gap-2">
           <label htmlFor="status-filter" className="text-sm font-medium whitespace-nowrap">
@@ -266,7 +339,6 @@ export default function ExamListPage() {
           {mineOnly ? '只看我的' : '所有考試'}
         </button>
 
-        {/* 時間區段（建立時間） */}
         <div className="flex items-center gap-2">
           <label htmlFor="created-start" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
             建立時間：
@@ -288,7 +360,6 @@ export default function ExamListPage() {
           />
         </div>
 
-        {/* 答對率區間 % */}
         <div className="flex items-center gap-2">
           <label htmlFor="score-gte" className="text-sm font-medium text-muted-foreground whitespace-nowrap">
             答對率 (%)：
@@ -340,6 +411,35 @@ export default function ExamListPage() {
         </button>
       </div>
 
+      {/* 批量操作工具列 */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-3 py-2 rounded-lg border bg-primary/5 text-sm">
+          <span className="font-medium">
+            已選取 <span className="text-primary">{selectedIds.size}</span> 場考試
+          </span>
+          <div className="h-4 w-px bg-border" />
+          <Button
+            size="sm"
+            variant="default"
+            onClick={handleBatchPublish}
+            disabled={bulkLoading}
+          >
+            {bulkLoading ? '處理中…' : '發布考試'}
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={handleBatchDelete}
+            disabled={bulkLoading}
+          >
+            {bulkLoading ? '處理中…' : '刪除考試'}
+          </Button>
+          {bulkError && (
+            <span className="text-destructive text-xs">{bulkError}</span>
+          )}
+        </div>
+      )}
+
       {/* 考試列表 */}
       {filteredExams.length === 0 ? (
         <p className="text-center text-muted-foreground py-16">目前沒有考試</p>
@@ -348,6 +448,14 @@ export default function ExamListPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted text-muted-foreground">
               <tr>
+                <th className="px-4 py-3 text-left w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left font-medium">考試標題</th>
                 <th className="px-4 py-3 text-left font-medium w-36">標籤</th>
                 <th className="px-4 py-3 text-left font-medium w-28">狀態</th>
@@ -361,8 +469,18 @@ export default function ExamListPage() {
               {filteredExams.map((exam) => (
                 <tr
                   key={exam.id}
-                  className="border-t hover:bg-muted/30 transition-colors"
+                  className={`border-t hover:bg-muted/30 transition-colors ${
+                    selectedIds.has(exam.id) ? 'bg-primary/5' : ''
+                  }`}
                 >
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(exam.id)}
+                      onChange={() => toggleSelect(exam.id)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                  </td>
                   <td className="px-4 py-3 font-medium">{exam.title}</td>
                   <td className="px-4 py-3 text-muted-foreground">{exam.tag || '—'}</td>
                   <td className="px-4 py-3">
@@ -377,12 +495,9 @@ export default function ExamListPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {/* 查看詳情 */}
                       <Button variant="outline" size="sm" asChild>
                         <Link to={`/interviewer/exams/${exam.id}`}>查看</Link>
                       </Button>
-
-                      {/* 刪除 */}
                       <Button
                         variant="destructive"
                         size="sm"
@@ -416,7 +531,6 @@ export default function ExamListPage() {
               確定要刪除考試「{deleteTarget?.title}」嗎？此操作無法復原。
             </DialogDescription>
           </DialogHeader>
-          {/* 刪除失敗的 inline 錯誤訊息 */}
           {deleteError && (
             <p className="text-sm font-medium text-destructive">{deleteError}</p>
           )}
