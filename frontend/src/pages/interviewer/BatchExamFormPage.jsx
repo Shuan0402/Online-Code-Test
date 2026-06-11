@@ -66,10 +66,11 @@ export default function BatchExamFormPage() {
       return
     }
     try {
-      const res = await api.get('/api/v1/users/', {
-        params: { tag: selectedTag, role: 'Candidate' },
-      })
-      const candidates = (res.data ?? []).filter((u) => u.role === 'Candidate')
+      const res = await api.get('/api/v1/users/')
+      // 後端 /users/ 不支援 tag 篩選,需在前端依角色 + 標籤過濾
+      const candidates = (res.data ?? []).filter(
+        (u) => u.role === 'Candidate' && (u.tags ?? []).includes(selectedTag)
+      )
       setTagCandidatesCount(candidates.length)
     } catch {
       setTagCandidatesCount(null)
