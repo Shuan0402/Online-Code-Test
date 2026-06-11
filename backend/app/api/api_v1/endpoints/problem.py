@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from typing import List, Annotated
 from uuid import UUID
 
@@ -81,7 +82,15 @@ def create_problem(
         test_cases=[TestCase(**tc.model_dump()) for tc in problem_in.test_cases]
     )
     db.add(db_problem)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 第二道防線:pre-check 沒擋到(race condition / partial index 失效時)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="題目名稱已重複，請使用其他名稱。"
+        )
     db.refresh(db_problem)
     return db_problem
 
