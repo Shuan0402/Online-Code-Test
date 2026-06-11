@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -39,6 +39,7 @@ const STATUS_OPTIONS = [
 
 export default function ExamListPage() {
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [exams, setExams] = useState([])
   const [loading, setLoading] = useState(true)
@@ -59,6 +60,19 @@ export default function ExamListPage() {
   // 答對率區間篩選（server-side filter，0-100 %）
   const [scoreGte, setScoreGte] = useState('')
   const [scoreLte, setScoreLte] = useState('')
+
+  // 批次建立結果通知
+  const [batchResult, setBatchResult] = useState(null)
+  const [batchResultVisible, setBatchResultVisible] = useState(true)
+
+  useEffect(() => {
+    if (location.state?.batchResult) {
+      setBatchResult(location.state.batchResult)
+      setBatchResultVisible(true)
+      // 清除 state 避免重新整理後再顯示
+      window.history.replaceState({}, document.title)
+    }
+  }, [location.state])
 
   // 刪除確認 Dialog 狀態
   const [deleteTarget, setDeleteTarget] = useState(null) // { id, title }
@@ -161,10 +175,44 @@ export default function ExamListPage() {
       {/* 頁首：標題 + 新增按鈕 */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">考試列表</h1>
-        <Button onClick={() => navigate('/interviewer/exams/new')}>
-          新增考試
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => navigate('/interviewer/exams/batch-new')}>
+            批次新增
+          </Button>
+          <Button onClick={() => navigate('/interviewer/exams/new')}>
+            新增考試
+          </Button>
+        </div>
       </div>
+
+      {/* 批次建立結果通知 */}
+      {batchResult && batchResultVisible && (
+        <div className={`rounded-lg border px-4 py-3 text-sm ${
+          batchResult.failed_count > 0
+            ? 'bg-amber-50 border-amber-200 text-amber-800'
+            : 'bg-green-50 border-green-200 text-green-800'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span>
+              批次建立完成：
+              <span className="font-medium">{batchResult.success_count}</span> 筆成功
+              {batchResult.failed_count > 0 && (
+                <>, <span className="font-medium">{batchResult.failed_count}</span> 筆失敗</>
+              )}
+              （共 <span className="font-medium">{batchResult.total_requested}</span> 位考生）
+            </span>
+            <button
+              onClick={() => {
+                setBatchResultVisible(false)
+                fetchExams()
+              }}
+              className="text-xs font-medium underline hover:no-underline"
+            >
+              關閉並重新整理
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 篩選列：狀態 + 「只看我的」+ 時間區段 + 答對率 */}
       <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/20 p-3">

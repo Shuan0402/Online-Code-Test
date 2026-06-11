@@ -8,13 +8,14 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.api import deps
+from app.models.candidate_tag import CandidateTag
 from app.models.exam import Exam, ExamProblem, ViolationLog
 from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.testcase import TestCase
 from app.models.problem import Problem
-from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate, ExamBatchCreate, BatchExamCreateResult
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
 from app.services.tags import get_all_unique_tags
@@ -468,6 +469,167 @@ def create_exam_session(
     db.commit()
     db.refresh(new_exam)
     return new_exam
+
+
+@router.post("/batch", response_model=BatchExamCreateResult, status_code=status.HTTP_201_CREATED)
+def create_exam_session_batch(
+    obj_in: ExamBatchCreate,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    批次建立考試 API。
+    - 限制只有 Interviewer 或 Admin 角色可以使用。
+    - 依據指定的標籤 (tag)，為所有擁有該標籤的考生建立同一場考試。
+    - 可選擇建立後是否自動抽選題目 (auto_generate)。
+    - 回傳成功建立的考試清單及統計資訊。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以批次建立考試場次。"
+        )
+
+    # 查詢所有擁有該標籤的考生
+    candidates_with_tag = (
+        db.query(User)
+        .join(CandidateTag, User.id == CandidateTag.user_id)
+        .filter(CandidateTag.tag == obj_in.tag)
+        .filter(User.role == UserRole.Candidate)
+        .filter(User.is_active == True)
+        .all()
+    )
+
+    if not candidates_with_tag:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到任何擁有標籤「{obj_in.tag}」的活躍考生。"
+        )
+
+    created_exams = []
+    errors = []
+    total_requested = len(candidates_with_tag)
+
+    for candidate in candidates_with_tag:
+        try:
+            new_exam = Exam(
+                id=uuid.uuid4(),
+                title=obj_in.title,
+                tag=obj_in.tag,
+                duration_minutes=obj_in.duration_minutes,
+                easy_count=obj_in.easy_count,
+                medium_count=obj_in.medium_count,
+                hard_count=obj_in.hard_count,
+                status=ExamStatus.Draft,
+                creator_id=current_user.id,
+                candidate_id=candidate.id,
+            )
+            db.add(new_exam)
+            db.flush()  # 獲取 ID，但不提交整個交易
+
+            # 若需要自動抽選題目
+            if obj_in.auto_generate and (obj_in.easy_count > 0 or obj_in.medium_count > 0 or obj_in.hard_count > 0):
+                difficulty_gap = [
+                    (DifficultyLevel.Easy, obj_in.easy_count),
+                    (DifficultyLevel.Medium, obj_in.medium_count),
+                    (DifficultyLevel.Hard, obj_in.hard_count),
+                ]
+                allocated_ids = []
+                new_selected_problems = []
+                for diff_level, gap_count in difficulty_gap:
+                    if gap_count > 0:
+                        problems = _select_problems_for_gap(db, diff_level, gap_count, allocated_ids)
+                        new_selected_problems.extend(problems)
+                        allocated_ids.extend([p.id for p in problems])
+
+                for index, prob in enumerate(new_selected_problems):
+                    ep = ExamProblem(
+                        exam_id=new_exam.id,
+                        problem_id=prob.id,
+                        sequence=index + 1,
+                        points=100,
+                    )
+                    db.add(ep)
+
+            db.flush()
+            db.refresh(new_exam)
+            created_exams.append(new_exam)
+        except Exception as e:
+            errors.append(f"考生 {candidate.full_name or candidate.username} (ID: {candidate.id}) 建立失敗: {str(e)}")
+
+    # 全部成功才一次提交
+    if not errors:
+        db.commit()
+    else:
+        db.rollback()
+        # 若全部失敗則拋錯
+        if not created_exams:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"批次建立考試全部失敗: {'; '.join(errors)}"
+            )
+        # 部分成功則只提交成功的部分
+        # 由於上面是逐個 flush，若部分失敗需全部 rollback
+        # 簡單做法：全部 rollback 後只重建成功的
+        # 但為了保持一致性，若有任何錯誤就全部 rollback
+        # 此處改為：重新建立成功的部份
+        created_exams_retry = []
+        for candidate in candidates_with_tag:
+            try:
+                new_exam = Exam(
+                    id=uuid.uuid4(),
+                    title=obj_in.title,
+                    tag=obj_in.tag,
+                    duration_minutes=obj_in.duration_minutes,
+                    easy_count=obj_in.easy_count,
+                    medium_count=obj_in.medium_count,
+                    hard_count=obj_in.hard_count,
+                    status=ExamStatus.Draft,
+                    creator_id=current_user.id,
+                    candidate_id=candidate.id,
+                )
+                db.add(new_exam)
+                db.flush()
+
+                if obj_in.auto_generate and (obj_in.easy_count > 0 or obj_in.medium_count > 0 or obj_in.hard_count > 0):
+                    difficulty_gap = [
+                        (DifficultyLevel.Easy, obj_in.easy_count),
+                        (DifficultyLevel.Medium, obj_in.medium_count),
+                        (DifficultyLevel.Hard, obj_in.hard_count),
+                    ]
+                    allocated_ids = []
+                    new_selected_problems = []
+                    for diff_level, gap_count in difficulty_gap:
+                        if gap_count > 0:
+                            problems = _select_problems_for_gap(db, diff_level, gap_count, allocated_ids)
+                            new_selected_problems.extend(problems)
+                            allocated_ids.extend([p.id for p in problems])
+
+                    for index, prob in enumerate(new_selected_problems):
+                        ep = ExamProblem(
+                            exam_id=new_exam.id,
+                            problem_id=prob.id,
+                            sequence=index + 1,
+                            points=100,
+                        )
+                        db.add(ep)
+
+                db.flush()
+                db.refresh(new_exam)
+                created_exams_retry.append(new_exam)
+            except Exception:
+                pass  # 忽略重建中仍失敗的考生
+
+        db.commit()
+        created_exams = created_exams_retry
+
+    return BatchExamCreateResult(
+        created_exams=created_exams,
+        total_requested=total_requested,
+        success_count=len(created_exams),
+        failed_count=total_requested - len(created_exams),
+        errors=errors,
+    )
 
 def _count_problems_by_difficulty(exam_problems: list) -> dict:
     """Count existing ExamProblem entries grouped by difficulty level."""

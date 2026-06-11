@@ -10,7 +10,7 @@ import LoginPage from './pages/LoginPage'
 import UnauthorizedPage from './pages/UnauthorizedPage'
 import ExamListPage from './pages/candidate/ExamListPage'
 import { ProblemListPage, ProblemFormPage, ProblemSubmissionsPage } from './pages/questioner'
-import { ExamListPage as InterviewerExamListPage, ExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage, ProfilePage } from './pages/interviewer'
+import { ExamListPage as InterviewerExamListPage, ExamFormPage, BatchExamFormPage, ExamDetailPage, ExamResultPage, CandidateListPage, CandidateFormPage, CandidateDetailPage, SubmissionDetailPage, ProfilePage } from './pages/interviewer'
 import { DashboardPage, MemberListPage, MemberCreatePage, MemberDetailPage, AdminExamListPage, AdminExamDetailPage, AdminProblemListPage, AdminProblemDetailPage } from '@/pages/admin'
 import TakeExamPage from './pages/candidate/TakeExamPage'
 import ResultPage from './pages/candidate/ResultPage'
@@ -71,6 +71,7 @@ export default function App() {
         >
           <Route index element={<InterviewerExamListPage />} />
           <Route path="exams/new" element={<ExamFormPage />} />
+          <Route path="exams/batch-new" element={<BatchExamFormPage />} />
           <Route path="exams/:id" element={<ExamDetailPage />} />
           <Route path="exams/:id/result" element={<ExamResultPage />} />
           <Route path="exams/:examId/problems/:problemId" element={<SubmissionDetailPage />} />
