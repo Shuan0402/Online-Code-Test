@@ -1,12 +1,14 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Annotated
+from app.models.user import User
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from pydantic import BaseModel
 
 from app.api import deps
-from app.models.exam import Exam, ExamProblem
+from app.models.exam import Exam, ExamProblem, ViolationLog
 from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
@@ -16,12 +18,190 @@ from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, Exa
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
 
+EXAM_NOT_FOUND = "找不到指定的考試項目。"
+
+class ViolationReportSchema(BaseModel):
+    violation_type: str
+    details: str
 
 router = APIRouter()
 
+
+def _parse_date_start(date_str: str):
+    """Parse a date/datetime string into a UTC-aware datetime for start filtering."""
+    try:
+        return datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
+    except ValueError:
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+
+def _parse_date_end(date_str: str):
+    """Parse a date/datetime string into a UTC-aware datetime for end filtering.
+    Pure dates are extended to 23:59:59 so the whole day is included.
+    """
+    if len(date_str) == 10:
+        try:
+            return datetime.strptime(date_str, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+        except ValueError:
+            pass
+    try:
+        return datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _apply_staff_exam_filters(query, current_user, candidate_id, mine, created_start, created_end):
+    """Apply staff-only (Interviewer/Admin) query filters."""
+    if candidate_id:
+        query = query.filter(Exam.candidate_id == candidate_id)
+    if mine:
+        query = query.filter(Exam.creator_id == current_user.id)
+    if created_start:
+        start_dt = _parse_date_start(created_start)
+        if start_dt:
+            query = query.filter(Exam.created_at >= start_dt)
+    if created_end:
+        end_dt = _parse_date_end(created_end)
+        if end_dt:
+            query = query.filter(Exam.created_at <= end_dt)
+    return query
+
+
+def _sort_exam_list(filtered_exams: list, order_by: str) -> list:
+    """Sort a list of (exam, pct) tuples according to the order_by parameter."""
+    sort_keys = {
+        "finished_at": (lambda x: (x[0].end_time is None, x[0].end_time), False),
+        "-finished_at": (lambda x: (x[0].end_time is None, x[0].end_time), True),
+        "score": (lambda x: x[1], False),
+        "-score": (lambda x: x[1], True),
+    }
+    if order_by in sort_keys:
+        key_fn, reverse = sort_keys[order_by]
+        filtered_exams.sort(key=key_fn, reverse=reverse)
+    else:
+        filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
+    return filtered_exams
+
+
+def _sort_problem_results(filtered_results: list, order_by: str) -> list:
+    """Sort a list of ExamProblemResultRead according to the order_by parameter."""
+    sort_map = {
+        "finished_at": (lambda x: (x.finished_at is None, x.finished_at), False),
+        "-finished_at": (lambda x: (x.finished_at is None, x.finished_at), True),
+        "score": (lambda x: x.candidate_score, False),
+        "-score": (lambda x: x.candidate_score, True),
+    }
+    if order_by in sort_map:
+        key_fn, reverse = sort_map[order_by]
+        filtered_results.sort(key=key_fn, reverse=reverse)
+    else:
+        filtered_results.sort(key=lambda x: x.sequence)
+    return filtered_results
+
+
+def _get_weight_by_problem(db: Session, problem_ids) -> dict:
+    """Batch-fetch total score_weight per problem_id; returns empty dict when no ids."""
+    if not problem_ids:
+        return {}
+    weight_rows = (
+        db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
+        .filter(TestCase.problem_id.in_(problem_ids))
+        .group_by(TestCase.problem_id)
+        .all()
+    )
+    return {pid: (w or 0) for pid, w in weight_rows}
+
+
+def _score_pct(score: float, total_points: float) -> float:
+    """Return percentage score, 0.0 when total_points is zero."""
+    return (score / total_points * 100.0) if total_points > 0 else 0.0
+
+
+def _filter_exams_by_score(
+    exams: list, weight_by_problem: dict, score_gte: Optional[float], score_lte: Optional[float]
+) -> list:
+    """Filter (exam, pct) pairs by score_gte / score_lte bounds."""
+    result = []
+    for exam in exams:
+        total_points = sum(
+            weight_by_problem.get(ep.problem_id, 0) or ep.points
+            for ep in exam.exam_problems
+        )
+        pct = _score_pct(exam.score, total_points)
+        if score_gte is not None and pct < score_gte:
+            continue
+        if score_lte is not None and pct > score_lte:
+            continue
+        result.append((exam, pct))
+    return result
+
+
+def _check_exam_start_preconditions(exam) -> None:
+    """Raise HTTPException for invalid start-exam states.
+
+    This guard is intentionally side-effect-free for all error paths so that the
+    caller can commit only on the happy path.
+    """
+    if exam.status == ExamStatus.Draft:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="該場考試尚未對外發布。"
+        )
+    if exam.status in [ExamStatus.Finished, ExamStatus.Archived]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="您已完成本場考試，無法重複作答。"
+        )
+
+
+def _resolve_ep_title(ep) -> str:
+    """Return the best available title for an ExamProblem row."""
+    if hasattr(ep, "title") and ep.title:
+        return ep.title
+    if hasattr(ep, "problem") and ep.problem:
+        return ep.problem.title
+    return "Unknown Problem"
+
+
+def _build_problem_result(ep, latest_sub, total_tc_weight: int):
+    """Construct an ExamProblemResultRead from an ExamProblem and its latest submission."""
+    p_score = latest_sub.score if latest_sub else 0
+    p_status = latest_sub.status if latest_sub else "Unsubmitted"
+    p_finished_at = latest_sub.created_at if latest_sub else None
+    return ExamProblemResultRead(
+        problem_id=ep.problem_id,
+        title=_resolve_ep_title(ep),
+        sequence=ep.sequence,
+        max_points=total_tc_weight,
+        candidate_score=p_score,
+        submission_status=p_status,
+        finished_at=p_finished_at,
+    )
+
+
+def _filter_problem_results_by_score(
+    problem_results: list, score_gte: Optional[float], score_lte: Optional[float]
+) -> list:
+    """Filter ExamProblemResultRead items by per-problem percentage score bounds."""
+    filtered = []
+    for r in problem_results:
+        pct = _score_pct(r.candidate_score, r.max_points)
+        if score_gte is not None and pct < score_gte:
+            continue
+        if score_lte is not None and pct > score_lte:
+            continue
+        filtered.append(r)
+    return filtered
+
+
 @router.get("/", response_model=List[CandidateExamListRead])
 def get_candidate_exams(
-    db: Session = Depends(deps.get_db),
+    db: Annotated[Session, Depends(deps.get_db)],
     candidate_id: Optional[uuid.UUID] = None,
     mine: Optional[bool] = None,
     score_gte: Optional[float] = None,
@@ -29,7 +209,7 @@ def get_candidate_exams(
     created_start: Optional[str] = None,
     created_end: Optional[str] = None,
     order_by: Optional[str] = None,
-    current_user = Depends(deps.get_current_user)
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None
 ):
     """
     考試場次列表調閱 API (多角色權限分流一體化)
@@ -42,111 +222,32 @@ def get_candidate_exams(
             joinedload(Exam.exam_problems).joinedload(ExamProblem.problem),
             joinedload(Exam.candidate)
         )
-        
-        if candidate_id:
-            query = query.filter(Exam.candidate_id == candidate_id)
-            
-        if mine:
-            query = query.filter(Exam.creator_id == current_user.id)
-            
-        if created_start:
-            try:
-                start_dt = datetime.fromisoformat(created_start).replace(tzinfo=timezone.utc)
-            except ValueError:
-                try:
-                    start_dt = datetime.strptime(created_start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-                except ValueError:
-                    start_dt = None
-            if start_dt:
-                query = query.filter(Exam.created_at >= start_dt)
-
-        if created_end:
-            # 純日期 (YYYY-MM-DD) 必須優先用 strptime 解析、補上 23:59:59 變成「當天結束」；
-            # 否則 datetime.fromisoformat("2026-06-01") 在 Python 3.11+ 會被解析成 00:00:00、
-            # 變成「<= 該日 00:00:00」、把當天的考試全部排除。
-            end_dt = None
-            if len(created_end) == 10:
-                try:
-                    end_dt = datetime.strptime(created_end, "%Y-%m-%d").replace(
-                        hour=23, minute=59, second=59, tzinfo=timezone.utc
-                    )
-                except ValueError:
-                    pass
-            if end_dt is None:
-                try:
-                    end_dt = datetime.fromisoformat(created_end).replace(tzinfo=timezone.utc)
-                except ValueError:
-                    end_dt = None
-            if end_dt:
-                query = query.filter(Exam.created_at <= end_dt)
-
+        query = _apply_staff_exam_filters(query, current_user, candidate_id, mine, created_start, created_end)
         exams = query.all()
-        
     else:
         exams = (
             db.query(Exam)
-            .options(
-                joinedload(Exam.exam_problems).joinedload(ExamProblem.problem)
-            )
-            .filter(
-                Exam.candidate_id == current_user.id,
-                Exam.status != ExamStatus.Draft
-            )
+            .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
+            .filter(Exam.candidate_id == current_user.id, Exam.status != ExamStatus.Draft)
             .all()
         )
-        
-    # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，
-    # 避免在雙重迴圈裡每場考試每題都打一次 DB（N+1）。
+
+    # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，避免 N+1。
     problem_ids = {ep.problem_id for exam in exams for ep in exam.exam_problems}
-    if problem_ids:
-        weight_rows = (
-            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
-            .filter(TestCase.problem_id.in_(problem_ids))
-            .group_by(TestCase.problem_id)
-            .all()
-        )
-        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
-    else:
-        weight_by_problem = {}
+    weight_by_problem = _get_weight_by_problem(db, problem_ids)
 
-    # Python-side filtering & sorting for percentage range and finished_at
-    filtered_exams = []
-    for exam in exams:
-        total_points = 0
-        for ep in exam.exam_problems:
-            total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
-            if total_tc_weight == 0:
-                total_tc_weight = ep.points
-            total_points += total_tc_weight
-        pct = (exam.score / total_points * 100.0) if total_points > 0 else 0.0
-        
-        if score_gte is not None and pct < score_gte:
-            continue
-        if score_lte is not None and pct > score_lte:
-            continue
-        filtered_exams.append((exam, pct))
-
-    if order_by:
-        if order_by == "finished_at":
-            filtered_exams.sort(key=lambda x: (x[0].end_time is None, x[0].end_time))
-        elif order_by == "-finished_at":
-            filtered_exams.sort(key=lambda x: (x[0].end_time is None, x[0].end_time), reverse=True)
-        elif order_by == "score":
-            filtered_exams.sort(key=lambda x: x[1])
-        elif order_by == "-score":
-            filtered_exams.sort(key=lambda x: x[1], reverse=True)
-        else:
-            filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
-    else:
-        filtered_exams.sort(key=lambda x: x[0].created_at, reverse=True)
+    filtered_exams = _filter_exams_by_score(exams, weight_by_problem, score_gte, score_lte)
+    filtered_exams = _sort_exam_list(filtered_exams, order_by) if order_by else sorted(
+        filtered_exams, key=lambda x: x[0].created_at, reverse=True
+    )
 
     return [x[0] for x in filtered_exams]
 
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)
 def start_exam(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     開始進行考試 API。
@@ -164,7 +265,7 @@ def start_exam(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if exam.candidate_id != current_user.id:
@@ -175,23 +276,13 @@ def start_exam(
 
     now = datetime.now(timezone.utc)
 
-    if exam.status == ExamStatus.Draft:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="該場考試尚未對外發布。"
-        )
+    _check_exam_start_preconditions(exam)
 
-    elif exam.status == ExamStatus.Published:
+    if exam.status == ExamStatus.Published:
         exam.status = ExamStatus.Ongoing
         exam.start_time = now
         db.commit()
         db.refresh(exam)
-
-    elif exam.status in [ExamStatus.Finished, ExamStatus.Archived]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="您已完成本場考試，無法重複作答。"
-        )
 
     total_duration_seconds = exam.duration_minutes * 60
     elapsed_seconds = (now - exam.start_time).total_seconds()
@@ -212,8 +303,8 @@ def start_exam(
 @router.post("/{exam_id}/submit", response_model=CandidateExamListRead)
 def submit_exam(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     考生主動正式交卷 API。
@@ -226,7 +317,7 @@ def submit_exam(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if exam.candidate_id != current_user.id:
@@ -254,8 +345,8 @@ def get_exam_result(
     score_gte: Optional[float] = None,
     score_lte: Optional[float] = None,
     order_by: Optional[str] = None,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)] = None,
+    current_user: Annotated[User, Depends(deps.get_current_user)] = None
 ):
     """
     獲取該場考試的實時各題狀態與總得分 (Candidate/Interviewer 共用)
@@ -273,7 +364,7 @@ def get_exam_result(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if current_user.role == UserRole.Candidate and exam.candidate_id != current_user.id:
@@ -288,27 +379,15 @@ def get_exam_result(
             detail="該場考試尚未對外發布。"
         )
 
+    ep_problem_ids = [ep.problem_id for ep in exam.exam_problems]
+    weight_by_problem = _get_weight_by_problem(db, ep_problem_ids)
+
     problem_results = []
     accumulated_exam_points = 0
     accumulated_candidate_score = 0
 
-    # 一次 batch 取本場考試所有題目的 testcase 配分總和，避免逐題打 DB。
-    ep_problem_ids = [ep.problem_id for ep in exam.exam_problems]
-    if ep_problem_ids:
-        weight_rows = (
-            db.query(TestCase.problem_id, func.sum(TestCase.score_weight))
-            .filter(TestCase.problem_id.in_(ep_problem_ids))
-            .group_by(TestCase.problem_id)
-            .all()
-        )
-        weight_by_problem = {pid: (w or 0) for pid, w in weight_rows}
-    else:
-        weight_by_problem = {}
-
     for ep in exam.exam_problems:
-        total_tc_weight = weight_by_problem.get(ep.problem_id, 0)
-        if total_tc_weight == 0:
-            total_tc_weight = ep.points
+        total_tc_weight = weight_by_problem.get(ep.problem_id, 0) or ep.points
         accumulated_exam_points += total_tc_weight
         
         # 排除 RUN_ONLY 試跑（試跑不計分）— 只取 OFFICIAL 最新一筆當該題的繳交紀錄。
@@ -323,54 +402,16 @@ def get_exam_result(
             .order_by(Submission.created_at.desc())
             .first()
         )
-        
-        p_score = latest_sub.score if latest_sub else 0
-        p_status = latest_sub.status if latest_sub else "Unsubmitted"
-        p_finished_at = latest_sub.created_at if latest_sub else None
-        
-        accumulated_candidate_score += p_score
-        
-        p_title = "Unknown Problem"
-        if hasattr(ep, "title") and ep.title:
-            p_title = ep.title
-        elif hasattr(ep, "problem") and ep.problem:
-            p_title = ep.problem.title
 
-        problem_results.append(
-            ExamProblemResultRead(
-                problem_id=ep.problem_id,
-                title=p_title,
-                sequence=ep.sequence,
-                max_points=total_tc_weight,
-                candidate_score=p_score,
-                submission_status=p_status,
-                finished_at=p_finished_at
-            )
-        )
+        entry = _build_problem_result(ep, latest_sub, total_tc_weight)
+        accumulated_candidate_score += entry.candidate_score
+        problem_results.append(entry)
 
     # Python-side filtering & sorting for single exam problems
-    filtered_results = []
-    for r in problem_results:
-        pct = (r.candidate_score / r.max_points * 100.0) if r.max_points > 0 else 0.0
-        if score_gte is not None and pct < score_gte:
-            continue
-        if score_lte is not None and pct > score_lte:
-            continue
-        filtered_results.append(r)
-
-    if order_by:
-        if order_by == "finished_at":
-            filtered_results.sort(key=lambda x: (x.finished_at is None, x.finished_at))
-        elif order_by == "-finished_at":
-            filtered_results.sort(key=lambda x: (x.finished_at is None, x.finished_at), reverse=True)
-        elif order_by == "score":
-            filtered_results.sort(key=lambda x: x.candidate_score)
-        elif order_by == "-score":
-            filtered_results.sort(key=lambda x: x.candidate_score, reverse=True)
-        else:
-            filtered_results.sort(key=lambda x: x.sequence)
-    else:
-        filtered_results.sort(key=lambda x: x.sequence)
+    filtered_results = _filter_problem_results_by_score(problem_results, score_gte, score_lte)
+    filtered_results = _sort_problem_results(filtered_results, order_by) if order_by else sorted(
+        filtered_results, key=lambda x: x.sequence
+    )
 
     return ExamResultRead(
         id=exam.id,
@@ -386,8 +427,8 @@ def get_exam_result(
 @router.post("/", response_model=ExamRead, status_code=status.HTTP_201_CREATED)
 def create_exam_session(
     obj_in: ExamCreate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     建立考試場次 API。
@@ -418,11 +459,47 @@ def create_exam_session(
     db.refresh(new_exam)
     return new_exam
 
+def _count_problems_by_difficulty(exam_problems: list) -> dict:
+    """Count existing ExamProblem entries grouped by difficulty level."""
+    counts = {
+        DifficultyLevel.Easy: 0,
+        DifficultyLevel.Medium: 0,
+        DifficultyLevel.Hard: 0,
+    }
+    for ep in exam_problems:
+        if ep.problem and ep.problem.difficulty:
+            counts[ep.problem.difficulty] += 1
+    return counts
+
+
+def _select_problems_for_gap(
+    db: Session, diff_level, gap_count: int, allocated_ids: list
+) -> list:
+    """Fetch `gap_count` random problems of `diff_level` excluding `allocated_ids`.
+
+    Raises HTTPException(400) when the pool is insufficient.
+    """
+    problems = (
+        db.query(Problem)
+        .filter(Problem.difficulty == diff_level)
+        .filter(~Problem.id.in_(allocated_ids) if allocated_ids else True)
+        .order_by(func.random())
+        .limit(gap_count)
+        .all()
+    )
+    if len(problems) < gap_count:
+        raise HTTPException(  # NOSONAR
+            status_code=400,
+            detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。"
+        )
+    return problems
+
+
 @router.post("/{exam_id}/problems/generate", response_model=ExamRead)
 def generate_exam_problems(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     自動抽選題目 API。
@@ -439,27 +516,19 @@ def generate_exam_problems(
 
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
-    
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=EXAM_NOT_FOUND)
+
     if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"目前考試狀態為 {exam.status}，不允許變更題目配置。"
         )
-    
-    current_counts = {
-        DifficultyLevel.Easy: 0,
-        DifficultyLevel.Medium: 0,
-        DifficultyLevel.Hard: 0
-    }
-    for ep in exam.exam_problems:
-        if ep.problem and ep.problem.difficulty:
-            current_counts[ep.problem.difficulty] += 1
 
+    current_counts = _count_problems_by_difficulty(exam.exam_problems)
     difficulty_gap = [
         (DifficultyLevel.Easy, max(0, exam.easy_count - current_counts[DifficultyLevel.Easy])),
         (DifficultyLevel.Medium, max(0, exam.medium_count - current_counts[DifficultyLevel.Medium])),
-        (DifficultyLevel.Hard, max(0, exam.hard_count - current_counts[DifficultyLevel.Hard]))
+        (DifficultyLevel.Hard, max(0, exam.hard_count - current_counts[DifficultyLevel.Hard])),
     ]
 
     allocated_ids = [ep.problem_id for ep in exam.exam_problems]
@@ -467,17 +536,7 @@ def generate_exam_problems(
 
     for diff_level, gap_count in difficulty_gap:
         if gap_count > 0:
-            problems = (
-                db.query(Problem)
-                .filter(Problem.difficulty == diff_level)
-                .filter(~Problem.id.in_(allocated_ids) if allocated_ids else True)
-                .order_by(func.random())
-                .limit(gap_count)
-                .all()
-            )
-            if len(problems) < gap_count:
-                raise HTTPException(status_code=400, detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。")
-            
+            problems = _select_problems_for_gap(db, diff_level, gap_count, allocated_ids)
             new_selected_problems.extend(problems)
             allocated_ids.extend([p.id for p in problems])
 
@@ -492,7 +551,7 @@ def generate_exam_problems(
         db.add(ep)
 
     db.commit()
-    
+
     return (
         db.query(Exam)
         .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
@@ -503,8 +562,8 @@ def generate_exam_problems(
 @router.post("/{exam_id}/publish", response_model=ExamRead)
 def publish_exam_session(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     發布考試場次 API。
@@ -525,7 +584,7 @@ def publish_exam_session(
         .first()
     )
     if not exam:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試項目。")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=EXAM_NOT_FOUND)
 
     if exam.status != ExamStatus.Draft:
         raise HTTPException(
@@ -555,8 +614,8 @@ def publish_exam_session(
 @router.get("/{exam_id}", response_model=ExamRead)
 def get_exam_session_by_id(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     單一考試場次詳細調閱 API。
@@ -576,7 +635,7 @@ def get_exam_session_by_id(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
@@ -598,8 +657,8 @@ def get_exam_session_by_id(
 def update_exam_session(
     exam_id: uuid.UUID,
     obj_in: ExamUpdate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     # 修改考試設定 API。
@@ -616,13 +675,13 @@ def update_exam_session(
     if not exam:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的考試項目。"
+            detail=EXAM_NOT_FOUND
         )
 
     if exam.status == ExamStatus.Ongoing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"目前正在考試，無法修改考試資訊"
+            detail="目前正在考試，無法修改考試資訊"
         )
 
     update_data = obj_in.model_dump(exclude_unset=True)
@@ -646,8 +705,8 @@ def update_exam_session(
 @router.delete("/{exam_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_exam_session(
     exam_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     刪除考試場次 API。
@@ -681,55 +740,63 @@ def delete_exam_session(
 
     db.delete(exam)
     db.commit()
-    
-    return
+
+def _resolve_target_problem_id(db: Session, obj_in, exam):
+    """Return the problem_id to add, resolving random_difficulty when no explicit id given.
+
+    Raises HTTPException when random mode finds no available problem.
+    """
+    if not (obj_in.random_difficulty and not obj_in.problem_id):
+        return obj_in.problem_id
+    exist_ids = [ep.problem_id for ep in exam.exam_problems]
+    random_prob = (
+        db.query(Problem)
+        .filter(Problem.difficulty == obj_in.random_difficulty)
+        .filter(~Problem.id.in_(exist_ids) if exist_ids else True)
+        .order_by(func.random())
+        .first()
+    )
+    if not random_prob:
+        raise HTTPException(  # NOSONAR
+            status_code=400,
+            detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選"
+        )
+    return random_prob.id
+
 
 @router.post("/{exam_id}/problems", response_model=ExamRead)
 def add_exam_problem_manual(
     exam_id: uuid.UUID,
     obj_in: ExamProblemCreate,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     面試主管手動指派加題 API
     - 僅限管理員/面試官，且考卷必須處於 Draft 狀態才允許手動塞題。
-    """    
+    """
     if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="權限不足，只有面試官或管理員可以手動指派題目。"
         )
-    
+
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到指定的考試場次")
-    
+
     if exam.status in [ExamStatus.Ongoing, ExamStatus.Finished, ExamStatus.Archived]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"目前考場狀態為 {exam.status}，不允許變更題目配置。"
         )
-    
-    target_problem_id = obj_in.problem_id
 
-    if obj_in.random_difficulty and not target_problem_id:
-        exist_ids = [ep.problem_id for ep in exam.exam_problems]
-        random_prob = (
-            db.query(Problem)
-            .filter(Problem.difficulty == obj_in.random_difficulty)
-            .filter(~Problem.id.in_(exist_ids) if exist_ids else True)
-            .order_by(func.random())
-            .first()
-        )
-        if not random_prob:
-            raise HTTPException(status_code=400, detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選")
-        target_problem_id = random_prob.id
+    target_problem_id = _resolve_target_problem_id(db, obj_in, exam)
 
     existing_ep = db.get(ExamProblem, (exam_id, target_problem_id))
     if existing_ep:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="該題目已存在於本張試卷中，請勿重複添加。"
         )
 
@@ -752,8 +819,8 @@ def add_exam_problem_manual(
 @router.get("/{exam_id}/problems")
 def get_exam_problems(
     exam_id: str,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_current_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
     獲取特定考試場次配置的所有題目清單
@@ -795,8 +862,8 @@ def get_exam_problems(
 def delete_exam_problem(
     exam_id: str,
     p_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user = Depends(deps.get_staff_user)
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_staff_user)]
 ):
     """
     從指定考試場次中，移除特定的一道題目
@@ -828,3 +895,26 @@ def delete_exam_problem(
     db.commit()
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.post("/{exam_id}/violation", status_code=status.HTTP_201_CREATED)
+async def report_exam_violation(
+    exam_id: uuid.UUID,
+    payload: ViolationReportSchema,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    接收前端上報的面試者切頁、大量複製貼上等誠信違規事件
+    """
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="找不到該場考試")  # NOSONAR
+        
+    new_log = ViolationLog(
+        exam_id=exam_id,
+        violation_type=payload.violation_type,
+        details=payload.details
+    )
+    db.add(new_log)
+    db.commit()
+    return {"status": "success", "message": "違規事件已同步存檔入庫"}
