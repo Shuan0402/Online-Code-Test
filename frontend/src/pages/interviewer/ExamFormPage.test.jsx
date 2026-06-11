@@ -354,7 +354,7 @@ describe('ExamFormPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/interviewer')
   })
 
-  it('fetches existing tags and renders suggestions', async () => {
+  it('fetches existing tags and renders autocomplete dropdown suggestions', async () => {
     setupGetMocks({ tags: ['TagX', 'TagY'] })
     renderPage()
 
@@ -362,9 +362,49 @@ describe('ExamFormPage', () => {
       expect(screen.getByText('新增考試')).toBeInTheDocument()
     })
 
-    const datalist = document.getElementById('existing-tags')
-    expect(datalist).toBeInTheDocument()
-    const options = Array.from(datalist.querySelectorAll('option')).map((o) => o.value)
-    expect(options).toEqual(['TagX', 'TagY'])
+    // Dropdown should be closed initially, so options not visible
+    expect(screen.queryByText('TagX')).not.toBeInTheDocument()
+
+    // Focus on tag input to open the dropdown
+    const tagInput = screen.getByLabelText('考試標籤')
+    fireEvent.focus(tagInput)
+
+    // Dropdown options should now be visible
+    expect(screen.getByText('TagX')).toBeInTheDocument()
+    expect(screen.getByText('TagY')).toBeInTheDocument()
+
+    // Click on an option TagY
+    fireEvent.click(screen.getByText('TagY'))
+
+    // The value of tagInput should be updated
+    expect(tagInput.value).toBe('TagY')
+  })
+
+  it('filters suggestions and shows option to add new tag when no matches found', async () => {
+    setupGetMocks({ tags: ['TagX', 'TagY'] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('新增考試')).toBeInTheDocument()
+    })
+
+    const tagInput = screen.getByLabelText('考試標籤')
+    fireEvent.focus(tagInput)
+    fireEvent.change(tagInput, { target: { value: 'TagZ' } })
+
+    // TagX and TagY should be filtered out
+    expect(screen.queryByText('TagX')).not.toBeInTheDocument()
+    expect(screen.queryByText('TagY')).not.toBeInTheDocument()
+
+    // The add new tag option should be visible
+    const addOption = screen.getByText('+ 新增標籤「TagZ」')
+    expect(addOption).toBeInTheDocument()
+
+    // Click it to confirm/add the tag
+    fireEvent.click(addOption)
+
+    // The tag value is confirmed
+    expect(tagInput.value).toBe('TagZ')
   })
 })
+

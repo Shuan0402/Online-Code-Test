@@ -20,6 +20,33 @@ export default function ExamFormPage() {
   const [mediumCount, setMediumCount] = useState(0)
   const [hardCount, setHardCount] = useState(0)
   const [candidateId, setCandidateId] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+
+  // Click outside dropdown handler
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      const container = document.getElementById('tag-container')
+      if (container && !container.contains(e.target)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('click', handleOutsideClick)
+    return () => {
+      document.removeEventListener('click', handleOutsideClick)
+    }
+  }, [])
+
+  const filteredTags = existingTags.filter((t) =>
+    t.toLowerCase().includes(tag.toLowerCase())
+  )
+
+  const handleAddNewTag = () => {
+    const trimmed = tag.trim()
+    if (trimmed && !existingTags.includes(trimmed)) {
+      setExistingTags((prev) => [...prev, trimmed])
+    }
+    setIsOpen(false)
+  }
 
   // --- 候選人清單 ---
   const [candidates, setCandidates] = useState([])
@@ -191,21 +218,82 @@ export default function ExamFormPage() {
         </div>
 
         {/* 考試標籤 */}
-        <div className="space-y-1">
+        <div className="space-y-1 relative" id="tag-container">
           <Label htmlFor="tag">考試標籤</Label>
-          <Input
-            id="tag"
-            type="text"
-            value={tag}
-            onChange={(e) => setTag(e.target.value)}
-            placeholder="例如: 2026 校園徵才 - 前端工程師 (可輸入或從選單中選取)"
-            list="existing-tags"
-          />
-          <datalist id="existing-tags">
-            {existingTags.map((t) => (
-              <option key={t} value={t} />
-            ))}
-          </datalist>
+          <div className="relative">
+            <Input
+              id="tag"
+              type="text"
+              value={tag}
+              onChange={(e) => {
+                setTag(e.target.value)
+                setIsOpen(true)
+              }}
+              onFocus={() => setIsOpen(true)}
+              placeholder="例如: 2026 校園徵才 - 前端工程師 (可輸入或篩選選取)"
+              autoComplete="off"
+              className="pr-10"
+            />
+            <div
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-muted-foreground hover:text-foreground p-1"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsOpen((prev) => !prev)
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </div>
+          </div>
+
+          {isOpen && (
+            <div className="absolute left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md z-50">
+              <ul className="py-1 text-sm">
+                {filteredTags.length > 0 ? (
+                  filteredTags.map((t) => (
+                    <li
+                      key={t}
+                      onClick={() => {
+                        setTag(t)
+                        setIsOpen(false)
+                      }}
+                      className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
+                    >
+                      {t}
+                    </li>
+                  ))
+                ) : (
+                  tag.trim() ? null : (
+                    <li className="px-3 py-2 text-muted-foreground text-center">
+                      目前沒有現有標籤
+                    </li>
+                  )
+                )}
+
+                {/* 若篩選結果為空，且使用者有輸入內容，則提供新增標籤的選項 */}
+                {tag.trim() && filteredTags.length === 0 && (
+                  <li
+                    onClick={handleAddNewTag}
+                    className="px-3 py-2 text-primary hover:bg-accent hover:text-accent-foreground cursor-pointer font-medium border-t border-muted transition-colors"
+                  >
+                    + 新增標籤「{tag}」
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* 考試時長 */}
