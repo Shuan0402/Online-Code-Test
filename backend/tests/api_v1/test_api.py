@@ -2,6 +2,7 @@ import os
 
 # Ensure required settings are available before module import.
 os.environ.setdefault('JWT_SECRET', 'testsecret')
+os.environ.setdefault('CANDIDATE_PASSWORD_SHA_SECRET', 'test-batch-secret')
 
 from fastapi import APIRouter
 from app.api.api_v1 import api

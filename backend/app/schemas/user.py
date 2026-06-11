@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 from app.models.enums import UserRole
 
@@ -18,6 +18,10 @@ class UserCreate(UserBase):
     註冊時使用的 Schema，包含密碼明文。
     """
     password: str = Field(..., min_length=8, json_schema_extra={"example": "strong_password123"})
+    tags: Optional[List[str]] = Field(
+        default=None,
+        description="考生標籤（僅 role 為 Candidate 時有效，可選多個）",
+    )
 
 class UserUpdate(BaseModel):
     """
@@ -26,12 +30,35 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[UserRole] = None
 
+class BatchImportRowResult(BaseModel):
+    row: int
+    username: str
+    full_name: Optional[str] = None
+    status: str
+    message: Optional[str] = None
+    generated_password: Optional[str] = None
+
+
+class BatchImportResult(BaseModel):
+    total: int
+    created: int
+    failed: int
+    results: List[BatchImportRowResult]
+
+
+class UserCandidateTagsUpdate(BaseModel):
+    """
+    更新考生標籤（完整取代現有標籤清單）。
+    """
+    tags: List[str] = Field(default_factory=list, description="考生標籤清單")
+
 class UserRead(UserBase):
     """
     回傳給前端的資料，將 id 改為 UUID 型別以對應 GUID 工具。
     """
     id: UUID
     created_at: datetime
+    tags: List[str] = Field(default_factory=list, description="考生標籤（非 Candidate 為空陣列）")
 
     model_config = ConfigDict(from_attributes=True)
 

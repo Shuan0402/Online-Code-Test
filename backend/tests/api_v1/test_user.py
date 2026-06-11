@@ -1,6 +1,7 @@
 import uuid
 
 from app.models.enums import UserRole
+from app.models.user import User
 
 
 # --- POST /users/ (建立新使用者) ---
@@ -324,6 +325,111 @@ def test_delete_user_forbidden_for_interviewer(client, interviewer_user, candida
     
     response = client.delete(f"/api/v1/users/{candidate_user.id}")
     assert response.status_code == 403
+
+
+def test_batch_import_candidates_csv(client, interviewer_user, override_auth, db_session):
+    """
+    批次匯入 CSV 可建立考生並套用統一標籤，回傳自動產生的密碼。
+    """
+    override_auth(interviewer_user)
+
+    csv_content = "真實姓名,帳號\n張三,zhangsan01\n李四,lisi23456\n"
+    response = client.post(
+        "/api/v1/users/batch-import",
+        files={"file": ("candidates.csv", csv_content.encode("utf-8"), "text/csv")},
+        data={"tags": '["2026 校園徵才 - 前端工程師"]'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"] == 2
+    assert payload["failed"] == 0
+    assert all(len(row["generated_password"]) == 8 for row in payload["results"])
+
+    user = db_session.query(User).filter(User.username == "zhangsan01").first()
+    assert user is not None
+    assert user.full_name == "張三"
+
+
+def test_batch_import_candidates_forbidden_for_candidate(client, candidate_user, override_auth):
+    override_auth(candidate_user)
+
+    csv_content = "真實姓名,帳號\n測試,testuser1\n"
+    response = client.post(
+        "/api/v1/users/batch-import",
+        files={"file": ("candidates.csv", csv_content.encode("utf-8"), "text/csv")},
+        data={"tags": "[]"},
+    )
+    assert response.status_code == 403
+
+
+def test_create_candidate_with_tags(client, interviewer_user, override_auth):
+    """
+    建立考生時可同時設定多個標籤。
+    """
+    override_auth(interviewer_user)
+
+    data = {
+        "username": "tagged_candidate",
+        "full_name": "Tagged Student",
+        "password": "strong_password123",
+        "role": "Candidate",
+        "tags": ["2026 校園徵才 - 前端工程師", "實習生"],
+    }
+
+    response = client.post("/api/v1/users/", json=data)
+    assert response.status_code == 201
+    content = response.json()
+    assert set(content["tags"]) == {"2026 校園徵才 - 前端工程師", "實習生"}
+
+
+def test_update_candidate_tags_by_interviewer(client, interviewer_user, candidate_user, override_auth):
+    """
+    面試官可更新考生的標籤（新增與刪除）。
+    """
+    override_auth(interviewer_user)
+
+    response = client.patch(
+        f"/api/v1/users/{candidate_user.id}/tags",
+        json={"tags": ["2026 校園徵才 - 後端工程師"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["tags"] == ["2026 校園徵才 - 後端工程師"]
+
+    response = client.patch(
+        f"/api/v1/users/{candidate_user.id}/tags",
+        json={"tags": []},
+    )
+    assert response.status_code == 200
+    assert response.json()["tags"] == []
+
+
+def test_update_candidate_tags_forbidden_for_candidate(client, candidate_user, override_auth):
+    """
+    一般考生無法修改標籤。
+    """
+    override_auth(candidate_user)
+
+    response = client.patch(
+        f"/api/v1/users/{candidate_user.id}/tags",
+        json={"tags": ["非法標籤"]},
+    )
+    assert response.status_code == 403
+
+
+def test_get_user_by_id_includes_tags(client, admin_user, candidate_user, override_auth, db_session):
+    """
+    查詢考生時應回傳標籤清單。
+    """
+    from app.models.candidate_tag import CandidateTag
+
+    override_auth(admin_user)
+    db_session.add(CandidateTag(user_id=candidate_user.id, tag="測試標籤"))
+    db_session.commit()
+
+    response = client.get(f"/api/v1/users/{candidate_user.id}")
+    assert response.status_code == 200
+    assert response.json()["tags"] == ["測試標籤"]
 
 
 def test_delete_user_admin_self_blocked(client, admin_user, override_auth):

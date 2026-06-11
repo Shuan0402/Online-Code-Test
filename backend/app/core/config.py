@@ -3,6 +3,11 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     JWT_SECRET: str = Field(..., validation_alias="JWT_SECRET")
+    CANDIDATE_PASSWORD_SHA_SECRET: str = Field(
+        ...,
+        validation_alias="CANDIDATE_PASSWORD_SHA_SECRET",
+        description="批次建立考生時，依帳號產生預設密碼所用的 HMAC 密鑰",
+    )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
     

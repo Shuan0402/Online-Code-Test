@@ -8,15 +8,16 @@ from sqlalchemy import func
 from pydantic import BaseModel
 
 from app.api import deps
+from app.models.candidate_tag import CandidateTag
 from app.models.exam import Exam, ExamProblem, ViolationLog
 from app.models.problem import Problem
 from app.models.enums import UserRole, ExamStatus, DifficultyLevel
 from app.models.submission import Submission
 from app.models.testcase import TestCase
-from app.models.problem import Problem
-from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
+from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate, ExamBatchCreate, BatchExamCreateResult, BatchExamActionRequest, BatchExamActionResult
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
+from app.services.tags import get_all_unique_tags
 
 EXAM_NOT_FOUND = "找不到指定的考試項目。"
 
@@ -199,6 +200,8 @@ def _filter_problem_results_by_score(
     return filtered
 
 
+# ===================== LIST & FILTER =====================
+
 @router.get("/", response_model=List[CandidateExamListRead])
 def get_candidate_exams(
     db: Annotated[Session, Depends(deps.get_db)],
@@ -247,6 +250,350 @@ def get_candidate_exams(
     )
 
     return [x[0] for x in filtered_exams]
+
+# ===================== TAGS =====================
+
+@router.get("/tags", response_model=List[str])
+def get_unique_tags(
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    獲取系統中所有已使用的考試標籤清單
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以獲取標籤清單。"
+        )
+    return get_all_unique_tags(db)
+
+
+# ===================== CREATE (single + batch) =====================
+
+@router.post("/", response_model=ExamRead, status_code=status.HTTP_201_CREATED)
+def create_exam_session(
+    obj_in: ExamCreate,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    建立考試場次 API。
+    - 限制只有 Interviewer 或 Admin 角色可以創建考試。
+    - 考卷主考官自動綁定目前登入的後台人員。
+    - 初始狀態一律鎖定為 Draft (草稿)。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以建立考試場次。"
+        )
+
+    new_exam = Exam(
+        id=uuid.uuid4(),
+        title=obj_in.title,
+        tag=obj_in.tag,
+        duration_minutes=obj_in.duration_minutes,
+        easy_count=obj_in.easy_count,
+        medium_count=obj_in.medium_count,
+        hard_count=obj_in.hard_count,
+        status=ExamStatus.Draft,
+        creator_id=current_user.id,
+        candidate_id=obj_in.candidate_id
+    )
+
+    db.add(new_exam)
+    db.commit()
+    db.refresh(new_exam)
+    return new_exam
+
+
+@router.post("/batch", response_model=BatchExamCreateResult, status_code=status.HTTP_201_CREATED)
+def create_exam_session_batch(
+    obj_in: ExamBatchCreate,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    批次建立考試 API。
+    - 限制只有 Interviewer 或 Admin 角色可以使用。
+    - 依據指定的標籤 (tag)，為所有擁有該標籤的考生建立同一場考試。
+    - 可選擇建立後是否自動抽選題目 (auto_generate)。
+    - 回傳成功建立的考試清單及統計資訊。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以批次建立考試場次。"
+        )
+
+    # 查詢所有擁有該標籤的考生
+    candidates_with_tag = (
+        db.query(User)
+        .join(CandidateTag, User.id == CandidateTag.user_id)
+        .filter(CandidateTag.tag == obj_in.tag)
+        .filter(User.role == UserRole.Candidate)
+        .filter(User.is_active == True)
+        .all()
+    )
+
+    if not candidates_with_tag:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到任何擁有標籤「{obj_in.tag}」的活躍考生。"
+        )
+
+    created_exams = []
+    errors = []
+    total_requested = len(candidates_with_tag)
+
+    for candidate in candidates_with_tag:
+        try:
+            new_exam = Exam(
+                id=uuid.uuid4(),
+                title=obj_in.title,
+                tag=obj_in.tag,
+                duration_minutes=obj_in.duration_minutes,
+                easy_count=obj_in.easy_count,
+                medium_count=obj_in.medium_count,
+                hard_count=obj_in.hard_count,
+                status=ExamStatus.Draft,
+                creator_id=current_user.id,
+                candidate_id=candidate.id,
+            )
+            db.add(new_exam)
+            db.flush()
+
+            if obj_in.auto_generate and (obj_in.easy_count > 0 or obj_in.medium_count > 0 or obj_in.hard_count > 0):
+                difficulty_gap = [
+                    (DifficultyLevel.Easy, obj_in.easy_count),
+                    (DifficultyLevel.Medium, obj_in.medium_count),
+                    (DifficultyLevel.Hard, obj_in.hard_count),
+                ]
+                allocated_ids = []
+                new_selected_problems = []
+                for diff_level, gap_count in difficulty_gap:
+                    if gap_count > 0:
+                        problems = _select_problems_for_gap(db, diff_level, gap_count, allocated_ids)
+                        new_selected_problems.extend(problems)
+                        allocated_ids.extend([p.id for p in problems])
+
+                for index, prob in enumerate(new_selected_problems):
+                    ep = ExamProblem(
+                        exam_id=new_exam.id,
+                        problem_id=prob.id,
+                        sequence=index + 1,
+                        points=100,
+                    )
+                    db.add(ep)
+
+            db.flush()
+            db.refresh(new_exam)
+            created_exams.append(new_exam)
+        except Exception as e:
+            errors.append(f"考生 {candidate.full_name or candidate.username} (ID: {candidate.id}) 建立失敗: {str(e)}")
+
+    if not errors:
+        db.commit()
+    else:
+        db.rollback()
+        if not created_exams:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"批次建立考試全部失敗: {'; '.join(errors)}"
+            )
+        created_exams_retry = []
+        for candidate in candidates_with_tag:
+            try:
+                new_exam = Exam(
+                    id=uuid.uuid4(),
+                    title=obj_in.title,
+                    tag=obj_in.tag,
+                    duration_minutes=obj_in.duration_minutes,
+                    easy_count=obj_in.easy_count,
+                    medium_count=obj_in.medium_count,
+                    hard_count=obj_in.hard_count,
+                    status=ExamStatus.Draft,
+                    creator_id=current_user.id,
+                    candidate_id=candidate.id,
+                )
+                db.add(new_exam)
+                db.flush()
+                if obj_in.auto_generate and (obj_in.easy_count > 0 or obj_in.medium_count > 0 or obj_in.hard_count > 0):
+                    difficulty_gap = [
+                        (DifficultyLevel.Easy, obj_in.easy_count),
+                        (DifficultyLevel.Medium, obj_in.medium_count),
+                        (DifficultyLevel.Hard, obj_in.hard_count),
+                    ]
+                    allocated_ids = []
+                    new_selected_problems = []
+                    for diff_level, gap_count in difficulty_gap:
+                        if gap_count > 0:
+                            problems = _select_problems_for_gap(db, diff_level, gap_count, allocated_ids)
+                            new_selected_problems.extend(problems)
+                            allocated_ids.extend([p.id for p in problems])
+                    for index, prob in enumerate(new_selected_problems):
+                        ep = ExamProblem(
+                            exam_id=new_exam.id,
+                            problem_id=prob.id,
+                            sequence=index + 1,
+                            points=100,
+                        )
+                        db.add(ep)
+                db.flush()
+                db.refresh(new_exam)
+                created_exams_retry.append(new_exam)
+            except Exception:
+                pass
+        db.commit()
+        created_exams = created_exams_retry
+
+    return BatchExamCreateResult(
+        created_exams=created_exams,
+        total_requested=total_requested,
+        success_count=len(created_exams),
+        failed_count=total_requested - len(created_exams),
+        errors=errors,
+    )
+
+
+# ===================== BATCH ACTIONS (MUST be before /{exam_id} routes) =====================
+
+@router.post("/batch/publish", response_model=BatchExamActionResult)
+def batch_publish_exams(
+    obj_in: BatchExamActionRequest,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    批次發布考試 API。
+    - 限制只有 Interviewer 或 Admin 角色可以使用。
+    - 只會發布狀態為 Draft 且已有題目的考試。
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以批次發布考試。"
+        )
+
+    success_count = 0
+    errors = []
+
+    for exam_id in obj_in.exam_ids:
+        try:
+            exam = (
+                db.query(Exam)
+                .options(joinedload(Exam.exam_problems))
+                .filter(Exam.id == exam_id)
+                .first()
+            )
+            if not exam:
+                errors.append(f"考試 {exam_id} 不存在")
+                continue
+            if exam.status != ExamStatus.Draft:
+                errors.append(f"考試 {exam_id} 狀態為 {exam.status}，只有草稿狀態才能發布")
+                continue
+            if not exam.exam_problems or len(exam.exam_problems) == 0:
+                errors.append(f"考試 {exam_id} 尚未配置題目，無法發布")
+                continue
+
+            exam.status = ExamStatus.Published
+            success_count += 1
+        except Exception as e:
+            errors.append(f"考試 {exam_id} 發布失敗: {str(e)}")
+
+    db.commit()
+    return BatchExamActionResult(
+        success_count=success_count,
+        failed_count=len(obj_in.exam_ids) - success_count,
+        errors=errors,
+    )
+
+
+@router.post("/batch/delete", response_model=BatchExamActionResult)
+def batch_delete_exams(
+    obj_in: BatchExamActionRequest,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    批次刪除/封存考試 API。
+    - 限制只有 Interviewer 或 Admin 角色可以使用。
+    - Draft/Published 狀態：直接刪除
+    - Finished 狀態：設為 Archived
+    - Ongoing 狀態：禁止操作
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以批次刪除考試。"
+        )
+
+    success_count = 0
+    errors = []
+
+    for exam_id in obj_in.exam_ids:
+        try:
+            exam = db.query(Exam).filter(Exam.id == exam_id).first()
+            if not exam:
+                errors.append(f"考試 {exam_id} 不存在")
+                continue
+            if exam.status == ExamStatus.Ongoing:
+                errors.append(f"考試 {exam_id} 正在進行中，無法刪除")
+                continue
+            if exam.status == ExamStatus.Finished:
+                exam.status = ExamStatus.Archived
+            else:
+                db.delete(exam)
+            success_count += 1
+        except Exception as e:
+            errors.append(f"考試 {exam_id} 刪除失敗: {str(e)}")
+
+    db.commit()
+    return BatchExamActionResult(
+        success_count=success_count,
+        failed_count=len(obj_in.exam_ids) - success_count,
+        errors=errors,
+    )
+
+
+# ===================== EXAM-DETAIL ROUTES (/{exam_id}/...) =====================
+
+def _count_problems_by_difficulty(exam_problems: list) -> dict:
+    """Count existing ExamProblem entries grouped by difficulty level."""
+    counts = {
+        DifficultyLevel.Easy: 0,
+        DifficultyLevel.Medium: 0,
+        DifficultyLevel.Hard: 0,
+    }
+    for ep in exam_problems:
+        if ep.problem and ep.problem.difficulty:
+            counts[ep.problem.difficulty] += 1
+    return counts
+
+
+def _select_problems_for_gap(
+    db: Session, diff_level, gap_count: int, allocated_ids: list
+) -> list:
+    """Fetch `gap_count` random problems of `diff_level` excluding `allocated_ids`.
+
+    Raises HTTPException(400) when the pool is insufficient.
+    """
+    problems = (
+        db.query(Problem)
+        .filter(Problem.difficulty == diff_level)
+        .filter(~Problem.id.in_(allocated_ids) if allocated_ids else True)
+        .order_by(func.random())
+        .limit(gap_count)
+        .all()
+    )
+    if len(problems) < gap_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。"
+        )
+    return problems
+
 
 @router.post("/{exam_id}/start", response_model=CandidateExamDetailRead)
 def start_exam(
@@ -308,6 +655,7 @@ def start_exam(
     exam.remaining_seconds = remaining_seconds
     return exam
 
+
 @router.post("/{exam_id}/submit", response_model=CandidateExamListRead)
 def submit_exam(
     exam_id: uuid.UUID,
@@ -346,6 +694,7 @@ def submit_exam(
     db.commit()
     db.refresh(exam)
     return exam
+
 
 @router.get("/{exam_id}/result", response_model=ExamResultRead)
 def get_exam_result(
@@ -398,7 +747,6 @@ def get_exam_result(
         total_tc_weight = weight_by_problem.get(ep.problem_id, 0) or ep.points
         accumulated_exam_points += total_tc_weight
         
-        # 排除 RUN_ONLY 試跑（試跑不計分）— 只取 OFFICIAL 最新一筆當該題的繳交紀錄。
         latest_sub = (
             db.query(Submission)
             .filter(
@@ -415,7 +763,6 @@ def get_exam_result(
         accumulated_candidate_score += entry.candidate_score
         problem_results.append(entry)
 
-    # Python-side filtering & sorting for single exam problems
     filtered_results = _filter_problem_results_by_score(problem_results, score_gte, score_lte)
     filtered_results = _sort_problem_results(filtered_results, order_by) if order_by else sorted(
         filtered_results, key=lambda x: x.sequence
@@ -431,77 +778,6 @@ def get_exam_result(
         end_time=exam.end_time,
         results=filtered_results
     )
-
-@router.post("/", response_model=ExamRead, status_code=status.HTTP_201_CREATED)
-def create_exam_session(
-    obj_in: ExamCreate,
-    db: Annotated[Session, Depends(deps.get_db)],
-    current_user: Annotated[User, Depends(deps.get_current_user)]
-):
-    """
-    建立考試場次 API。
-    - 限制只有 Interviewer 或 Admin 角色可以創建考試。
-    - 考卷主考官自動綁定目前登入的後台人員。
-    - 初始狀態一律鎖定為 Draft (草稿)。
-    """
-    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="權限不足，只有面試官或管理員可以建立考試場次。"
-        )
-
-    new_exam = Exam(
-        id=uuid.uuid4(),
-        title=obj_in.title,
-        tag=obj_in.tag,
-        duration_minutes=obj_in.duration_minutes,
-        easy_count=obj_in.easy_count,
-        medium_count=obj_in.medium_count,
-        hard_count=obj_in.hard_count,
-        status=ExamStatus.Draft,
-        creator_id=current_user.id,
-        candidate_id=obj_in.candidate_id
-    )
-
-    db.add(new_exam)
-    db.commit()
-    db.refresh(new_exam)
-    return new_exam
-
-def _count_problems_by_difficulty(exam_problems: list) -> dict:
-    """Count existing ExamProblem entries grouped by difficulty level."""
-    counts = {
-        DifficultyLevel.Easy: 0,
-        DifficultyLevel.Medium: 0,
-        DifficultyLevel.Hard: 0,
-    }
-    for ep in exam_problems:
-        if ep.problem and ep.problem.difficulty:
-            counts[ep.problem.difficulty] += 1
-    return counts
-
-
-def _select_problems_for_gap(
-    db: Session, diff_level, gap_count: int, allocated_ids: list
-) -> list:
-    """Fetch `gap_count` random problems of `diff_level` excluding `allocated_ids`.
-
-    Raises HTTPException(400) when the pool is insufficient.
-    """
-    problems = (
-        db.query(Problem)
-        .filter(Problem.difficulty == diff_level)
-        .filter(~Problem.id.in_(allocated_ids) if allocated_ids else True)
-        .order_by(func.random())
-        .limit(gap_count)
-        .all()
-    )
-    if len(problems) < gap_count:
-        raise HTTPException(  # NOSONAR
-            status_code=400,
-            detail=f"題庫中 {diff_level} 難度題目數量不足，無法補滿考卷空缺。"
-        )
-    return problems
 
 
 @router.post("/{exam_id}/problems/generate", response_model=ExamRead)
@@ -568,6 +844,7 @@ def generate_exam_problems(
         .first()
     )
 
+
 @router.post("/{exam_id}/publish", response_model=ExamRead)
 def publish_exam_session(
     exam_id: uuid.UUID,
@@ -620,27 +897,6 @@ def publish_exam_session(
     db.refresh(exam)
     return exam
 
-@router.get("/tags", response_model=List[str])
-def get_unique_tags(
-    db: Annotated[Session, Depends(deps.get_db)],
-    current_user: Annotated[User, Depends(deps.get_current_user)]
-):
-    """
-    獲取系統中所有已使用的考試標籤清單
-    """
-    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="權限不足，只有面試官或管理員可以獲取標籤清單。"
-        )
-    tags = (
-        db.query(Exam.tag)
-        .filter(Exam.tag != None)
-        .filter(Exam.tag != "")
-        .distinct()
-        .all()
-    )
-    return [t[0] for t in tags if t[0]]
 
 @router.get("/{exam_id}", response_model=ExamRead)
 def get_exam_session_by_id(
@@ -684,6 +940,7 @@ def get_exam_session_by_id(
 
     return exam
 
+
 @router.patch("/{exam_id}", response_model=ExamRead)
 def update_exam_session(
     exam_id: uuid.UUID,
@@ -692,7 +949,7 @@ def update_exam_session(
     current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
     """
-    # 修改考試設定 API。
+    修改考試設定 API。
     - 限制只有 Interviewer 或 Admin 角色可以修改考試。
     - 只有處於草稿或發布狀態的考試允許變更，一旦開考則禁止修改。
     """
@@ -717,8 +974,6 @@ def update_exam_session(
 
     update_data = obj_in.model_dump(exclude_unset=True)
 
-    # Bug 7：easy_count / medium_count / hard_count 只能在 Draft 狀態下調整。
-    # 一旦發布或結束、題目配比就是已敲定的紀錄、不准回頭改。
     count_fields = {"easy_count", "medium_count", "hard_count"}
     if count_fields & set(update_data) and exam.status != ExamStatus.Draft:
         raise HTTPException(
@@ -732,6 +987,7 @@ def update_exam_session(
     db.commit()
     db.refresh(exam)
     return exam
+
 
 @router.delete("/{exam_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_exam_session(
@@ -772,6 +1028,7 @@ def delete_exam_session(
     db.delete(exam)
     db.commit()
 
+
 def _resolve_target_problem_id(db: Session, obj_in, exam):
     """Return the problem_id to add, resolving random_difficulty when no explicit id given.
 
@@ -788,7 +1045,7 @@ def _resolve_target_problem_id(db: Session, obj_in, exam):
         .first()
     )
     if not random_prob:
-        raise HTTPException(  # NOSONAR
+        raise HTTPException(
             status_code=400,
             detail=f"題庫中已無更多未使用的 {obj_in.random_difficulty} 難度題目可供隨機抽選"
         )
@@ -847,6 +1104,7 @@ def add_exam_problem_manual(
     db.refresh(exam)
     return exam
 
+
 @router.get("/{exam_id}/problems")
 def get_exam_problems(
     exam_id: uuid.UUID,
@@ -889,6 +1147,7 @@ def get_exam_problems(
 
     return [ProblemRead.model_validate(p) for p in problems]
 
+
 @router.delete("/{exam_id}/problems/{p_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_exam_problem(
     exam_id: uuid.UUID,
@@ -927,6 +1186,7 @@ def delete_exam_problem(
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
 @router.post("/{exam_id}/violation", status_code=status.HTTP_201_CREATED)
 async def report_exam_violation(
     exam_id: uuid.UUID,
@@ -939,7 +1199,7 @@ async def report_exam_violation(
     """
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
-        raise HTTPException(status_code=404, detail="找不到該場考試")  # NOSONAR
+        raise HTTPException(status_code=404, detail="找不到該場考試")
         
     new_log = ViolationLog(
         exam_id=exam_id,

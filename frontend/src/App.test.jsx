@@ -64,6 +64,7 @@ vi.mock('./pages/questioner', () => ({
 vi.mock('./pages/interviewer', () => ({
   ExamListPage: () => <div data-testid="interviewer-exam-list-page" />,
   ExamFormPage: () => <div data-testid="exam-form-page" />,
+  BatchExamFormPage: () => <div data-testid="batch-exam-form-page" />,
   ExamDetailPage: () => <div data-testid="exam-detail-page" />,
   ExamResultPage: () => <div data-testid="exam-result-page" />,
   CandidateListPage: () => <div data-testid="candidate-list-page" />,

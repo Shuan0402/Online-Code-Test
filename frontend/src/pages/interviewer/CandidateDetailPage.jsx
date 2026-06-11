@@ -5,6 +5,7 @@ import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorMessage from '@/components/ErrorMessage'
 import ExamStatusBadge from '@/components/ExamStatusBadge'
+import TagMultiSelect from '@/components/TagMultiSelect'
 import { Button } from '@/components/ui/button'
 
 function formatDatetime(isoStr) {
@@ -18,12 +19,25 @@ function formatDatetime(isoStr) {
   })
 }
 
+function tagsEqual(a, b) {
+  if (a.length !== b.length) return false
+  const sortedA = [...a].sort()
+  const sortedB = [...b].sort()
+  return sortedA.every((tag, i) => tag === sortedB[i])
+}
+
 export default function CandidateDetailPage() {
   const { id: userId } = useParams()
 
   const [candidate, setCandidate] = useState(null)
   const [userLoading, setUserLoading] = useState(true)
   const [userError, setUserError] = useState(null)
+
+  const [tags, setTags] = useState([])
+  const [savedTags, setSavedTags] = useState([])
+  const [tagsSaving, setTagsSaving] = useState(false)
+  const [tagsError, setTagsError] = useState(null)
+  const [tagsSuccess, setTagsSuccess] = useState(false)
 
   const [candidateExams, setCandidateExams] = useState([])
   const [examsLoading, setExamsLoading] = useState(true)
@@ -37,6 +51,9 @@ export default function CandidateDetailPage() {
       try {
         const res = await api.get(`/api/v1/users/${userId}`)
         setCandidate(res.data)
+        const initialTags = res.data.tags ?? []
+        setTags(initialTags)
+        setSavedTags(initialTags)
       } catch (err) {
         const status = err.response?.status
         if (status === 404) {
@@ -68,6 +85,26 @@ export default function CandidateDetailPage() {
     loadExams()
   }, [userId])
 
+  const tagsDirty = !tagsEqual(tags, savedTags)
+
+  const handleSaveTags = async () => {
+    setTagsSaving(true)
+    setTagsError(null)
+    setTagsSuccess(false)
+    try {
+      const res = await api.patch(`/api/v1/users/${userId}/tags`, { tags })
+      const updatedTags = res.data.tags ?? []
+      setTags(updatedTags)
+      setSavedTags(updatedTags)
+      setCandidate((prev) => (prev ? { ...prev, tags: updatedTags } : prev))
+      setTagsSuccess(true)
+    } catch (err) {
+      setTagsError(err.response?.data?.detail ?? '儲存標籤失敗，請稍後再試')
+    } finally {
+      setTagsSaving(false)
+    }
+  }
+
   // Render user profile section
   const renderProfile = () => {
     if (userLoading) {
@@ -81,7 +118,7 @@ export default function CandidateDetailPage() {
       return <ErrorMessage message={userError} />
     }
     return (
-      <div className="rounded-lg border p-6 space-y-3">
+      <div className="rounded-lg border p-6 space-y-6">
         <div className="grid grid-cols-2 gap-y-3 text-sm">
           <span className="font-medium text-muted-foreground">姓名</span>
           <span>{candidate.full_name ?? '—'}</span>
@@ -91,6 +128,50 @@ export default function CandidateDetailPage() {
           <span>{candidate.role}</span>
           <span className="font-medium text-muted-foreground">建立時間</span>
           <span>{formatDatetime(candidate.created_at)}</span>
+        </div>
+
+        <div className="border-t pt-4 space-y-3">
+          <h3 className="text-sm font-medium">考生標籤</h3>
+          <TagMultiSelect
+            value={tags}
+            onChange={(nextTags) => {
+              setTags(nextTags)
+              setTagsSuccess(false)
+            }}
+            label=""
+            containerId="candidate-detail-tags"
+          />
+          {tagsError && (
+            <p className="text-sm font-medium text-destructive">{tagsError}</p>
+          )}
+          {tagsSuccess && (
+            <p className="text-sm text-green-600">標籤已儲存</p>
+          )}
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              disabled={!tagsDirty || tagsSaving}
+              onClick={handleSaveTags}
+            >
+              {tagsSaving ? '儲存中…' : '儲存標籤'}
+            </Button>
+            {tagsDirty && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={tagsSaving}
+                onClick={() => {
+                  setTags(savedTags)
+                  setTagsError(null)
+                  setTagsSuccess(false)
+                }}
+              >
+                取消變更
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     )

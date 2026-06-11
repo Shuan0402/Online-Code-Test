@@ -12,9 +12,35 @@ ARG BUILD_ENV=production
 COPY requirements.txt .
 COPY requirements-dev.txt .
 # NOSONAR — dependencies version locking is managed via requirements.txt and checked by developer
-RUN pip install --no-cache-dir --only-binary :all: -r requirements.txt \
+# PyPI can be slow from some networks; use longer timeout + retries (same pattern as backend-ci.yml).
+RUN pip install --upgrade pip \
+ && for attempt in 1 2 3 4 5; do \
+        pip install --no-cache-dir \
+            --default-timeout=180 \
+            --retries 10 \
+            --only-binary :all: \
+            -r requirements.txt \
+        && break \
+        || { \
+            if [ "$attempt" -eq 5 ]; then exit 1; fi; \
+            echo "pip install requirements.txt failed (attempt ${attempt}/5), retrying in 10s..."; \
+            sleep 10; \
+        }; \
+    done \
  && if [ "$BUILD_ENV" = "development" ] || [ "$BUILD_ENV" = "test" ]; then \
-        pip install --no-cache-dir --only-binary :all: -r requirements-dev.txt; \
+        for attempt in 1 2 3 4 5; do \
+            pip install --no-cache-dir \
+                --default-timeout=180 \
+                --retries 10 \
+                --only-binary :all: \
+                -r requirements-dev.txt \
+            && break \
+            || { \
+                if [ "$attempt" -eq 5 ]; then exit 1; fi; \
+                echo "pip install requirements-dev.txt failed (attempt ${attempt}/5), retrying in 10s..."; \
+                sleep 10; \
+            }; \
+        done; \
     fi
 
 # Create log directory and set ownership

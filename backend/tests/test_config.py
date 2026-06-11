@@ -7,7 +7,10 @@ def test_settings_default_values():
     """
     驗證當僅提供 JWT_SECRET 時，其餘配置能正確帶入預設值。
     """
-    s = Settings(JWT_SECRET="my-super-secret-key")
+    s = Settings(
+        JWT_SECRET="my-super-secret-key",
+        CANDIDATE_PASSWORD_SHA_SECRET="my-batch-secret",
+    )
     
     assert s.JWT_SECRET == "my-super-secret-key"
     assert s.ALGORITHM == "HS256"
@@ -35,6 +38,7 @@ def test_settings_custom_overrides():
     """
     s = Settings(
         JWT_SECRET="custom-secret",
+        CANDIDATE_PASSWORD_SHA_SECRET="custom-batch-secret",
         ALGORITHM="HS512",
         ACCESS_TOKEN_EXPIRE_MINUTES=120,
         FRONTEND_HOST="https://my-frontend.domain.tw"

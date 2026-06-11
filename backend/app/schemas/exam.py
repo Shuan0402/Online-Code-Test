@@ -55,6 +55,21 @@ class ExamCreate(ExamBase):
     """
     candidate_id: UUID = Field(..., description="被指派的考生 ID")
 
+class ExamBatchCreate(BaseModel):
+    """
+    批次建立考試時，不指定單一考生，改為指定標籤。
+    系統會自動為該標籤的所有考生建立同一場考試。
+    """
+    title: str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "2026 後端實作測驗"})
+    tag: str = Field(..., max_length=255, description="依此標籤篩選考生，為每位符合條件的考生建立考試")
+    duration_minutes: int = Field(default=120, gt=0, description="考試時長 (分鐘)")
+    
+    easy_count: int = Field(default=0, ge=0)
+    medium_count: int = Field(default=0, ge=0)
+    hard_count: int = Field(default=0, ge=0)
+
+    auto_generate: bool = Field(default=True, description="建立後是否自動抽選題目")
+
 class ExamUpdate(BaseModel):
     """
     更新考試狀態（例如：發布、歸檔，或考生開始作答）。
@@ -122,6 +137,30 @@ class ExamRead(ExamBase):
     exam_problems: List[ExamProblemRead] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+class BatchExamCreateResult(BaseModel):
+    """
+    批次建立考試的回傳結果：包含成功建立的考試清單與可能的錯誤資訊。
+    """
+    created_exams: List[ExamRead] = Field(default=[], description="成功建立的考試清單")
+    total_requested: int = Field(..., description="符合標籤條件的考生總數")
+    success_count: int = Field(..., description="成功建立的考試數量")
+    failed_count: int = Field(default=0, description="建立失敗的數量")
+    errors: List[str] = Field(default=[], description="錯誤訊息列表")
+
+class BatchExamActionRequest(BaseModel):
+    """
+    批次操作考試的請求：指定要操作的考試 ID 清單。
+    """
+    exam_ids: List[UUID] = Field(..., min_length=1, description="欲操作的考試 ID 清單")
+
+class BatchExamActionResult(BaseModel):
+    """
+    批次操作考試的結果。
+    """
+    success_count: int = Field(..., description="成功的數量")
+    failed_count: int = Field(default=0, description="失敗的數量")
+    errors: List[str] = Field(default=[], description="錯誤訊息列表")
 
 class ExamProblemResultRead(BaseModel):
     """
