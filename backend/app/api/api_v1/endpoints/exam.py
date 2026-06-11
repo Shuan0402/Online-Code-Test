@@ -204,6 +204,7 @@ def get_candidate_exams(
     db: Annotated[Session, Depends(deps.get_db)],
     candidate_id: Optional[uuid.UUID] = None,
     mine: Optional[bool] = None,
+    tag: Optional[str] = None,
     score_gte: Optional[float] = None,
     score_lte: Optional[float] = None,
     created_start: Optional[str] = None,
@@ -223,14 +224,18 @@ def get_candidate_exams(
             joinedload(Exam.candidate)
         )
         query = _apply_staff_exam_filters(query, current_user, candidate_id, mine, created_start, created_end)
+        if tag:
+            query = query.filter(Exam.tag == tag)
         exams = query.all()
     else:
-        exams = (
+        query = (
             db.query(Exam)
             .options(joinedload(Exam.exam_problems).joinedload(ExamProblem.problem))
             .filter(Exam.candidate_id == current_user.id, Exam.status != ExamStatus.Draft)
-            .all()
         )
+        if tag:
+            query = query.filter(Exam.tag == tag)
+        exams = query.all()
 
     # 一次 batch 取所有出現過的 problem_id 的 testcase score_weight 總和，避免 N+1。
     problem_ids = {ep.problem_id for exam in exams for ep in exam.exam_problems}
@@ -448,6 +453,7 @@ def create_exam_session(
     new_exam = Exam(
         id=uuid.uuid4(),
         title=obj_in.title,
+        tag=obj_in.tag,
         duration_minutes=obj_in.duration_minutes,
         easy_count=obj_in.easy_count,
         medium_count=obj_in.medium_count,
@@ -613,6 +619,28 @@ def publish_exam_session(
     db.commit()
     db.refresh(exam)
     return exam
+
+@router.get("/tags", response_model=List[str])
+def get_unique_tags(
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_current_user)]
+):
+    """
+    獲取系統中所有已使用的考試標籤清單
+    """
+    if current_user.role not in [UserRole.Interviewer, UserRole.Admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足，只有面試官或管理員可以獲取標籤清單。"
+        )
+    tags = (
+        db.query(Exam.tag)
+        .filter(Exam.tag != None)
+        .filter(Exam.tag != "")
+        .distinct()
+        .all()
+    )
+    return [t[0] for t in tags if t[0]]
 
 @router.get("/{exam_id}", response_model=ExamRead)
 def get_exam_session_by_id(

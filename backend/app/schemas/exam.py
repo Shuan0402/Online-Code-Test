@@ -41,6 +41,7 @@ class ExamProblemCreate(BaseModel):
 # Exam
 class ExamBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100, json_schema_extra={"example": "2026 後端實作測驗"})
+    tag: Optional[str] = Field(None, max_length=255, description="考試標籤")
     duration_minutes: int = Field(default=120, gt=0, description="考試時長 (分鐘)")
     
     easy_count: int = Field(default=0, ge=0)
@@ -60,6 +61,7 @@ class ExamUpdate(BaseModel):
     Bug 7：易/中/難題數欄位允許在 Draft 狀態下調整（endpoint 內 enforce 該守則）。
     """
     title: Optional[str] = None
+    tag: Optional[str] = None
     duration_minutes: Optional[int] = Field(None, gt=0)
     status: Optional[ExamStatus] = None
 
@@ -78,6 +80,7 @@ class CandidateExamListRead(BaseModel):
     """
     id: UUID
     title: str
+    tag: Optional[str] = None
     status: ExamStatus
     duration_minutes: int
     score: Optional[int] = Field(None, description="未結束前為 None，結束且公布後才秀出")

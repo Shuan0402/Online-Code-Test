@@ -48,6 +48,9 @@ export default function ExamListPage() {
 
   // 狀態篩選（client-side，不發新 API 請求）
   const [statusFilter, setStatusFilter] = useState('')
+  // 標籤篩選（server-side filter）
+  const [tagFilter, setTagFilter] = useState('')
+  const [existingTags, setExistingTags] = useState([])
   // 「只看我的」切換（server-side filter，會重新發 API 請求）
   const [mineOnly, setMineOnly] = useState(false)
   // 時間區段篩選（server-side filter，YYYY-MM-DD）
@@ -68,6 +71,7 @@ export default function ExamListPage() {
     try {
       const params = {}
       if (mineOnly) params.mine = true
+      if (tagFilter) params.tag = tagFilter
       if (createdStart) params.created_start = createdStart
       if (createdEnd) params.created_end = createdEnd
       if (scoreGte !== '') params.score_gte = Number(scoreGte)
@@ -80,10 +84,11 @@ export default function ExamListPage() {
       setLoading(false)
       setHasLoadedOnce(true)
     }
-  }, [mineOnly, createdStart, createdEnd, scoreGte, scoreLte])
+  }, [mineOnly, tagFilter, createdStart, createdEnd, scoreGte, scoreLte])
 
   const resetFilters = () => {
     setStatusFilter('')
+    setTagFilter('')
     setMineOnly(false)
     setCreatedStart('')
     setCreatedEnd('')
@@ -94,6 +99,16 @@ export default function ExamListPage() {
   useEffect(() => {
     fetchExams()
   }, [fetchExams])
+
+  useEffect(() => {
+    api.get('/api/v1/exams/tags')
+      .then((res) => {
+        setExistingTags(res.data ?? [])
+      })
+      .catch((err) => {
+        console.error('無法載入標籤篩選列表', err)
+      })
+  }, [])
 
   // --- 刪除考試 ---
   const openDeleteDialog = (exam) => {
@@ -166,6 +181,25 @@ export default function ExamListPage() {
             {STATUS_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="tag-filter" className="text-sm font-medium">
+            篩選標籤：
+          </label>
+          <select
+            id="tag-filter"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            className="rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="">全部</option>
+            {existingTags.map((t) => (
+              <option key={t} value={t}>
+                {t}
               </option>
             ))}
           </select>
@@ -253,6 +287,7 @@ export default function ExamListPage() {
             <thead className="bg-muted text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">考試標題</th>
+                <th className="px-4 py-3 text-left font-medium w-36">標籤</th>
                 <th className="px-4 py-3 text-left font-medium w-28">狀態</th>
                 <th className="px-4 py-3 text-left font-medium w-28">時長</th>
                 <th className="px-4 py-3 text-left font-medium w-24">分數</th>
@@ -267,6 +302,7 @@ export default function ExamListPage() {
                   className="border-t hover:bg-muted/30 transition-colors"
                 >
                   <td className="px-4 py-3 font-medium">{exam.title}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{exam.tag || '—'}</td>
                   <td className="px-4 py-3">
                     <ExamStatusBadge status={exam.status} />
                   </td>

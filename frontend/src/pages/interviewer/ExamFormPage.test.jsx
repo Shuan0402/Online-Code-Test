@@ -65,6 +65,15 @@ function renderPage() {
   )
 }
 
+function setupGetMocks({ users = MOCK_USERS_WITH_CANDIDATES, problems = MOCK_PROBLEMS, tags = [] } = {}) {
+  api.get.mockImplementation((url) => {
+    if (url.includes('/users/')) return Promise.resolve({ data: users })
+    if (url.includes('/problems/')) return Promise.resolve({ data: problems })
+    if (url.includes('/exams/tags')) return Promise.resolve({ data: tags })
+    return Promise.reject(new Error('Unknown url: ' + url))
+  })
+}
+
 describe('ExamFormPage', () => {
   beforeEach(() => {
     vi.resetAllMocks()
@@ -107,11 +116,7 @@ describe('ExamFormPage', () => {
   })
 
   it('renders form successfully and displays warning when input exceeds bank stats', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
-      if (url.includes('/problems/')) return Promise.resolve({ data: MOCK_PROBLEMS })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks()
 
     renderPage()
 
@@ -155,11 +160,7 @@ describe('ExamFormPage', () => {
   })
 
   it('handles empty candidates list correctly', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: [] })
-      if (url.includes('/problems/')) return Promise.resolve({ data: [] })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks({ users: [] })
 
     renderPage()
 
@@ -170,11 +171,7 @@ describe('ExamFormPage', () => {
   })
 
   it('performs frontend validations on submit', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
-      if (url.includes('/problems/')) return Promise.resolve({ data: MOCK_PROBLEMS })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks()
 
     renderPage()
 
@@ -203,11 +200,7 @@ describe('ExamFormPage', () => {
   })
 
   it('submits form successfully and navigates to details', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
-      if (url.includes('/problems/')) return Promise.resolve({ data: MOCK_PROBLEMS })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks({ tags: ['2026 校招'] })
 
     renderPage()
 
@@ -217,6 +210,8 @@ describe('ExamFormPage', () => {
 
     // Fill Title
     fireEvent.change(screen.getByLabelText('考試標題'), { target: { value: 'Final Exam' } })
+    // Fill Tag
+    fireEvent.change(screen.getByLabelText('考試標籤'), { target: { value: '2026 校招' } })
     // Fill Duration
     fireEvent.change(screen.getByLabelText('考試時長（分鐘）'), { target: { value: '180' } })
     // Fill Counts
@@ -233,6 +228,7 @@ describe('ExamFormPage', () => {
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/api/v1/exams/', {
         title: 'Final Exam',
+        tag: '2026 校招',
         duration_minutes: 180,
         easy_count: 1,
         medium_count: 1,
@@ -244,11 +240,7 @@ describe('ExamFormPage', () => {
   })
 
   it('uses fallbacks on submit if input values are invalid', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
-      if (url.includes('/problems/')) return Promise.resolve({ data: MOCK_PROBLEMS })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks()
 
     renderPage()
 
@@ -273,6 +265,7 @@ describe('ExamFormPage', () => {
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith('/api/v1/exams/', {
         title: 'Final Exam',
+        tag: null,
         duration_minutes: 120, // default fallback
         easy_count: 0, // default fallback
         medium_count: 0, // default fallback
@@ -283,11 +276,7 @@ describe('ExamFormPage', () => {
   })
 
   it('renders submit failure error message', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
-      if (url.includes('/problems/')) return Promise.resolve({ data: MOCK_PROBLEMS })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks()
 
     renderPage()
 
@@ -308,11 +297,7 @@ describe('ExamFormPage', () => {
   })
 
   it('renders default submit failure error message if detail is missing', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
-      if (url.includes('/problems/')) return Promise.resolve({ data: MOCK_PROBLEMS })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks()
 
     renderPage()
 
@@ -335,6 +320,7 @@ describe('ExamFormPage', () => {
   it('handles problem bank stats fetch failure silently', async () => {
     api.get.mockImplementation((url) => {
       if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
+      if (url.includes('/exams/tags')) return Promise.resolve({ data: [] })
       if (url.includes('/problems/')) return Promise.reject(new Error('Silent stats failure'))
       return Promise.reject(new Error('Unknown url'))
     })
@@ -350,11 +336,7 @@ describe('ExamFormPage', () => {
   })
 
   it('navigates back to /interviewer on cancel button click', async () => {
-    api.get.mockImplementation((url) => {
-      if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS_WITH_CANDIDATES })
-      if (url.includes('/problems/')) return Promise.resolve({ data: MOCK_PROBLEMS })
-      return Promise.reject(new Error('Unknown url'))
-    })
+    setupGetMocks()
 
     renderPage()
 
@@ -371,4 +353,58 @@ describe('ExamFormPage', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '取消' })[1])
     expect(mockNavigate).toHaveBeenCalledWith('/interviewer')
   })
+
+  it('fetches existing tags and renders autocomplete dropdown suggestions', async () => {
+    setupGetMocks({ tags: ['TagX', 'TagY'] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('新增考試')).toBeInTheDocument()
+    })
+
+    // Dropdown should be closed initially, so options not visible
+    expect(screen.queryByText('TagX')).not.toBeInTheDocument()
+
+    // Focus on tag input to open the dropdown
+    const tagInput = screen.getByLabelText('考試標籤')
+    fireEvent.focus(tagInput)
+
+    // Dropdown options should now be visible
+    expect(screen.getByText('TagX')).toBeInTheDocument()
+    expect(screen.getByText('TagY')).toBeInTheDocument()
+
+    // Click on an option TagY
+    fireEvent.click(screen.getByText('TagY'))
+
+    // The value of tagInput should be updated
+    expect(tagInput.value).toBe('TagY')
+  })
+
+  it('filters suggestions and shows option to add new tag when no matches found', async () => {
+    setupGetMocks({ tags: ['TagX', 'TagY'] })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('新增考試')).toBeInTheDocument()
+    })
+
+    const tagInput = screen.getByLabelText('考試標籤')
+    fireEvent.focus(tagInput)
+    fireEvent.change(tagInput, { target: { value: 'TagZ' } })
+
+    // TagX and TagY should be filtered out
+    expect(screen.queryByText('TagX')).not.toBeInTheDocument()
+    expect(screen.queryByText('TagY')).not.toBeInTheDocument()
+
+    // The add new tag option should be visible
+    const addOption = screen.getByText('+ 新增標籤「TagZ」')
+    expect(addOption).toBeInTheDocument()
+
+    // Click it to confirm/add the tag
+    fireEvent.click(addOption)
+
+    // The tag value is confirmed
+    expect(tagInput.value).toBe('TagZ')
+  })
 })
+

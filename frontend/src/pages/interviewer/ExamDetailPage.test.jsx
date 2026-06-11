@@ -193,6 +193,7 @@ describe('ExamDetailPage', () => {
 
   it('saves edits successfully', async () => {
     api.get.mockImplementation((url) => {
+      if (url.includes('/exams/tags')) return Promise.resolve({ data: ['TagA', 'TagB'] })
       if (url.includes('/exams/')) return Promise.resolve({ data: MOCK_EXAM_DRAFT })
       if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS })
       return Promise.reject(new Error('Unknown url'))
@@ -205,12 +206,14 @@ describe('ExamDetailPage', () => {
     })
 
     const titleInput = screen.getByLabelText('考試標題')
+    const tagInput = screen.getByLabelText('考試標籤')
     const durationInput = screen.getByLabelText('考試時長（分鐘）')
     const easyInput = screen.getByLabelText('簡單題數')
     const mediumInput = screen.getByLabelText('中等題數')
     const hardInput = screen.getByLabelText('困難題數')
 
     fireEvent.change(titleInput, { target: { value: 'Updated Title' } })
+    fireEvent.change(tagInput, { target: { value: 'NewTag' } })
     fireEvent.change(durationInput, { target: { value: '150' } })
     fireEvent.change(easyInput, { target: { value: '3' } })
     fireEvent.change(mediumInput, { target: { value: '2' } })
@@ -220,6 +223,7 @@ describe('ExamDetailPage', () => {
       data: {
         ...MOCK_EXAM_DRAFT,
         title: 'Updated Title',
+        tag: 'NewTag',
         duration_minutes: 150,
         easy_count: 3,
         medium_count: 2,
@@ -232,6 +236,7 @@ describe('ExamDetailPage', () => {
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith(`/api/v1/exams/${EXAM_UUID}`, {
         title: 'Updated Title',
+        tag: 'NewTag',
         duration_minutes: 150,
         easy_count: 3,
         medium_count: 2,
@@ -244,6 +249,7 @@ describe('ExamDetailPage', () => {
 
   it('uses default values on save if inputs are invalid or empty', async () => {
     api.get.mockImplementation((url) => {
+      if (url.includes('/exams/tags')) return Promise.resolve({ data: [] })
       if (url.includes('/exams/')) return Promise.resolve({ data: MOCK_EXAM_DRAFT })
       if (url.includes('/users/')) return Promise.resolve({ data: MOCK_USERS })
       return Promise.reject(new Error('Unknown url'))
@@ -269,6 +275,7 @@ describe('ExamDetailPage', () => {
     await waitFor(() => {
       expect(api.patch).toHaveBeenCalledWith(`/api/v1/exams/${EXAM_UUID}`, {
         title: MOCK_EXAM_DRAFT.title,
+        tag: null,
         duration_minutes: 120, // default fallback
         easy_count: 0, // default fallback for negative
         medium_count: 1,
@@ -795,7 +802,7 @@ describe('ExamDetailPage', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('—')).toBeInTheDocument()
+      expect(screen.getAllByText('—').length).toBeGreaterThan(0)
     })
   })
 })

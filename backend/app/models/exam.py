@@ -45,6 +45,7 @@ class Exam(Base):
     easy_count = Column(Integer, default=0, nullable=False)
     medium_count = Column(Integer, default=0, nullable=False)
     hard_count = Column(Integer, default=0, nullable=False)
+    tag = Column(String(255), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
