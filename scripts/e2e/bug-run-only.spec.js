@@ -23,14 +23,47 @@ async function loginAndEnterExam(page) {
 }
 
 test('RUN_ONLY：試跑顯示結果 panel、不污染 tab、5s cooldown 429', async ({ page }) => {
+  // 攔截 GET /submissions/{id} 請求，強制將其狀態改為 AC（終止態），
+  // 這樣前端按鈕就會在第一次點擊後的 300ms 內重新啟用（不需等 worker 跑完），
+  // 從而讓我們能在 2s 內點擊第二次，穩定觸發 backend 的 429 限制。
+  await page.route('**/api/v1/submissions/*', async (route) => {
+    if (route.request().method() === 'GET') {
+      try {
+        const response = await route.fetch();
+        if (response.status() === 200) {
+          const json = await response.json();
+          json.status = 'AC';
+          if (!json.details || json.details.length === 0) {
+            json.details = [
+              { id: 1, status: 'AC', execution_time: 10, runtime_info: '' }
+            ];
+          }
+          await route.fulfill({ json });
+        } else {
+          await route.continue();
+        }
+      } catch (e) {
+        await route.continue();
+      }
+    } else {
+      await route.continue();
+    }
+  });
+
   await loginAndEnterExam(page)
 
-  // 點試跑（沿用 EditorPanel 預設的 Python 範本就行、輸出空字串會 WA）
+  // 點試跑（沿用 EditorPanel 預設 detour Python 範本就行、輸出空字串會 WA）
   const runBtn = page.getByRole('button', { name: '試跑' })
   await runBtn.click()
 
-  // 1) panel header 出現（這串文字只有 panel 才有、不會跟按鈕撞）
-  await expect(page.getByText(/試跑 Testcase 明細（不計分）/)).toBeVisible({ timeout: 30_000 })
+  // 4) 立刻再按一次（必撞 2s cooldown） → banner 顯示「太頻繁」
+  // 等待按鈕重新 enabled（因為 mock 讓它極速完成）
+  await expect(runBtn).toBeEnabled({ timeout: 5_000 })
+  await runBtn.click()
+  await expect(page.getByText(/太頻繁/)).toBeVisible({ timeout: 5_000 })
+
+  // 1) panel header 出現
+  await expect(page.getByText(/試跑 Testcase 明細（不計分）/)).toBeVisible({ timeout: 10_000 })
 
   // 2) 「試跑」badge 在 panel header（amber 樣式 span）
   await expect(page.locator('span.bg-amber-100', { hasText: '試跑' })).toBeVisible()
@@ -38,8 +71,4 @@ test('RUN_ONLY：試跑顯示結果 panel、不污染 tab、5s cooldown 429', as
   // 3) tab 狀態不該變成「已提交」/「答對」等 — 應該保持「未提交」
   const tab = page.locator('button[data-problem-id]').first()
   await expect(tab.getByText('未提交')).toBeVisible()
-
-  // 4) 立刻再按一次（5 秒內、必撞 cooldown） → banner 顯示「太頻繁」
-  await runBtn.click()
-  await expect(page.getByText(/太頻繁/)).toBeVisible({ timeout: 5_000 })
 })
