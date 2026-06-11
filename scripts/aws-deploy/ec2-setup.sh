@@ -50,6 +50,10 @@ sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$PG_PW|" .env
 sed -i "s|^MINIO_PASSWORD=.*|MINIO_PASSWORD=$MINIO_PW|" .env
 sed -i "s|^GRAFANA_PASSWORD=.*|GRAFANA_PASSWORD=$GRAFANA_PW|" .env
 
+log "Building sandbox images (worker spawns these as siblings via DooD)"
+sudo docker build -t sandbox:python judge-sandbox/images/python
+sudo docker build -t sandbox:cpp judge-sandbox/images/cpp
+
 log "Bringing up stack (first build ~8-15 min)"
 sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 

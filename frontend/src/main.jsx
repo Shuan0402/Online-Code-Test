@@ -5,9 +5,6 @@ import App from './App'
 import './index.css'
 // Bug 6：KaTeX CSS 必須在頂層 import 一次，否則 rehype-katex 渲染出來的數學式沒有 style
 import 'katex/dist/katex.min.css'
-import { loader } from '@monaco-editor/react'
-
-loader.config({ paths: { vs: '/node_modules/monaco-editor/min/vs' } })
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
