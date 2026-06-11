@@ -1,6 +1,7 @@
 import uuid
 
 from app.models.enums import UserRole
+from app.models.user import User
 
 
 # --- POST /users/ (建立新使用者) ---
@@ -323,6 +324,42 @@ def test_delete_user_forbidden_for_interviewer(client, interviewer_user, candida
     override_auth(interviewer_user)
     
     response = client.delete(f"/api/v1/users/{candidate_user.id}")
+    assert response.status_code == 403
+
+
+def test_batch_import_candidates_csv(client, interviewer_user, override_auth, db_session):
+    """
+    批次匯入 CSV 可建立考生並套用統一標籤，回傳自動產生的密碼。
+    """
+    override_auth(interviewer_user)
+
+    csv_content = "真實姓名,帳號\n張三,zhangsan01\n李四,lisi23456\n"
+    response = client.post(
+        "/api/v1/users/batch-import",
+        files={"file": ("candidates.csv", csv_content.encode("utf-8"), "text/csv")},
+        data={"tags": '["2026 校園徵才 - 前端工程師"]'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"] == 2
+    assert payload["failed"] == 0
+    assert all(len(row["generated_password"]) == 8 for row in payload["results"])
+
+    user = db_session.query(User).filter(User.username == "zhangsan01").first()
+    assert user is not None
+    assert user.full_name == "張三"
+
+
+def test_batch_import_candidates_forbidden_for_candidate(client, candidate_user, override_auth):
+    override_auth(candidate_user)
+
+    csv_content = "真實姓名,帳號\n測試,testuser1\n"
+    response = client.post(
+        "/api/v1/users/batch-import",
+        files={"file": ("candidates.csv", csv_content.encode("utf-8"), "text/csv")},
+        data={"tags": "[]"},
+    )
     assert response.status_code == 403
 
 

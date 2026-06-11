@@ -30,6 +30,22 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[UserRole] = None
 
+class BatchImportRowResult(BaseModel):
+    row: int
+    username: str
+    full_name: Optional[str] = None
+    status: str
+    message: Optional[str] = None
+    generated_password: Optional[str] = None
+
+
+class BatchImportResult(BaseModel):
+    total: int
+    created: int
+    failed: int
+    results: List[BatchImportRowResult]
+
+
 class UserCandidateTagsUpdate(BaseModel):
     """
     更新考生標籤（完整取代現有標籤清單）。

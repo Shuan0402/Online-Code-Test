@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import api from '@/lib/api'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import ErrorMessage from '@/components/ErrorMessage'
+import CandidateBatchImportDialog from '@/components/CandidateBatchImportDialog'
 import { Button } from '@/components/ui/button'
 
 function formatDatetime(isoStr) {
@@ -26,6 +27,7 @@ export default function CandidateListPage() {
 
   const [tagFilter, setTagFilter] = useState('')
   const [existingTags, setExistingTags] = useState([])
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false)
 
   const fetchCandidates = useCallback(async () => {
     setLoading(true)
@@ -81,10 +83,21 @@ export default function CandidateListPage() {
       {/* 頁首：標題 + 新增按鈕 */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">考生管理</h1>
-        <Button onClick={() => navigate('/interviewer/candidates/new')}>
-          新增考生
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setBatchDialogOpen(true)}>
+            批次新增
+          </Button>
+          <Button onClick={() => navigate('/interviewer/candidates/new')}>
+            新增考生
+          </Button>
+        </div>
       </div>
+
+      <CandidateBatchImportDialog
+        open={batchDialogOpen}
+        onOpenChange={setBatchDialogOpen}
+        onSuccess={fetchCandidates}
+      />
 
       {/* 篩選列 */}
       <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/20 p-3">

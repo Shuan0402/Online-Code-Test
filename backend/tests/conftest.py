@@ -1,10 +1,14 @@
+import os
+
+os.environ.setdefault("JWT_SECRET", "testsecret")
+os.environ.setdefault("CANDIDATE_PASSWORD_SHA_SECRET", "test-batch-secret")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 import uuid
 from contextlib import contextmanager
-import os
 
 from app.main import app
 from app.db.base import Base

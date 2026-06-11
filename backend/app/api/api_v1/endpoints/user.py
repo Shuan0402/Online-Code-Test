@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import json
+from dataclasses import asdict
+
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Annotated
 from uuid import UUID
@@ -12,10 +15,17 @@ from app.schemas.user import (
     UserUpdatePassword,
     UserPasswordReset,
     UserCandidateTagsUpdate,
+    BatchImportResult,
+    BatchImportRowResult,
 )
 from app.core.security import SecurityManager
 from app.models.enums import UserRole
 from app.services.tags import replace_candidate_tags
+from app.services.candidate_batch import (
+    parse_candidate_upload,
+    batch_import_candidates,
+    BatchImportFileError,
+)
 
 USER_NOT_FOUND = "找不到該使用者"
 
@@ -50,6 +60,52 @@ def create_user(
         .options(joinedload(User.candidate_tags))
         .filter(User.id == new_user.id)
         .one()
+    )
+
+@router.post("/batch-import", response_model=BatchImportResult)
+async def batch_import_users(
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_interviewer_user)],
+    file: UploadFile = File(...),
+    tags: str = Form("[]"),
+):
+    """
+    批次匯入考生（CSV / Excel）。
+    - 檔案需包含欄位：真實姓名、帳號
+    - 密碼由系統依帳號自動產生
+    - tags 為 JSON 陣列字串，套用於所有成功建立的考生
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="請上傳檔案")
+
+    try:
+        tag_list = json.loads(tags)
+        if not isinstance(tag_list, list):
+            raise ValueError("tags must be a list")
+    except (json.JSONDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="tags 格式錯誤，需為 JSON 陣列")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="檔案內容為空")
+
+    try:
+        rows = parse_candidate_upload(content, file.filename)
+    except BatchImportFileError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="檔案中沒有可匯入的考生資料")
+
+    summary = batch_import_candidates(db, rows, tag_list)
+    return BatchImportResult(
+        total=summary.total,
+        created=summary.created,
+        failed=summary.failed,
+        results=[
+            BatchImportRowResult.model_validate(asdict(r))
+            for r in summary.results
+        ],
     )
 
 @router.get("/", response_model=List[UserRead])

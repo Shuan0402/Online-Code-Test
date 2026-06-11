@@ -36,6 +36,16 @@ vi.mock('@/components/LoadingSpinner', () => ({
   default: () => <div data-testid="loading-spinner" />,
 }))
 
+// --- mock CandidateBatchImportDialog ---
+vi.mock('@/components/CandidateBatchImportDialog', () => ({
+  default: ({ open, onOpenChange }) =>
+    open ? (
+      <div data-testid="batch-import-dialog">
+        <button type="button" onClick={() => onOpenChange(false)}>關閉批次匯入</button>
+      </div>
+    ) : null,
+}))
+
 // --- mock ErrorMessage ---
 vi.mock('@/components/ErrorMessage', () => ({
   default: ({ message, onRetry }) => (
@@ -168,6 +178,18 @@ describe('CandidateListPage', () => {
     expect(screen.queryByText('刪除')).not.toBeInTheDocument()
     // Admin-note text is visible instead
     expect(screen.getByText('刪除考生帳號需由管理員操作')).toBeInTheDocument()
+  })
+
+  it('opens batch import dialog when clicking 批次新增', async () => {
+    mockApi()
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '批次新增' }))
+    expect(screen.getByTestId('batch-import-dialog')).toBeInTheDocument()
   })
 
   it('filters candidates by selected tag', async () => {

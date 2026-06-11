@@ -19,6 +19,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
+      CANDIDATE_PASSWORD_SHA_SECRET: ${CANDIDATE_PASSWORD_SHA_SECRET}
       WORKER_SECRET: ${WORKER_SECRET}
       MINIO_ENDPOINT: http://minio:9000
       # Browser-facing presigned URLs use the EC2 public host through nginx.
