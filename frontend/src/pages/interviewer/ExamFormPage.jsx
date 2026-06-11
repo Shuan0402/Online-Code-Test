@@ -13,6 +13,8 @@ export default function ExamFormPage() {
 
   // --- 表單欄位狀態 ---
   const [title, setTitle] = useState('')
+  const [tag, setTag] = useState('')
+  const [existingTags, setExistingTags] = useState([])
   const [durationMinutes, setDurationMinutes] = useState(120)
   const [easyCount, setEasyCount] = useState(0)
   const [mediumCount, setMediumCount] = useState(0)
@@ -37,6 +39,16 @@ export default function ExamFormPage() {
   // mount 時取得使用者清單 + 題庫統計（用來防呆提醒題數設定）
   useEffect(() => {
     let cancelled = false
+
+    api
+      .get('/api/v1/exams/tags')
+      .then((res) => {
+        if (cancelled) return
+        setExistingTags(res.data ?? [])
+      })
+      .catch((err) => {
+        console.error('無法載入標籤列表', err)
+      })
 
     api
       .get('/api/v1/users/')
@@ -108,6 +120,7 @@ export default function ExamFormPage() {
 
     const body = {
       title: title.trim(),
+      tag: tag.trim() || null,
       duration_minutes: Number.isFinite(parsedDuration) && parsedDuration > 0 ? parsedDuration : 120,
       easy_count: Number.isFinite(parsedEasy) ? parsedEasy : 0,
       medium_count: Number.isFinite(parsedMedium) ? parsedMedium : 0,
@@ -175,6 +188,24 @@ export default function ExamFormPage() {
             onChange={(e) => setTitle(e.target.value)}
             placeholder="請輸入考試標題"
           />
+        </div>
+
+        {/* 考試標籤 */}
+        <div className="space-y-1">
+          <Label htmlFor="tag">考試標籤</Label>
+          <Input
+            id="tag"
+            type="text"
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            placeholder="例如: 2026 校園徵才 - 前端工程師 (可輸入或從選單中選取)"
+            list="existing-tags"
+          />
+          <datalist id="existing-tags">
+            {existingTags.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
         </div>
 
         {/* 考試時長 */}

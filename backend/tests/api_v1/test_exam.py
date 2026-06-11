@@ -1239,3 +1239,67 @@ def test_exam_list_created_end_yyyy_mm_dd_includes_same_day_exam(
         "created_end='2026-05-08' 應涵蓋當天 23:59:59；"
         "若 fromisoformat 把它解析成 00:00:00、會把當天的考試漏掉。"
     )
+
+
+def test_exam_tags_lifecycle(
+    client, db_session, interviewer_user, candidate_user, override_auth, create_test_exam
+):
+    """
+    驗證考試標籤 (tag) 的完整生命週期：
+    1. 建立考試時，傳入標籤欄位，並驗證回傳值中包含該標籤。
+    2. 調用 /exams/tags 獲取所有獨特的標籤，驗證清單正確。
+    3. 調用 /exams/ 列表端點並使用 tag 篩選，驗證篩選效果。
+    """
+    override_auth(interviewer_user)
+
+    # 1. 建立具有標籤的考試
+    payload1 = {
+        "title": "2026 前端實作測驗",
+        "tag": "2026 校園徵才 - 前端工程師",
+        "duration_minutes": 120,
+        "easy_count": 0,
+        "medium_count": 0,
+        "hard_count": 0,
+        "candidate_id": str(candidate_user.id)
+    }
+    res_create1 = client.post("/api/v1/exams/", json=payload1)
+    assert res_create1.status_code == 201
+    assert res_create1.json()["tag"] == "2026 校園徵才 - 前端工程師"
+
+    # 建立第二個不同標籤的考試
+    payload2 = {
+        "title": "2026 後端實作測驗",
+        "tag": "2026 校園徵才 - 後端工程師",
+        "duration_minutes": 120,
+        "easy_count": 0,
+        "medium_count": 0,
+        "hard_count": 0,
+        "candidate_id": str(candidate_user.id)
+    }
+    res_create2 = client.post("/api/v1/exams/", json=payload2)
+    assert res_create2.status_code == 201
+    assert res_create2.json()["tag"] == "2026 校園徵才 - 後端工程師"
+
+    # 2. 驗證 /exams/tags 端點
+    res_tags = client.get("/api/v1/exams/tags")
+    assert res_tags.status_code == 200
+    tags_list = res_tags.json()
+    assert "2026 校園徵才 - 前端工程師" in tags_list
+    assert "2026 校園徵才 - 後端工程師" in tags_list
+    assert len(tags_list) >= 2
+
+    # 3. 驗證列表篩選
+    # 篩選前端標籤
+    res_filter_fe = client.get("/api/v1/exams/?tag=2026 校園徵才 - 前端工程師")
+    assert res_filter_fe.status_code == 200
+    fe_exams = res_filter_fe.json()
+    assert len(fe_exams) == 1
+    assert fe_exams[0]["title"] == "2026 前端實作測驗"
+
+    # 篩選後端標籤
+    res_filter_be = client.get("/api/v1/exams/?tag=2026 校園徵才 - 後端工程師")
+    assert res_filter_be.status_code == 200
+    be_exams = res_filter_be.json()
+    assert len(be_exams) == 1
+    assert be_exams[0]["title"] == "2026 後端實作測驗"
+

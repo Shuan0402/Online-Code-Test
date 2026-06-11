@@ -87,7 +87,10 @@ function renderPage() {
 describe('ExamListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    api.get.mockResolvedValue({ data: MOCK_EXAMS })
+    api.get.mockImplementation((url) => {
+      if (url.includes('/exams/tags')) return Promise.resolve({ data: ['TagFE', 'TagBE'] })
+      return Promise.resolve({ data: MOCK_EXAMS })
+    })
   })
 
   // (a) status filter — selecting "Draft" → only Draft rows visible
@@ -100,7 +103,7 @@ describe('ExamListPage', () => {
       expect(screen.getByText('進行中考試')).toBeInTheDocument()
     })
 
-    const select = screen.getByRole('combobox')
+    const select = screen.getByLabelText('篩選狀態：')
     fireEvent.change(select, { target: { value: 'Draft' } })
 
     expect(screen.getByText('草稿考試')).toBeInTheDocument()
@@ -114,16 +117,17 @@ describe('ExamListPage', () => {
       expect(screen.getByText('草稿考試')).toBeInTheDocument()
     })
 
-    const select = screen.getByRole('combobox')
+    const select = screen.getByLabelText('篩選狀態：')
     fireEvent.change(select, { target: { value: 'Draft' } })
     expect(screen.queryByText('進行中考試')).not.toBeInTheDocument()
 
     fireEvent.change(select, { target: { value: '' } })
     expect(screen.getByText('進行中考試')).toBeInTheDocument()
 
-    // Only one GET call was made (the initial load)
-    expect(api.get).toHaveBeenCalledTimes(1)
+    // GET calls were made (for exams list and unique tags list)
+    expect(api.get).toHaveBeenCalledTimes(2)
     expect(api.get).toHaveBeenCalledWith('/api/v1/exams/', { params: {} })
+    expect(api.get).toHaveBeenCalledWith('/api/v1/exams/tags')
   })
 
   // (b) score column: null → "—", 150 → "150 分"
@@ -135,7 +139,7 @@ describe('ExamListPage', () => {
     })
 
     // null score → "—"
-    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
     // numeric score → "150 分"
     expect(screen.getByText('150 分')).toBeInTheDocument()
   })
@@ -176,7 +180,7 @@ describe('ExamListPage', () => {
     })
 
     // Initial load
-    expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', { params: {} })
+    expect(api.get).toHaveBeenCalledWith('/api/v1/exams/', { params: {} })
 
     const startInput = document.getElementById('created-start')
     const endInput = document.getElementById('created-end')
@@ -246,11 +250,12 @@ describe('ExamListPage', () => {
     // Set several filters
     fireEvent.change(document.getElementById('created-start'), { target: { value: '2026-05-05' } })
     fireEvent.change(document.getElementById('score-gte'), { target: { value: '50' } })
+    fireEvent.change(document.getElementById('tag-filter'), { target: { value: 'TagFE' } })
     fireEvent.click(document.getElementById('mine-only-toggle'))
 
     await waitFor(() => {
       expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', {
-        params: { created_start: '2026-05-05', score_gte: 50, mine: true },
+        params: { created_start: '2026-05-05', score_gte: 50, tag: 'TagFE', mine: true },
       })
     })
 
@@ -264,6 +269,7 @@ describe('ExamListPage', () => {
     // UI state cleared
     expect(document.getElementById('created-start').value).toBe('')
     expect(document.getElementById('score-gte').value).toBe('')
+    expect(document.getElementById('tag-filter').value).toBe('')
   })
 
   // (d) delete 400 → inline error, row stays
@@ -292,5 +298,30 @@ describe('ExamListPage', () => {
 
     // Row stays
     expect(screen.getByText('草稿考試')).toBeInTheDocument()
+  })
+
+  // Tag filter test
+  it('selecting tag filter dropdown refetches with tag param', async () => {
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('草稿考試')).toBeInTheDocument()
+    })
+
+    const tagSelect = screen.getByLabelText('篩選標籤：')
+    expect(tagSelect).toBeInTheDocument()
+    
+    // Check dropdown options
+    expect(screen.getByRole('option', { name: 'TagFE' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'TagBE' })).toBeInTheDocument()
+
+    // Select TagFE
+    fireEvent.change(tagSelect, { target: { value: 'TagFE' } })
+
+    await waitFor(() => {
+      expect(api.get).toHaveBeenLastCalledWith('/api/v1/exams/', {
+        params: { tag: 'TagFE' },
+      })
+    })
   })
 })
