@@ -20,7 +20,7 @@ from app.models.testcase import TestCase
 logger = logging.getLogger("app")
 
 # RUN_ONLY 試跑兩次之間至少要間隔的秒數（per user × per problem）
-RUN_ONLY_COOLDOWN_SEC = 5
+RUN_ONLY_COOLDOWN_SEC = 2
 
 router = APIRouter()
 
