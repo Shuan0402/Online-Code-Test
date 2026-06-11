@@ -97,6 +97,13 @@ services:
 
   worker:
     image: judge-worker:dev
+    # 併發上限對應 OJ Story 1 AC2「Worker 應依照配置的併發上限控制」。
+    # 不改 worker code（while True: consume_once 仍是 serial），靠多開 container
+    # 達成「N 條一樣的生產線並排跑」— redis BLMOVE 原子，N 個 worker 不會搶到同一筆。
+    # 預設 1，要拉高就在 .env 設 WORKER_CONCURRENCY=N 再 docker compose up -d worker。
+    deploy:
+      mode: replicated
+      replicas: ${WORKER_CONCURRENCY:-1}
     environment:
       REDIS_URL: redis://redis:6379/0
       BACKEND_URL: http://backend:8000/api/v1
