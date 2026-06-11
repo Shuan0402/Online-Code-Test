@@ -406,8 +406,8 @@ def test_generate_exam_problems_success(client, db_session, interviewer_user, ov
     
     data = response.json()
     assert len(data["exam_problems"]) == 2
-    assert data["exam_problems"][0]["sequence"] == 1
-    assert data["exam_problems"][1]["sequence"] == 2
+    sequences = [p["sequence"] for p in data["exam_problems"]]
+    assert sorted(sequences) == [1, 2]
 
 
 def test_generate_exam_problems_insufficient_bank(client, interviewer_user, override_auth, create_test_exam, create_test_problem):

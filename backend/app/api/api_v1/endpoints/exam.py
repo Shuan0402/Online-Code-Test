@@ -285,7 +285,10 @@ def start_exam(
         db.refresh(exam)
 
     total_duration_seconds = exam.duration_minutes * 60
-    elapsed_seconds = (now - exam.start_time).total_seconds()
+    start_time = exam.start_time
+    if start_time and start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    elapsed_seconds = (now - start_time).total_seconds() if start_time else 0
     remaining_seconds = int(total_duration_seconds - elapsed_seconds)
 
     if remaining_seconds <= 0:
@@ -818,7 +821,7 @@ def add_exam_problem_manual(
 
 @router.get("/{exam_id}/problems")
 def get_exam_problems(
-    exam_id: str,
+    exam_id: uuid.UUID,
     db: Annotated[Session, Depends(deps.get_db)],
     current_user: Annotated[User, Depends(deps.get_current_user)]
 ):
@@ -860,7 +863,7 @@ def get_exam_problems(
 
 @router.delete("/{exam_id}/problems/{p_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_exam_problem(
-    exam_id: str,
+    exam_id: uuid.UUID,
     p_id: int,
     db: Annotated[Session, Depends(deps.get_db)],
     current_user: Annotated[User, Depends(deps.get_staff_user)]

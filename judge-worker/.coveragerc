@@ -1,3 +1,7 @@
 [run]
-omit =
-    worker_naive.py
+source =
+    .
+    ../judge-sandbox/tests/fixtures
+    ../scripts
+    ../email-worker
+

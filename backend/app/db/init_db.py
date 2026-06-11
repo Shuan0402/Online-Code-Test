@@ -103,10 +103,12 @@ def seed_problems(db: Session) -> None:
             
     db.commit()
 
-def init_development_data(db: Session) -> None:
+def init_development_data(db: Session, bind_engine=None) -> None:
     """資料庫初始化主要生命週期控制"""
     logger.info("正在建立資料庫實體資料表 (若不存在)...")
-    Base.metadata.create_all(bind=engine)
+    if bind_engine is None:
+        bind_engine = engine
+    Base.metadata.create_all(bind=bind_engine)
     
     seed_users(db)
     seed_problems(db)

@@ -14,7 +14,7 @@ import logging
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, Response, status
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -91,17 +91,13 @@ def judge_callback(
     # Step 9：根據 verdict 分兩條路徑、共用 `WHERE status IN ('Pending','Judging')` guard。
     if payload.verdict == "JudgeFailed":
         result = db.execute(
-            text("""
-                UPDATE submissions
-                   SET status = 'JudgeFailed',
-                       failure_reason = :reason
-                 WHERE id = :sub_id
-                   AND status IN ('Pending', 'Judging')
-            """),
-            {
-                "reason": payload.failure_reason,
-                "sub_id": payload.submission_id,
-            },
+            update(Submission)
+            .where(Submission.id == payload.submission_id)
+            .where(Submission.status.in_([JudgeStatus.Pending, JudgeStatus.Judging]))
+            .values(
+                status=JudgeStatus.JudgeFailed,
+                failure_reason=payload.failure_reason,
+            )
         )
         weights_by_id = {}
     else:
@@ -113,24 +109,16 @@ def judge_callback(
         score = calc_score(payload.per_testcase, weights_by_id)
 
         result = db.execute(
-            text("""
-                UPDATE submissions
-                   SET status = :verdict,
-                       score = :score,
-                       execution_time = :exec_ms,
-                       memory_usage = :mem_mb,
-                       judge_log = :log
-                 WHERE id = :sub_id
-                   AND status IN ('Pending', 'Judging')
-            """),
-            {
-                "verdict": verdict.value,
-                "score": score,
-                "exec_ms": payload.exec_time_ms,
-                "mem_mb": payload.memory_mb,
-                "log": payload.judge_log,
-                "sub_id": payload.submission_id,
-            },
+            update(Submission)
+            .where(Submission.id == payload.submission_id)
+            .where(Submission.status.in_([JudgeStatus.Pending, JudgeStatus.Judging]))
+            .values(
+                status=verdict,
+                score=score,
+                execution_time=payload.exec_time_ms,
+                memory_usage=payload.memory_mb,
+                judge_log=payload.judge_log,
+            )
         )
 
     db.commit()
