@@ -24,6 +24,21 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
+// --- mock TagMultiSelect ---
+vi.mock('@/components/TagMultiSelect', () => ({
+  default: ({ value, onChange, label }) => (
+    <div>
+      <label htmlFor="mock-tags">{label}</label>
+      <input
+        id="mock-tags"
+        data-testid="mock-tags"
+        value={value.join(',')}
+        onChange={(e) => onChange(e.target.value ? e.target.value.split(',') : [])}
+      />
+    </div>
+  ),
+}))
+
 // --- mock ui/button ---
 vi.mock('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, asChild, type, variant }) => {
@@ -124,6 +139,7 @@ describe('CandidateFormPage', () => {
         full_name: null,
         password: 'password8',
         role: 'Candidate',
+        tags: [],
       })
     })
   })

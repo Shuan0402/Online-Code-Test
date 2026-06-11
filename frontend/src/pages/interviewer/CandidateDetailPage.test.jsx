@@ -8,7 +8,7 @@
  * (d) 考試列表載入失敗 → 顯示「無法載入考試列表」
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -16,6 +16,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 vi.mock('@/lib/api', () => ({
   default: {
     get: vi.fn(),
+    patch: vi.fn(),
   },
 }))
 
@@ -42,6 +43,22 @@ vi.mock('@/components/ExamStatusBadge', () => ({
   default: ({ status }) => <span data-testid="exam-status-badge">{status}</span>,
 }))
 
+// --- mock TagMultiSelect ---
+vi.mock('@/components/TagMultiSelect', () => ({
+  default: ({ value, onChange }) => (
+    <div data-testid="tag-multi-select">
+      <span data-testid="tag-list">{value.join(', ')}</span>
+      <button
+        type="button"
+        data-testid="add-tag-btn"
+        onClick={() => onChange([...value, '新標籤'])}
+      >
+        新增標籤
+      </button>
+    </div>
+  ),
+}))
+
 import api from '@/lib/api'
 import CandidateDetailPage from './CandidateDetailPage'
 
@@ -53,6 +70,7 @@ const MOCK_CANDIDATE = {
   full_name: '愛麗絲',
   role: 'Candidate',
   created_at: '2026-01-01T00:00:00Z',
+  tags: ['2026 校園徵才 - 前端工程師'],
 }
 
 const MOCK_EXAMS = [
@@ -144,5 +162,26 @@ describe('CandidateDetailPage', () => {
 
     // 考生資料仍應正常顯示，不受考試請求失敗連坐
     expect(screen.getByText('愛麗絲')).toBeInTheDocument()
+  })
+
+  it('displays candidate tags and allows saving updated tags', async () => {
+    mockApi()
+    api.patch.mockResolvedValue({
+      data: { ...MOCK_CANDIDATE, tags: ['2026 校園徵才 - 前端工程師', '新標籤'] },
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('2026 校園徵才 - 前端工程師')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByTestId('add-tag-btn'))
+    fireEvent.click(screen.getByRole('button', { name: '儲存標籤' }))
+
+    await waitFor(() => {
+      expect(api.patch).toHaveBeenCalledWith(`/api/v1/users/${USER_ID}/tags`, {
+        tags: ['2026 校園徵才 - 前端工程師', '新標籤'],
+      })
+    })
   })
 })

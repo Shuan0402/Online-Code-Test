@@ -38,3 +38,8 @@ class User(Base):
     assigned_exams = relationship("Exam", foreign_keys="[Exam.candidate_id]", back_populates="candidate", cascade=CASCADE_ALL_DELETE)
     created_problems = relationship("Problem", back_populates="questioner")
     submissions = relationship("Submission", back_populates="user", cascade=CASCADE_ALL_DELETE)
+    candidate_tags = relationship("CandidateTag", back_populates="user", cascade=CASCADE_ALL_DELETE)
+
+    @property
+    def tags(self) -> list[str]:
+        return sorted({ct.tag for ct in self.candidate_tags})

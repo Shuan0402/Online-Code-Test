@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 
 import api from '@/lib/api'
+import TagMultiSelect from '@/components/TagMultiSelect'
 import { Button } from '@/components/ui/button'
 
 export default function CandidateFormPage() {
@@ -10,6 +11,7 @@ export default function CandidateFormPage() {
   const [username, setUsername] = useState('')
   const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
+  const [tags, setTags] = useState([])
   const [formError, setFormError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -42,6 +44,7 @@ export default function CandidateFormPage() {
         full_name: fullName.trim() || null,
         password,
         role: 'Candidate',
+        tags,
       }
       const res = await api.post('/api/v1/users/', body)
       // 201 → 導向新建考生的詳情頁
@@ -117,6 +120,14 @@ export default function CandidateFormPage() {
             className="w-full rounded border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+
+        {/* 考生標籤 */}
+        <TagMultiSelect
+          value={tags}
+          onChange={setTags}
+          label="考生標籤（選填）"
+          containerId="candidate-form-tags"
+        />
 
         {/* 表單錯誤訊息 */}
         {formError && (

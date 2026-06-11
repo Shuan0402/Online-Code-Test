@@ -1,13 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Annotated
 from uuid import UUID
 
 from app.api import deps
 from app.models.user import User
-from app.schemas.user import UserCreate, UserRead, UserUpdate, UserUpdatePassword, UserPasswordReset
+from app.schemas.user import (
+    UserCreate,
+    UserRead,
+    UserUpdate,
+    UserUpdatePassword,
+    UserPasswordReset,
+    UserCandidateTagsUpdate,
+)
 from app.core.security import SecurityManager
 from app.models.enums import UserRole
+from app.services.tags import replace_candidate_tags
 
 USER_NOT_FOUND = "找不到該使用者"
 
@@ -31,16 +39,29 @@ def create_user(
         role=obj_in.role
     )
     db.add(new_user)
+    db.flush()
+
+    if obj_in.tags and obj_in.role == UserRole.Candidate:
+        replace_candidate_tags(db, new_user.id, obj_in.tags)
+
     db.commit()
-    db.refresh(new_user)
-    return new_user
+    return (
+        db.query(User)
+        .options(joinedload(User.candidate_tags))
+        .filter(User.id == new_user.id)
+        .one()
+    )
 
 @router.get("/", response_model=List[UserRead])
 def read_users(
     db: Annotated[Session, Depends(deps.get_db)], 
     current_user: Annotated[User, Depends(deps.get_interviewer_user)]
 ):
-    return db.query(User).all()
+    return (
+        db.query(User)
+        .options(joinedload(User.candidate_tags))
+        .all()
+    )
 
 @router.get("/me", response_model=UserRead)
 def get_current_user_info(current_user: Annotated[User, Depends(deps.get_current_user)]):
@@ -59,13 +80,56 @@ def read_user_by_id(
     獲取特定使用者細節。
     - 僅限 Admin 或 Interviewer 操作。
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .options(joinedload(User.candidate_tags))
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=USER_NOT_FOUND
         )
     return user
+
+@router.patch("/{user_id}/tags", response_model=UserRead)
+def update_candidate_tags(
+    user_id: UUID,
+    obj_in: UserCandidateTagsUpdate,
+    db: Annotated[Session, Depends(deps.get_db)],
+    current_user: Annotated[User, Depends(deps.get_interviewer_user)],
+):
+    """
+    更新考生標籤（完整取代現有標籤清單）。
+    - 僅限 Admin 或 Interviewer 操作。
+    - 目標使用者必須為 Candidate。
+    """
+    user = (
+        db.query(User)
+        .options(joinedload(User.candidate_tags))
+        .filter(User.id == user_id)
+        .first()
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=USER_NOT_FOUND,
+        )
+    if user.role != UserRole.Candidate:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="僅能為考生設定標籤",
+        )
+
+    replace_candidate_tags(db, user.id, obj_in.tags)
+    db.commit()
+    return (
+        db.query(User)
+        .options(joinedload(User.candidate_tags))
+        .filter(User.id == user.id)
+        .one()
+    )
 
 @router.patch("/me", response_model=UserRead)
 def update_current_user_profile(

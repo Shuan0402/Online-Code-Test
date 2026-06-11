@@ -1303,3 +1303,20 @@ def test_exam_tags_lifecycle(
     assert len(be_exams) == 1
     assert be_exams[0]["title"] == "2026 後端實作測驗"
 
+
+def test_exam_tags_include_candidate_tags(
+    client, db_session, interviewer_user, candidate_user, override_auth
+):
+    """
+    /exams/tags 應回傳考試與考生共用的標籤清單。
+    """
+    from app.models.candidate_tag import CandidateTag
+
+    override_auth(interviewer_user)
+    db_session.add(CandidateTag(user_id=candidate_user.id, tag="考生專屬標籤"))
+    db_session.commit()
+
+    res_tags = client.get("/api/v1/exams/tags")
+    assert res_tags.status_code == 200
+    assert "考生專屬標籤" in res_tags.json()
+

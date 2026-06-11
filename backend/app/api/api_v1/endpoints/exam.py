@@ -17,6 +17,7 @@ from app.models.problem import Problem
 from app.schemas.exam import CandidateExamListRead, CandidateExamDetailRead, ExamResultRead, ExamProblemResultRead, ExamCreate, ExamRead, ExamUpdate, ExamProblemCreate
 from app.schemas.problem import ProblemRead, ProblemCandidateRead
 from app.services.exam import exam_service
+from app.services.tags import get_all_unique_tags
 
 EXAM_NOT_FOUND = "找不到指定的考試項目。"
 
@@ -633,14 +634,7 @@ def get_unique_tags(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="權限不足，只有面試官或管理員可以獲取標籤清單。"
         )
-    tags = (
-        db.query(Exam.tag)
-        .filter(Exam.tag != None)
-        .filter(Exam.tag != "")
-        .distinct()
-        .all()
-    )
-    return [t[0] for t in tags if t[0]]
+    return get_all_unique_tags(db)
 
 @router.get("/{exam_id}", response_model=ExamRead)
 def get_exam_session_by_id(

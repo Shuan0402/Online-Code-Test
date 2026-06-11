@@ -326,6 +326,75 @@ def test_delete_user_forbidden_for_interviewer(client, interviewer_user, candida
     assert response.status_code == 403
 
 
+def test_create_candidate_with_tags(client, interviewer_user, override_auth):
+    """
+    建立考生時可同時設定多個標籤。
+    """
+    override_auth(interviewer_user)
+
+    data = {
+        "username": "tagged_candidate",
+        "full_name": "Tagged Student",
+        "password": "strong_password123",
+        "role": "Candidate",
+        "tags": ["2026 校園徵才 - 前端工程師", "實習生"],
+    }
+
+    response = client.post("/api/v1/users/", json=data)
+    assert response.status_code == 201
+    content = response.json()
+    assert set(content["tags"]) == {"2026 校園徵才 - 前端工程師", "實習生"}
+
+
+def test_update_candidate_tags_by_interviewer(client, interviewer_user, candidate_user, override_auth):
+    """
+    面試官可更新考生的標籤（新增與刪除）。
+    """
+    override_auth(interviewer_user)
+
+    response = client.patch(
+        f"/api/v1/users/{candidate_user.id}/tags",
+        json={"tags": ["2026 校園徵才 - 後端工程師"]},
+    )
+    assert response.status_code == 200
+    assert response.json()["tags"] == ["2026 校園徵才 - 後端工程師"]
+
+    response = client.patch(
+        f"/api/v1/users/{candidate_user.id}/tags",
+        json={"tags": []},
+    )
+    assert response.status_code == 200
+    assert response.json()["tags"] == []
+
+
+def test_update_candidate_tags_forbidden_for_candidate(client, candidate_user, override_auth):
+    """
+    一般考生無法修改標籤。
+    """
+    override_auth(candidate_user)
+
+    response = client.patch(
+        f"/api/v1/users/{candidate_user.id}/tags",
+        json={"tags": ["非法標籤"]},
+    )
+    assert response.status_code == 403
+
+
+def test_get_user_by_id_includes_tags(client, admin_user, candidate_user, override_auth, db_session):
+    """
+    查詢考生時應回傳標籤清單。
+    """
+    from app.models.candidate_tag import CandidateTag
+
+    override_auth(admin_user)
+    db_session.add(CandidateTag(user_id=candidate_user.id, tag="測試標籤"))
+    db_session.commit()
+
+    response = client.get(f"/api/v1/users/{candidate_user.id}")
+    assert response.status_code == 200
+    assert response.json()["tags"] == ["測試標籤"]
+
+
 def test_delete_user_admin_self_blocked(client, admin_user, override_auth):
     """
     Admin 嘗試刪除自己時，應該被 400 阻止。
